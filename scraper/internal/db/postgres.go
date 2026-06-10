@@ -2,9 +2,11 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 )
@@ -67,7 +69,7 @@ func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 func (d *DB) GetSeriesBySourceID(ctx context.Context, sourceID string) (*model.Series, error) {
 	var s model.Series
 	err := d.pool.QueryRow(ctx, `
-		SELECT id, source_id, title, COALESCE(alt_titles::text, '[]'), author, artist,
+		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), author, artist,
 			description, cover_url, status, source_url, latest_chapter, is_active
 		FROM manga_series WHERE source_id = $1
 	`, sourceID).Scan(
@@ -90,6 +92,9 @@ func (d *DB) InsertChapter(ctx context.Context, seriesID string, ch model.Chapte
 	`, seriesID, ch.Number, ch.Title, ch.URL, ch.ReleaseDate).Scan(&id)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
 		return "", fmt.Errorf("insert chapter: %w", err)
 	}
 	return id, nil
@@ -97,7 +102,7 @@ func (d *DB) InsertChapter(ctx context.Context, seriesID string, ch model.Chapte
 
 func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, source_id, title, COALESCE(alt_titles::text, '[]'), author, artist,
+		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), author, artist,
 			description, cover_url, status, source_url, latest_chapter, is_active
 		FROM manga_series WHERE is_active = true
 	`)
@@ -116,6 +121,9 @@ func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {
 			return nil, fmt.Errorf("scan series: %w", err)
 		}
 		series = append(series, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate active series: %w", err)
 	}
 	return series, nil
 }
@@ -140,12 +148,18 @@ func (d *DB) GetNewChapters(ctx context.Context) ([]model.Chapter, error) {
 		}
 		chapters = append(chapters, ch)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate new chapters: %w", err)
+	}
 	return chapters, nil
 }
 
 func (d *DB) MarkChapterNotified(ctx context.Context, chapterID string) error {
 	_, err := d.pool.Exec(ctx, `UPDATE chapters SET is_new = false WHERE id = $1`, chapterID)
-	return err
+	if err != nil {
+		return fmt.Errorf("mark chapter notified: %w", err)
+	}
+	return nil
 }
 
 func (d *DB) InsertNotificationLog(ctx context.Context, chapterID, status, channel, errorMsg string) error {
@@ -153,5 +167,8 @@ func (d *DB) InsertNotificationLog(ctx context.Context, chapterID, status, chann
 		INSERT INTO notification_logs (chapter_id, status, channel, error_message)
 		VALUES ($1, $2, $3, $4)
 	`, chapterID, status, channel, errorMsg)
-	return err
+	if err != nil {
+		return fmt.Errorf("insert notification log: %w", err)
+	}
+	return nil
 }
