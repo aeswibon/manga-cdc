@@ -18,12 +18,61 @@ services:
       retries: 5
       start_period: 30s
 
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092
+      - --advertise-kafka-addr internal://redpanda:9092
+      - --pandaproxy-addr internal://0.0.0.0:8082
+      - --advertise-pandaproxy-addr internal://redpanda:8082
+      - --schema-registry-addr internal://0.0.0.0:8081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --mode dev-container
+      - --smp 1
+      - --memory 512M
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info | grep -q leader_id"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  connect:
+    image: debezium/connect:2.7.4.Final
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: redpanda:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
   scraper:
     build:
       context: ./scraper
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
+      connect:
+        condition: service_started
       postgres:
         condition: service_healthy
     environment:
@@ -39,15 +88,28 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
+      connect:
+        condition: service_started
       postgres:
         condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mangacdc
       SPRING_DATASOURCE_USERNAME: mangacdc
       SPRING_DATASOURCE_PASSWORD: mangacdc
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       DISCORD_WEBHOOK_URL: ""
+      CDC_ENABLED: "true"
     ports:
       - "8080:8080"
+
+  kafkaui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    restart: unless-stopped
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: mangacdc
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: redpanda:9092
 
   prometheus:
     image: prom/prometheus:v2.53.0
