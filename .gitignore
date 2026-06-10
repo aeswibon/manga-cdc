@@ -23,3 +23,4 @@ notification-service/bin/
 
 # Docker
 .superpowers/
+docs/superpowers/
