@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafkaui
+  namespace: manga-cdc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafkaui
+  template:
+    metadata:
+      labels:
+        app: kafkaui
+    spec:
+      containers:
+        - name: kafkaui
+          image: provectuslabs/kafka-ui:v0.7.2
+          ports:
+            - containerPort: 8080
+          env:
+            - name: KAFKA_CLUSTERS_0_NAME
+              value: mangacdc
+            - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+              value: redpanda:9092
