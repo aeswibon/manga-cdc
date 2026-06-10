@@ -24,12 +24,12 @@ public class ChapterRepository {
     }
 
     public void markNotified(String chapterId) {
-        jdbc.update("UPDATE chapters SET is_new = false WHERE id = ?", chapterId);
+        jdbc.update("UPDATE chapters SET is_new = false WHERE id = ?::uuid", chapterId);
     }
 
     public void logNotification(String chapterId, String status, String channel, String errorMessage) {
         jdbc.update(
-            "INSERT INTO notification_logs (chapter_id, status, channel, error_message) VALUES (?, ?, ?, ?)",
+            "INSERT INTO notification_logs (chapter_id, status, channel, error_message) VALUES (?::uuid, ?, ?, ?)",
             chapterId, status, channel, errorMessage);
     }
 }
