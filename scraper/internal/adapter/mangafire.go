@@ -16,7 +16,8 @@ import (
 const mangafireBase = "https://mangafire.to"
 
 type MangaFireAdapter struct {
-	log *slog.Logger
+	log    *slog.Logger
+	client *colly.Collector
 }
 
 func NewMangaFireAdapter() *MangaFireAdapter {
@@ -30,6 +31,9 @@ func (m *MangaFireAdapter) Name() string {
 }
 
 func (m *MangaFireAdapter) newCollector() *colly.Collector {
+	if m.client != nil {
+		return m.client
+	}
 	c := colly.NewCollector(
 		colly.AllowedDomains("mangafire.to"),
 		colly.Async(true),
@@ -41,6 +45,10 @@ func (m *MangaFireAdapter) newCollector() *colly.Collector {
 	})
 	c.SetRequestTimeout(30 * time.Second)
 	return c
+}
+
+func (m *MangaFireAdapter) SetCollector(c *colly.Collector) {
+	m.client = c
 }
 
 func (m *MangaFireAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {
