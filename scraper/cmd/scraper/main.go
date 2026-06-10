@@ -76,6 +76,7 @@ func main() {
 
 	sources := []adapter.SourceAdapter{
 		adapter.NewMangaDexAdapter(),
+		adapter.NewMangaPlusAdapter(),
 	}
 
 	log.Info("scraper started", "sources", len(sources), "interval", cfg.ScrapeInterval)
