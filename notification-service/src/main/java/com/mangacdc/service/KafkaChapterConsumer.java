@@ -63,7 +63,7 @@ public class KafkaChapterConsumer {
             }
 
             String seriesTitle = jdbc.queryForObject(
-                "SELECT title FROM manga_series WHERE id = ?",
+                "SELECT title FROM manga_series WHERE id = ?::uuid",
                 String.class, seriesId);
 
             boolean success = discordNotifier.sendChapterAlert(
