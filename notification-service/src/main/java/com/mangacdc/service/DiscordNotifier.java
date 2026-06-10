@@ -28,25 +28,29 @@ public class DiscordNotifier {
             return false;
         }
 
-        String description = String.format("**%s** — Chapter %s", seriesTitle, chapterNum);
-        if (chapterTitle != null && !chapterTitle.isBlank()) {
-            description += ": " + chapterTitle;
+        try {
+            String description = String.format("**%s** — Chapter %s", seriesTitle, chapterNum);
+            if (chapterTitle != null && !chapterTitle.isBlank()) {
+                description += ": " + chapterTitle;
+            }
+
+            var embed = Map.of(
+                "title", "New Chapter Available!",
+                "description", description,
+                "url", url,
+                "color", 0x5865F2,
+                "footer", Map.of("text", "manga-cdc • Change Data Capture Pipeline")
+            );
+
+            var payload = Map.of(
+                "content", "@everyone",
+                "embeds", List.of(embed)
+            );
+
+            restTemplate.postForEntity(webhookUrl, payload, String.class);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
-
-        var embed = Map.of(
-            "title", "New Chapter Available!",
-            "description", description,
-            "url", url,
-            "color", 0x5865F2,
-            "footer", Map.of("text", "manga-cdc • Change Data Capture Pipeline")
-        );
-
-        var payload = Map.of(
-            "content", "@everyone",
-            "embeds", List.of(embed)
-        );
-
-        restTemplate.postForEntity(webhookUrl, payload, String.class);
-        return true;
     }
 }
