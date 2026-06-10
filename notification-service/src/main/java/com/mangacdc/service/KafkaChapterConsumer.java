@@ -42,7 +42,7 @@ public class KafkaChapterConsumer {
             JsonNode root = mapper.readTree(message);
 
             String op = root.path("op").asText();
-            if (!"c".equals(op) && !"r".equals(op)) {
+            if (!"c".equals(op)) {
                 return;
             }
 

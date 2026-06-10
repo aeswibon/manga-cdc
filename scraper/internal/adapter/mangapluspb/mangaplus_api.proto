@@ -1,0 +1,155 @@
+syntax = "proto3";
+
+package mangaplus_api;
+
+option go_package = "github.com/aeswibon/manga-cdc/scraper/internal/adapter/mangapluspb";
+
+message Response {
+  oneof result {
+    SuccessResult success = 1;
+    ErrorResult error = 2;
+  }
+}
+
+message ErrorResult {
+  enum Action {
+    DEFAULT = 0;
+    UNAUTHORIZED = 1;
+    MAINTENANCE = 2;
+    GEOIP_BLOCKING = 3;
+  }
+  Action action = 1;
+}
+
+message SuccessResult {
+  RegistrationData registerationData = 2;
+  TitleDetailView titleDetailView = 8;
+  SearchView searchView = 35;
+}
+
+message RegistrationData {
+  string deviceSecret = 1;
+}
+
+message SearchView {
+  repeated Banner topSearchBanners = 1;
+  repeated Tag allTags = 2;
+  repeated AllTitlesGroup allTitlesGroup = 3;
+  repeated Contents contents = 5;
+}
+
+message Contents {
+  Banner banner = 1;
+  TitleList titleList = 2;
+  repeated TitleRankingGroup rankedTitles = 3;
+  repeated Label allLabels = 4;
+  ChapterPageList chapterPagesList = 5;
+}
+
+message TitleRankingGroup {
+  int32 originalTitleId = 1;
+  repeated Title titles = 2;
+  int32 score = 3;
+}
+
+message TitleList {
+  string listName = 1;
+  repeated Title featuredTitles = 2;
+  int32 containerId = 3;
+}
+
+message ChapterPageList {
+  string listName = 1;
+  repeated ChapterPages chapterPages = 2;
+}
+
+message ChapterPages {
+  int32 containerId = 1;
+  int32 chapterId = 2;
+  int32 titleId = 3;
+  string name = 4;
+  string author = 5;
+  string favoriteImageUrl = 6;
+  repeated Page pages = 7;
+}
+
+message Tag {
+  string tag = 1;
+  string slug = 2;
+}
+
+message Banner {
+  string imageUrl = 1;
+  int32 id = 3;
+  int32 width = 4;
+  int32 height = 5;
+}
+
+message AllTitlesGroup {
+  string theTitle = 1;
+  repeated Title titles = 2;
+  repeated Tag tags = 3;
+  Label label = 4;
+  int64 nextChapterStartTimestamp = 5;
+}
+
+enum Language {
+  ENGLISH = 0;
+  SPANISH = 1;
+  FRENCH = 2;
+  INDONESIAN = 3;
+  PORTUGUESE_BR = 4;
+  RUSSIAN = 5;
+  THAI = 6;
+  GERMAN = 7;
+  ITALIAN = 8;
+  VIETNAMESE = 9;
+}
+
+message Title {
+  int32 titleId = 1;
+  string name = 2;
+  string author = 3;
+  string portraitImageUrl = 4;
+  string landscapeImageUrl = 5;
+  int32 viewCount = 6;
+  Language language = 7;
+}
+
+message Label {
+  string label = 1;
+  string description = 2;
+}
+
+message TitleDetailView {
+  Title title = 1;
+  string titleImageUrl = 2;
+  string overview = 3;
+  repeated Chapter firstChapterList = 9;
+  repeated Chapter lastChapterList = 10;
+  repeated Chapter chapterListV2 = 38;
+}
+
+message Chapter {
+  int32 titleId = 1;
+  int32 chapterId = 2;
+  string name = 3;
+  string subTitle = 4;
+  string thumbnailUrl = 5;
+  int64 startTimeStamp = 6;
+  int64 endTimeStamp = 7;
+  bool alreadyViewed = 8;
+  bool isVerticalOnly = 9;
+  bool isHorizontalOnly = 12;
+  bool isUpdated = 15;
+  int32 chapterType = 16;
+}
+
+message Page {
+  message MangaPage {
+    string imageUrl = 1;
+    int32 width = 2;
+    int32 height = 3;
+  }
+  MangaPage mangaPage = 1;
+}
