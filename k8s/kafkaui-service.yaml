@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafkaui
+  namespace: manga-cdc
+spec:
+  selector:
+    app: kafkaui
+  ports:
+    - port: 8085
+      targetPort: 8080

@@ -1,0 +1,26 @@
+global:
+  namespace: manga-cdc
+
+images:
+  scraper: ghcr.io/aeswibon/manga-cdc/scraper:latest
+  notification: ghcr.io/aeswibon/manga-cdc/notification-service:latest
+  postgres: postgres:16-alpine
+  redpanda: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+  connect: debezium/connect:2.7.3.Final
+  kafkaui: provectuslabs/kafka-ui:v0.7.2
+  prometheus: prom/prometheus:v2.53.0
+  grafana: grafana/grafana:11.1.0
+
+replicas:
+  scraper: 1
+  notification: 2
+  connect: 1
+
+storage:
+  postgres: 10Gi
+
+discord:
+  webhookUrl: ""
+
+debezium:
+  autoRegister: true

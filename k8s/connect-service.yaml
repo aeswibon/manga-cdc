@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: connect
+  namespace: manga-cdc
+spec:
+  selector:
+    app: connect
+  ports:
+    - port: 8083
+      targetPort: 8083
