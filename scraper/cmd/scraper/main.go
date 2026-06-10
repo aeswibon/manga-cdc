@@ -76,7 +76,8 @@ func main() {
 
 	sources := []adapter.SourceAdapter{
 		adapter.NewMangaDexAdapter(),
-		adapter.NewMangaPlusAdapter(),
+		// MangaPlus needs protobuf support — see mangaplus.go
+		// adapter.NewMangaPlusAdapter(),
 	}
 
 	log.Info("scraper started", "sources", len(sources), "interval", cfg.ScrapeInterval)
