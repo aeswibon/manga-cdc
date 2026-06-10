@@ -6,6 +6,7 @@ tmp/
 # Go
 scraper/bin/
 scraper/tmp/
+scraper/scraper
 
 # Java / Spring Boot
 notification-service/target/
