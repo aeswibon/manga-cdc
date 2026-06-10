@@ -16,11 +16,20 @@ import (
 const mangafireBase = "https://mangafire.to"
 
 type MangaFireAdapter struct {
-	client *colly.Collector
-	log    *slog.Logger
+	log *slog.Logger
 }
 
 func NewMangaFireAdapter() *MangaFireAdapter {
+	return &MangaFireAdapter{
+		log: slog.Default().With("adapter", "mangafire"),
+	}
+}
+
+func (m *MangaFireAdapter) Name() string {
+	return "mangafire"
+}
+
+func (m *MangaFireAdapter) newCollector() *colly.Collector {
 	c := colly.NewCollector(
 		colly.AllowedDomains("mangafire.to"),
 		colly.Async(true),
@@ -31,15 +40,7 @@ func NewMangaFireAdapter() *MangaFireAdapter {
 		Delay:       1 * time.Second,
 	})
 	c.SetRequestTimeout(30 * time.Second)
-
-	return &MangaFireAdapter{
-		client: c,
-		log:    slog.Default().With("adapter", "mangafire"),
-	}
-}
-
-func (m *MangaFireAdapter) Name() string {
-	return "mangafire"
+	return c
 }
 
 func (m *MangaFireAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {
@@ -47,7 +48,9 @@ func (m *MangaFireAdapter) FetchLatest(ctx context.Context) ([]model.Series, err
 	var series []model.Series
 	var mu sync.Mutex
 
-	m.client.OnHTML(".original.card-lg .unit", func(e *colly.HTMLElement) {
+	c := m.newCollector()
+
+	c.OnHTML(".original.card-lg .unit", func(e *colly.HTMLElement) {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -61,7 +64,7 @@ func (m *MangaFireAdapter) FetchLatest(ctx context.Context) ([]model.Series, err
 			return
 		}
 
-		title := e.ChildText(".info a")
+		title := e.ChildText(".info > a")
 		title = strings.TrimSpace(title)
 		if title == "" {
 			return
@@ -83,10 +86,10 @@ func (m *MangaFireAdapter) FetchLatest(ctx context.Context) ([]model.Series, err
 		})
 	})
 
-	if err := m.client.Visit(pageURL); err != nil {
+	if err := c.Visit(pageURL); err != nil {
 		return nil, fmt.Errorf("mangafire: visit %s: %w", pageURL, err)
 	}
-	m.client.Wait()
+	c.Wait()
 
 	return series, nil
 }
@@ -96,7 +99,9 @@ func (m *MangaFireAdapter) FetchChapters(ctx context.Context, seriesID string) (
 	var chapters []model.Chapter
 	var mu sync.Mutex
 
-	m.client.OnHTML(".original.card-lg .unit .content[data-name=chap] li", func(e *colly.HTMLElement) {
+	c := m.newCollector()
+
+	c.OnHTML(".list-body li.item", func(e *colly.HTMLElement) {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -105,36 +110,25 @@ func (m *MangaFireAdapter) FetchChapters(ctx context.Context, seriesID string) (
 			return
 		}
 
-		text := e.ChildText("span:first-child")
-		text = strings.TrimSpace(text)
-
-		numStr := strings.TrimPrefix(text, "Chap ")
-		numStr = strings.TrimSpace(numStr)
+		numStr := e.Attr("data-number")
 		chapterNum, err := strconv.ParseFloat(numStr, 64)
 		if err != nil {
 			return
-		}
-
-		titleText := e.ChildText("span b")
-		var chapterTitle string
-		if titleText != "" && titleText != "EN" {
-			chapterTitle = titleText
 		}
 
 		chapterURL := mangafireBase + link
 
 		chapters = append(chapters, model.Chapter{
 			Number: chapterNum,
-			Title:  chapterTitle,
 			URL:    chapterURL,
 			IsNew:  true,
 		})
 	})
 
-	if err := m.client.Visit(pageURL); err != nil {
+	if err := c.Visit(pageURL); err != nil {
 		return nil, fmt.Errorf("mangafire: visit %s: %w", pageURL, err)
 	}
-	m.client.Wait()
+	c.Wait()
 
 	return chapters, nil
 }
