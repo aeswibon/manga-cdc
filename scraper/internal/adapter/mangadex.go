@@ -17,12 +17,24 @@ import (
 const mangadexAPI = "https://api.mangadex.org"
 
 type MangaDexAdapter struct {
-	client *http.Client
+	client  *http.Client
+	baseURL string
 }
 
 func NewMangaDexAdapter() *MangaDexAdapter {
 	return &MangaDexAdapter{
-		client: &http.Client{Timeout: 30 * time.Second},
+		client:  &http.Client{Timeout: 30 * time.Second},
+		baseURL: mangadexAPI,
+	}
+}
+
+func NewMangaDexAdapterWithClient(client *http.Client, baseURL string) *MangaDexAdapter {
+	if baseURL == "" {
+		baseURL = mangadexAPI
+	}
+	return &MangaDexAdapter{
+		client:  client,
+		baseURL: baseURL,
 	}
 }
 
@@ -55,7 +67,7 @@ func parseChapterNumber(s string) float64 {
 }
 
 func (m *MangaDexAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {
-	url := fmt.Sprintf("%s/manga?limit=20&order[updatedAt]=desc&availableTranslatedLanguage[]=en", mangadexAPI)
+	url := fmt.Sprintf("%s/manga?limit=20&order[updatedAt]=desc&availableTranslatedLanguage[]=en", m.baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -133,7 +145,7 @@ func (m *MangaDexAdapter) FetchLatest(ctx context.Context) ([]model.Series, erro
 }
 
 func (m *MangaDexAdapter) FetchChapters(ctx context.Context, seriesID string) ([]model.Chapter, error) {
-	url := fmt.Sprintf("%s/manga/%s/feed?limit=50&translatedLanguage[]=en&order[chapter]=desc", mangadexAPI, seriesID)
+	url := fmt.Sprintf("%s/manga/%s/feed?limit=50&translatedLanguage[]=en&order[chapter]=desc", m.baseURL, seriesID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
