@@ -110,13 +110,13 @@ func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, so
 	results, err := engine.ProcessSource(ctx, source)
 	duration := time.Since(start).Seconds()
 
-	scrapeDuration.WithLabelValues(source.Name()).Observe(duration)
-
 	if err != nil {
 		scrapeErrors.WithLabelValues(source.Name(), "process").Inc()
 		log.Error("source scrape failed", "name", source.Name(), "error", err)
 		return
 	}
+
+	scrapeDuration.WithLabelValues(source.Name()).Observe(duration)
 
 	for _, r := range results {
 		chaptersDetected.Add(float64(r.NewChapters))
