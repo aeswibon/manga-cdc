@@ -3,12 +3,18 @@ spring:
     url: jdbc:postgresql://localhost:5432/mangacdc
     username: mangacdc
     password: mangacdc
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
   jdbc:
     template:
       fetch-size: 100
 
 discord:
   webhook-url: ${DISCORD_WEBHOOK_URL:}
+
+cdc:
+  enabled: ${CDC_ENABLED:false}
+  topic-pattern: mangacdc.public.chapters
 
 poller:
   interval-ms: 30000
