@@ -16,7 +16,8 @@ import (
 const asurascansBase = "https://asurascans.com"
 
 type AsuraScansAdapter struct {
-	log *slog.Logger
+	log    *slog.Logger
+	client *colly.Collector
 }
 
 func NewAsuraScansAdapter() *AsuraScansAdapter {
@@ -30,6 +31,9 @@ func (a *AsuraScansAdapter) Name() string {
 }
 
 func (a *AsuraScansAdapter) newCollector() *colly.Collector {
+	if a.client != nil {
+		return a.client
+	}
 	c := colly.NewCollector(
 		colly.AllowedDomains("asurascans.com", "www.asurascans.com"),
 		colly.Async(true),
@@ -41,6 +45,10 @@ func (a *AsuraScansAdapter) newCollector() *colly.Collector {
 	})
 	c.SetRequestTimeout(30 * time.Second)
 	return c
+}
+
+func (a *AsuraScansAdapter) SetCollector(c *colly.Collector) {
+	a.client = c
 }
 
 func (a *AsuraScansAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {
@@ -123,7 +131,8 @@ func (a *AsuraScansAdapter) FetchChapters(ctx context.Context, seriesID string) 
 		if len(parts) != 2 {
 			return
 		}
-		numStr := strings.TrimSpace(parts[1])
+		numStr := strings.TrimRight(parts[1], "/")
+		numStr = strings.TrimSpace(numStr)
 		chapterNum, err := strconv.ParseFloat(numStr, 64)
 		if err != nil {
 			return

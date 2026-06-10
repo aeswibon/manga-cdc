@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - id: tag
         run: echo "sha_short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
       - uses: digitalocean/action-doctl@v2

@@ -26,17 +26,36 @@ const (
 )
 
 type MangaPlusAdapter struct {
-	client *http.Client
-	secret string
-	mu     sync.Mutex
-	log    *slog.Logger
+	client  *http.Client
+	secret  string
+	mu      sync.Mutex
+	log     *slog.Logger
+	baseURL string
 }
 
 func NewMangaPlusAdapter() *MangaPlusAdapter {
 	return &MangaPlusAdapter{
-		client: &http.Client{Timeout: 30 * time.Second},
-		log:    slog.Default().With("adapter", "mangaplus"),
+		client:  &http.Client{Timeout: 30 * time.Second},
+		log:     slog.Default().With("adapter", "mangaplus"),
+		baseURL: mangaplusAPI,
 	}
+}
+
+func NewMangaPlusAdapterWithClient(client *http.Client, baseURL string) *MangaPlusAdapter {
+	if baseURL == "" {
+		baseURL = mangaplusAPI
+	}
+	return &MangaPlusAdapter{
+		client:  client,
+		log:     slog.Default().With("adapter", "mangaplus"),
+		baseURL: baseURL,
+	}
+}
+
+func (m *MangaPlusAdapter) SetSecret(secret string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.secret = secret
 }
 
 func (m *MangaPlusAdapter) Name() string {
@@ -62,7 +81,7 @@ func (m *MangaPlusAdapter) register(ctx context.Context) error {
 		"app_ver":      {strconv.Itoa(appVersion)},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, mangaplusAPI+"/register?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, m.baseURL+"/register?"+params.Encode(), nil)
 	if err != nil {
 		return fmt.Errorf("mangaplus: create register request: %w", err)
 	}
@@ -127,7 +146,7 @@ func (m *MangaPlusAdapter) doRequest(ctx context.Context, endpoint string, extra
 		params[k] = v
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mangaplusAPI+endpoint+"?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.baseURL+endpoint+"?"+params.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("mangaplus: create request: %w", err)
 	}

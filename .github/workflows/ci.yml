@@ -46,6 +46,7 @@ jobs:
 
   docker:
     name: Build and push Docker images
+    needs: [scraper, notification-service]
     runs-on: ubuntu-latest
     permissions:
       contents: read
