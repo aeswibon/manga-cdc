@@ -1,0 +1,25 @@
+.DS_Store
+.env
+*.log
+tmp/
+
+# Go
+scraper/bin/
+scraper/tmp/
+
+# Java / Spring Boot
+notification-service/target/
+notification-service/build/
+notification-service/.gradle/
+notification-service/bin/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Docker
+.superpowers/
