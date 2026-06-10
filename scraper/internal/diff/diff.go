@@ -15,10 +15,10 @@ type Engine struct {
 	log *slog.Logger
 }
 
-func New(database *db.DB) *Engine {
+func New(database *db.DB, log *slog.Logger) *Engine {
 	return &Engine{
 		db:  database,
-		log: slog.Default(),
+		log: log,
 	}
 }
 

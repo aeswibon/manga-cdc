@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -41,7 +40,7 @@ func main() {
 	}
 	defer database.Close()
 
-	engine := diff.New(database)
+	engine := diff.New(database, log)
 
 	sources := []adapter.SourceAdapter{
 		adapter.NewMangaDexAdapter(),
@@ -52,9 +51,31 @@ func main() {
 	ticker := time.NewTicker(cfg.ScrapeInterval)
 	defer ticker.Stop()
 
+	// Run first scrape immediately
+	for _, source := range sources {
+		results, err := engine.ProcessSource(ctx, source)
+		if err != nil {
+			log.Error("source scrape failed", "name", source.Name(), "error", err)
+			continue
+		}
+		for _, r := range results {
+			log.Info("source update",
+				"source", source.Name(),
+				"series", r.SeriesTitle,
+				"new_chapters", r.NewChapters)
+		}
+	}
+
 	for {
+		select {
+		case <-sigCh:
+			log.Info("shutting down...")
+			cancel()
+			return
+		case <-ticker.C:
+		}
+
 		for _, source := range sources {
-			log.Debug("scraping source", "name", source.Name())
 			results, err := engine.ProcessSource(ctx, source)
 			if err != nil {
 				log.Error("source scrape failed", "name", source.Name(), "error", err)
@@ -66,14 +87,6 @@ func main() {
 					"series", r.SeriesTitle,
 					"new_chapters", r.NewChapters)
 			}
-		}
-
-		select {
-		case <-sigCh:
-			fmt.Println()
-			log.Info("shutting down...")
-			return
-		case <-ticker.C:
 		}
 	}
 }
