@@ -33,6 +33,22 @@ services:
     ports:
       - "2112:2112"
 
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mangacdc
+      SPRING_DATASOURCE_USERNAME: mangacdc
+      SPRING_DATASOURCE_PASSWORD: mangacdc
+      DISCORD_WEBHOOK_URL: ""
+    ports:
+      - "8080:8080"
+
   prometheus:
     image: prom/prometheus:v2.53.0
     restart: unless-stopped
