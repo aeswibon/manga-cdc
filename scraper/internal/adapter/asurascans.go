@@ -1,0 +1,152 @@
+package adapter
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/aeswibon/manga-cdc/scraper/internal/model"
+	"github.com/gocolly/colly/v2"
+)
+
+const asurascansBase = "https://asurascans.com"
+
+type AsuraScansAdapter struct {
+	log *slog.Logger
+}
+
+func NewAsuraScansAdapter() *AsuraScansAdapter {
+	return &AsuraScansAdapter{
+		log: slog.Default().With("adapter", "asurascans"),
+	}
+}
+
+func (a *AsuraScansAdapter) Name() string {
+	return "asurascans"
+}
+
+func (a *AsuraScansAdapter) newCollector() *colly.Collector {
+	c := colly.NewCollector(
+		colly.AllowedDomains("asurascans.com", "www.asurascans.com"),
+		colly.Async(true),
+	)
+	c.Limit(&colly.LimitRule{
+		DomainGlob:  "*asurascans.com*",
+		Parallelism: 1,
+		Delay:       1 * time.Second,
+	})
+	c.SetRequestTimeout(30 * time.Second)
+	return c
+}
+
+func (a *AsuraScansAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {
+	pageURL := asurascansBase + "/browse"
+	seen := make(map[string]bool)
+	var series []model.Series
+	var mu sync.Mutex
+
+	c := a.newCollector()
+
+	c.OnHTML("a[href^=\"/comics/\"]", func(e *colly.HTMLElement) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		href := e.Attr("href")
+		if href == "" || strings.Count(href, "/") > 3 {
+			return
+		}
+
+		img := e.ChildAttr("img", "src")
+		title := e.ChildAttr("img", "alt")
+		title = strings.TrimSpace(title)
+		if title == "" {
+			title = e.Text
+			title = strings.TrimSpace(title)
+		}
+		if title == "" {
+			return
+		}
+
+		slug := strings.TrimPrefix(href, "/comics/")
+		slug = strings.TrimSuffix(slug, "/")
+
+		if seen[slug] {
+			return
+		}
+		seen[slug] = true
+
+		coverURL := ""
+		if img != "" {
+			coverURL = img
+		}
+
+		series = append(series, model.Series{
+			SourceID:  slug,
+			SourceURL: asurascansBase + href,
+			Title:     title,
+			CoverURL:  coverURL,
+			Status:    "ONGOING",
+			IsActive:  true,
+		})
+	})
+
+	if err := c.Visit(pageURL); err != nil {
+		return nil, fmt.Errorf("asurascans: visit %s: %w", pageURL, err)
+	}
+	c.Wait()
+
+	return series, nil
+}
+
+func (a *AsuraScansAdapter) FetchChapters(ctx context.Context, seriesID string) ([]model.Chapter, error) {
+	pageURL := asurascansBase + "/comics/" + seriesID
+	seen := make(map[float64]bool)
+	var chapters []model.Chapter
+	var mu sync.Mutex
+
+	c := a.newCollector()
+
+	c.OnHTML("a[href*=\"/chapter/\"]", func(e *colly.HTMLElement) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		href := e.Attr("href")
+		if href == "" {
+			return
+		}
+
+		parts := strings.Split(href, "/chapter/")
+		if len(parts) != 2 {
+			return
+		}
+		numStr := strings.TrimSpace(parts[1])
+		chapterNum, err := strconv.ParseFloat(numStr, 64)
+		if err != nil {
+			return
+		}
+
+		if seen[chapterNum] {
+			return
+		}
+		seen[chapterNum] = true
+
+		chapterURL := asurascansBase + href
+
+		chapters = append(chapters, model.Chapter{
+			Number: chapterNum,
+			URL:    chapterURL,
+			IsNew:  true,
+		})
+	})
+
+	if err := c.Visit(pageURL); err != nil {
+		return nil, fmt.Errorf("asurascans: visit %s: %w", pageURL, err)
+	}
+	c.Wait()
+
+	return chapters, nil
+}
