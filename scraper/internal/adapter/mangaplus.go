@@ -11,7 +11,10 @@ import (
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 )
 
-const mangaplusAPI = "https://jumpg-web-api.tokyo-cdn.com/api"
+// MangaPlus uses protobuf-based API with device auth tokens.
+// This adapter needs protobuf definitions and session management.
+// See: https://github.com/animeal/mangaplus-api for reference.
+const mangaplusAPI = "https://jumpg-webapi.tokyo-cdn.com/api"
 
 type MangaPlusAdapter struct {
 	client *http.Client
