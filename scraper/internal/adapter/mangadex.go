@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
@@ -37,6 +40,18 @@ type mangadexMangaList struct {
 			Status      string              `json:"status"`
 		} `json:"attributes"`
 	} `json:"data"`
+}
+
+func parseChapterNumber(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return math.NaN()
+	}
+	return n
 }
 
 func (m *MangaDexAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {
@@ -84,15 +99,16 @@ func (m *MangaDexAdapter) FetchLatest(ctx context.Context) ([]model.Series, erro
 			}
 		}
 
-		desc := d.Attributes.Description["en"]
+		entry := d
+		desc := entry.Attributes.Description["en"]
 		if desc == "" {
-			for _, d := range d.Attributes.Description {
-				desc = d
+			for _, val := range entry.Attributes.Description {
+				desc = val
 				break
 			}
 		}
 
-		status := d.Attributes.Status
+		status := entry.Attributes.Status
 		switch status {
 		case "ongoing":
 			status = "ONGOING"
@@ -105,7 +121,7 @@ func (m *MangaDexAdapter) FetchLatest(ctx context.Context) ([]model.Series, erro
 		}
 
 		series = append(series, model.Series{
-			SourceID:  d.ID,
+			SourceID:  entry.ID,
 			Title:     title,
 			AltTitles: altTitles,
 			Status:    status,
@@ -156,9 +172,9 @@ func (m *MangaDexAdapter) FetchChapters(ctx context.Context, seriesID string) ([
 
 	var chapters []model.Chapter
 	for _, d := range feed.Data {
-		chapterNum := 0.0
-		if d.Attributes.Chapter != "" {
-			fmt.Sscanf(d.Attributes.Chapter, "%f", &chapterNum)
+		chapterNum := parseChapterNumber(d.Attributes.Chapter)
+		if math.IsNaN(chapterNum) {
+			continue
 		}
 
 		var title string
