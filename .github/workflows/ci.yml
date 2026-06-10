@@ -6,6 +6,11 @@ on:
   push:
     branches: [master]
 
+env:
+  REGISTRY: ghcr.io
+  SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
+  NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
+
 jobs:
   scraper:
     name: Go scraper
@@ -38,3 +43,43 @@ jobs:
           distribution: "temurin"
           cache: maven
       - run: mvn verify -B
+
+  docker:
+    name: Build and push Docker images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set tags
+        id: tags
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "scraper_tags=${{ env.SCRAPER_IMAGE }}:pr-${{ github.event.number }}" >> $GITHUB_OUTPUT
+            echo "notification_tags=${{ env.NOTIFICATION_IMAGE }}:pr-${{ github.event.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "scraper_tags=${{ env.SCRAPER_IMAGE }}:${SHORT_SHA},${{ env.SCRAPER_IMAGE }}:latest" >> $GITHUB_OUTPUT
+            echo "notification_tags=${{ env.NOTIFICATION_IMAGE }}:${SHORT_SHA},${{ env.NOTIFICATION_IMAGE }}:latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push scraper
+        uses: docker/build-push-action@v6
+        with:
+          context: scraper
+          push: true
+          tags: ${{ steps.tags.outputs.scraper_tags }}
+
+      - name: Build and push notification-service
+        uses: docker/build-push-action@v6
+        with:
+          context: notification-service
+          push: true
+          tags: ${{ steps.tags.outputs.notification_tags }}
