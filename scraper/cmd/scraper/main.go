@@ -76,6 +76,8 @@ func main() {
 
 	sources := []adapter.SourceAdapter{
 		adapter.NewMangaDexAdapter(),
+		adapter.NewMangaFireAdapter(),
+		adapter.NewMangaKakalotAdapter(),
 		// MangaPlus needs protobuf support — see mangaplus.go
 		// adapter.NewMangaPlusAdapter(),
 	}
