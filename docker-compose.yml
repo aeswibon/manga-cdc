@@ -38,14 +38,14 @@ services:
       - --smp 1
       - --memory 512M
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster info | grep -q leader_id"]
+      test: ["CMD-SHELL", "curl -s http://localhost:9644/v1/status/ready | grep -q ready"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
 
   connect:
-    image: debezium/connect:2.7.4.Final
+    image: debezium/connect:2.7.3.Final
     restart: unless-stopped
     ports:
       - "8083:8083"
