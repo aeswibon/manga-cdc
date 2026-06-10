@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mangacdc
+    username: mangacdc
+    password: mangacdc
+  jdbc:
+    template:
+      fetch-size: 100
+
+discord:
+  webhook-url: ${DISCORD_WEBHOOK_URL:}
+
+poller:
+  interval-ms: 30000
