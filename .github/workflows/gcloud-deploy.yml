@@ -13,11 +13,6 @@ env:
   REGISTRY: ghcr.io
   SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
-  GCP_SSH_FLAGS: >-
-    --ssh-flag=-o ServerAliveInterval=15
-    --ssh-flag=-o ServerAliveCountMax=40
-    --ssh-flag=-o ConnectTimeout=30
-    --ssh-flag=-o TCPKeepAlive=yes
 
 jobs:
   resolve-release:
@@ -116,7 +111,10 @@ jobs:
             --zone "${{ secrets.GCP_ZONE }}" \
             --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
             --quiet \
-            ${{ env.GCP_SSH_FLAGS }} \
+            --ssh-flag="-o ServerAliveInterval=15" \
+            --ssh-flag="-o ServerAliveCountMax=40" \
+            --ssh-flag="-o ConnectTimeout=30" \
+            --ssh-flag="-o TCPKeepAlive=yes" \
             --command "set -euo pipefail; mkdir -p ~/manga-cdc; cd ~/manga-cdc; if [ ! -d .git ]; then git clone https://github.com/aeswibon/manga-cdc.git .; fi; git fetch origin --force --tags; git reset --hard '${{ env.DEPLOY_SHA }}'; chmod +x scripts/deploy-prod-on-vm.sh scripts/verify-prod-on-vm.sh scripts/enable-observability-on-vm.sh"
 
       - name: Copy .env to VM
@@ -126,7 +124,10 @@ jobs:
             --zone "${{ secrets.GCP_ZONE }}" \
             --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
             --quiet \
-            ${{ env.GCP_SSH_FLAGS }}
+            --ssh-flag="-o ServerAliveInterval=15" \
+            --ssh-flag="-o ServerAliveCountMax=40" \
+            --ssh-flag="-o ConnectTimeout=30" \
+            --ssh-flag="-o TCPKeepAlive=yes"
 
       - name: Deploy on VM
         run: |
@@ -134,7 +135,10 @@ jobs:
             --zone "${{ secrets.GCP_ZONE }}" \
             --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
             --quiet \
-            ${{ env.GCP_SSH_FLAGS }} \
+            --ssh-flag="-o ServerAliveInterval=15" \
+            --ssh-flag="-o ServerAliveCountMax=40" \
+            --ssh-flag="-o ConnectTimeout=30" \
+            --ssh-flag="-o TCPKeepAlive=yes" \
             --command "bash ~/manga-cdc/scripts/deploy-prod-on-vm.sh"
 
       - name: Verify production
@@ -143,7 +147,10 @@ jobs:
             --zone "${{ secrets.GCP_ZONE }}" \
             --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
             --quiet \
-            ${{ env.GCP_SSH_FLAGS }} \
+            --ssh-flag="-o ServerAliveInterval=15" \
+            --ssh-flag="-o ServerAliveCountMax=40" \
+            --ssh-flag="-o ConnectTimeout=30" \
+            --ssh-flag="-o TCPKeepAlive=yes" \
             --command "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
 
       - name: Observability URLs
