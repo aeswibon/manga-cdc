@@ -10,22 +10,30 @@ env:
   REGISTRY: ghcr.io
   SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
+  GCP_USER: github-actions-cd
+  GCP_APP_DIR: manga-cdc
 
 jobs:
   deploy:
     name: Deploy to GCP VM
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+
       - id: tag
         run: echo "sha_short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
-      - uses: webfactory/ssh-agent@v0.9
+      - id: auth
+        uses: google-github-actions/auth@v2
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
 
       - name: Write .env file
         run: |
@@ -42,15 +50,18 @@ KAFKA_PASSWORD=${{ secrets.KAFKA_PASSWORD }}
 CDC_ENABLED=true
 EOF
 
-      - name: Deploy via Docker Compose
+      - name: Deploy via gcloud
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          GCP_VM_NAME: ${{ secrets.GCP_VM_NAME }}
+          GCP_ZONE: ${{ secrets.GCP_ZONE }}
         run: |
-          scp -o StrictHostKeyChecking=no /tmp/manga-cdc-env $DEPLOY_USER@$DEPLOY_HOST:/home/$DEPLOY_USER/manga-cdc/.env
-          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "
+          gcloud compute scp /tmp/manga-cdc-env ${GCP_USER}@${GCP_VM_NAME}:~/${GCP_APP_DIR}/.env \
+            --zone=${GCP_ZONE} --quiet
+
+          gcloud compute ssh ${GCP_USER}@${GCP_VM_NAME} \
+            --zone=${GCP_ZONE} --quiet --command="
             set -e
-            cd /home/$DEPLOY_USER/manga-cdc
+            cd /home/${GCP_USER}/${GCP_APP_DIR}
             git fetch origin master
             git reset --hard origin/master
             docker compose -f docker-compose.prod.yml pull
