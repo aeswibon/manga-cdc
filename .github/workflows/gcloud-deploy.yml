@@ -80,8 +80,8 @@ jobs:
             if [ ! -d .git ]; then
               git clone https://github.com/aeswibon/manga-cdc.git .
             fi
-            git fetch origin --tags
-            git reset --hard ${{ needs.resolve-release.outputs.release_tag }}
+            git fetch origin --force --tags
+            git reset --hard ${{ github.event.workflow_run.head_sha }}
             chmod +x scripts/render-prod-env.sh scripts/apply-db-migrations.sh
             export SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
             export NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
@@ -95,11 +95,10 @@ jobs:
             export TELEGRAM_BOT_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}'
             export TELEGRAM_CHAT_ID='${{ secrets.TELEGRAM_CHAT_ID }}'
             export CDC_ENABLED=true
-            ./scripts/render-prod-env.sh > .env
-            set -a && . ./.env && set +a
             ./scripts/apply-db-migrations.sh
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            ./scripts/render-prod-env.sh > .env
+            docker compose --env-file .env -f docker-compose.prod.yml pull
+            docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
             echo "Deployed release ${{ needs.resolve-release.outputs.release_tag }}"
 
       - name: Verify
@@ -112,7 +111,7 @@ jobs:
           command: |
             cd manga-cdc
             echo '=== Container Status ==='
-            docker compose -f docker-compose.prod.yml ps
+            docker compose --env-file .env -f docker-compose.prod.yml ps
             echo '=== Image tags ==='
             grep -E '^(SCRAPER_IMAGE|NOTIFICATION_IMAGE)=' .env
             echo '=== Scraper metrics ==='
