@@ -96,7 +96,12 @@ jobs:
             export TELEGRAM_CHAT_ID='${{ secrets.TELEGRAM_CHAT_ID }}'
             export CDC_ENABLED=true
             ./scripts/apply-db-migrations.sh
+            # .env may be root-owned from earlier manual deploys; remove before rewrite
+            if [ -f .env ] && [ ! -w .env ]; then
+              sudo rm -f .env
+            fi
             ./scripts/render-prod-env.sh > .env
+            chmod 600 .env
             docker compose --env-file .env -f docker-compose.prod.yml pull
             docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
             echo "Deployed release ${{ needs.resolve-release.outputs.release_tag }}"
