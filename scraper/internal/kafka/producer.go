@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -35,7 +36,10 @@ func NewProducer(brokers, topic, username, password string) (*Producer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("create SCRAM mechanism: %w", err)
 		}
-		w.Transport = &segkafka.Transport{SASL: mechanism}
+		w.Transport = &segkafka.Transport{
+			SASL: mechanism,
+			TLS:  &tls.Config{MinVersion: tls.VersionTLS12},
+		}
 	}
 
 	return &Producer{writer: w, topic: topic}, nil

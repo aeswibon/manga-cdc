@@ -82,7 +82,7 @@ jobs:
             fi
             git fetch origin --tags
             git reset --hard ${{ needs.resolve-release.outputs.release_tag }}
-            chmod +x scripts/render-prod-env.sh
+            chmod +x scripts/render-prod-env.sh scripts/apply-db-migrations.sh
             export SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
             export NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
             export DATABASE_URL='${{ secrets.DATABASE_URL }}'
@@ -96,6 +96,8 @@ jobs:
             export TELEGRAM_CHAT_ID='${{ secrets.TELEGRAM_CHAT_ID }}'
             export CDC_ENABLED=true
             ./scripts/render-prod-env.sh > .env
+            set -a && . ./.env && set +a
+            ./scripts/apply-db-migrations.sh
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             echo "Deployed release ${{ needs.resolve-release.outputs.release_tag }}"

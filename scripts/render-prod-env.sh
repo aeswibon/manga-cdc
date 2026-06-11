@@ -26,29 +26,32 @@ import re
 from urllib.parse import quote, unquote, urlparse, urlunparse
 
 
-def clean_url(url: str) -> str:
+def parse_database_url(url: str) -> tuple[str, str, str, str]:
     url = re.sub(r"[\x00-\x1f]", "", url.strip())
     parsed = urlparse(url)
-    if not parsed.username or not parsed.password:
+    if not parsed.hostname:
+        raise ValueError("DATABASE_URL must include a hostname")
+    username = parsed.username or ""
+    password = unquote(parsed.password or "")
+    path = parsed.path or ""
+    if not path.startswith("/"):
+        path = "/" + path
+    host = f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+    query = f"?{parsed.query}" if parsed.query else ""
+    return username, password, host, f"{path}{query}"
+
+
+def clean_postgres_url(url: str) -> str:
+    username, password, host, path_and_query = parse_database_url(url)
+    if not username:
         return url
-    password = quote(unquote(parsed.password), safe="")
-    netloc = f"{parsed.username}:{password}@{parsed.hostname}:{parsed.port}"
-    return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+    encoded_password = quote(password, safe="")
+    return f"postgres://{username}:{encoded_password}@{host}{path_and_query}"
 
 
-def to_jdbc(database_url: str) -> str:
-    fixed = clean_url(database_url)
-    if fixed.startswith("jdbc:"):
-        return fixed
-    if fixed.startswith("postgres://"):
-        return "jdbc:postgresql://" + fixed[len("postgres://") :]
-    if fixed.startswith("postgresql://"):
-        return "jdbc:" + fixed
-    raise ValueError("DATABASE_URL must start with postgres:// or postgresql://")
-
-
-database_url = clean_url(os.environ["DATABASE_URL"])
-spring_url = to_jdbc(database_url)
+username, password, host, path_and_query = parse_database_url(os.environ["DATABASE_URL"])
+database_url = clean_postgres_url(os.environ["DATABASE_URL"])
+spring_url = f"jdbc:postgresql://{host}{path_and_query}"
 
 optional = {
     "DISCORD_WEBHOOK_URL": "",
@@ -62,6 +65,8 @@ lines = [
     f"NOTIFICATION_IMAGE={os.environ['NOTIFICATION_IMAGE']}",
     f"DATABASE_URL={database_url}",
     f"SPRING_DATASOURCE_URL={spring_url}",
+    f"SPRING_DATASOURCE_USERNAME={username}",
+    f"SPRING_DATASOURCE_PASSWORD={password}",
     f"KAFKA_BROKERS={os.environ['KAFKA_BROKERS']}",
     f"KAFKA_TOPIC={os.environ['KAFKA_TOPIC']}",
     f"KAFKA_USERNAME={os.environ['KAFKA_USERNAME']}",
