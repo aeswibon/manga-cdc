@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if grep -qiE '^co-authored-by:[[:space:]]*cursor[[:space:]]*<cursoragent@cursor\.com>' "$1"; then
+  echo "error: Co-authored-by: Cursor is not allowed in commit messages" >&2
+  exit 1
+fi
