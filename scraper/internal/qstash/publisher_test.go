@@ -33,7 +33,7 @@ func TestPublishChapterEvent_Success(t *testing.T) {
 			Body:       io.NopCloser(bytes.NewReader([]byte("ok"))),
 		},
 	}
-	p := &Publisher{client: mock, token: "test-token", destination: "https://example.com/webhook", apiURL: "https://qstash.upstash.com/v1/publish/"}
+	p := &Publisher{client: mock, token: "test-token", destination: "https://example.com/webhook", apiURL: "https://qstash.upstash.io/v1/publish/"}
 
 	chapter := model.Chapter{
 		ID:       "ch-1",
@@ -84,7 +84,7 @@ func TestPublishChapterEvent_HTTPError(t *testing.T) {
 			Body:       io.NopCloser(bytes.NewReader([]byte("bad request"))),
 		},
 	}
-	p := &Publisher{client: mock, token: "test-token", destination: "https://example.com/webhook", apiURL: "https://qstash.upstash.com/v1/publish/"}
+	p := &Publisher{client: mock, token: "test-token", destination: "https://example.com/webhook", apiURL: "https://qstash.upstash.io/v1/publish/"}
 
 	err := p.PublishChapterEvent(context.Background(), model.Chapter{})
 	if err == nil {
@@ -94,7 +94,7 @@ func TestPublishChapterEvent_HTTPError(t *testing.T) {
 
 func TestPublishChapterEvent_NetworkError(t *testing.T) {
 	mock := &mockHTTPClient{err: errors.New("network error")}
-	p := &Publisher{client: mock, token: "test-token", destination: "https://example.com/webhook", apiURL: "https://qstash.upstash.com/v1/publish/"}
+	p := &Publisher{client: mock, token: "test-token", destination: "https://example.com/webhook", apiURL: "https://qstash.upstash.io/v1/publish/"}
 
 	err := p.PublishChapterEvent(context.Background(), model.Chapter{})
 	if err == nil {
