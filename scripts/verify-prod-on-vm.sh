@@ -7,11 +7,23 @@ cd "$REPO_DIR"
 
 failures=0
 
+observability_mode() {
+  grep -E '^OBSERVABILITY_MODE=' .env | cut -d= -f2- | tr -d '\r' || true
+}
+
+OBSERVABILITY_MODE="$(observability_mode)"
+OBSERVABILITY_MODE="${OBSERVABILITY_MODE:-grafana-cloud}"
+
 compose() {
   local args=(docker compose --env-file .env -f docker-compose.prod.yml)
-  if [ -f docker-compose.observability.yml ]; then
-    args+=(-f docker-compose.observability.yml)
-  fi
+  case "$OBSERVABILITY_MODE" in
+    grafana-cloud)
+      args+=(-f docker-compose.observability-cloud.yml)
+      ;;
+    self-hosted)
+      args+=(-f docker-compose.observability.yml)
+      ;;
+  esac
   "${args[@]}" "$@"
 }
 
@@ -40,6 +52,7 @@ warn() {
   fi
 }
 
+echo "=== observability mode: ${OBSERVABILITY_MODE} ==="
 echo '=== Container Status ==='
 compose ps
 
@@ -57,13 +70,22 @@ check "notification health" curl -sf --max-time 15 http://127.0.0.1:8080/actuato
 
 warn "notification logs API" curl -sf --max-time 15 "http://127.0.0.1:8080/api/logs?limit=5" >/dev/null
 
-if [ "$OBSERVABILITY_REQUIRED" = "true" ]; then
-  check "prometheus container running" service_running prometheus
-  check "grafana container running" service_running grafana
-  check "prometheus healthy" curl -sf --max-time 15 http://127.0.0.1:9090/-/healthy
-  check "grafana healthy" curl -sf --max-time 15 http://127.0.0.1:3000/api/health
-  check "grafana dashboard provisioned" bash -c \
-    'curl -sf --max-time 15 "http://127.0.0.1:3000/api/search?type=dash-db" | grep -q manga-cdc'
+if [ "$OBSERVABILITY_REQUIRED" = "true" ] && [ "$OBSERVABILITY_MODE" != "off" ] && [ "$OBSERVABILITY_MODE" != "disabled" ] && [ "$OBSERVABILITY_MODE" != "false" ]; then
+  case "$OBSERVABILITY_MODE" in
+    grafana-cloud)
+      check "alloy container running" service_running alloy
+      check "grafana cloud remote_write configured" grep -q '^GRAFANA_CLOUD_PROMETHEUS_URL=https' .env
+      check "alloy metrics endpoint" curl -sf --max-time 15 http://127.0.0.1:12345/metrics >/dev/null
+      ;;
+    self-hosted)
+      check "prometheus container running" service_running prometheus
+      check "grafana container running" service_running grafana
+      check "prometheus healthy" curl -sf --max-time 15 http://127.0.0.1:9090/-/healthy
+      check "grafana healthy" curl -sf --max-time 15 http://127.0.0.1:3000/api/health
+      check "grafana dashboard provisioned" bash -c \
+        'curl -sf --max-time 15 "http://127.0.0.1:3000/api/search?type=dash-db" | grep -q manga-cdc'
+      ;;
+  esac
 fi
 
 if [ "$failures" -gt 0 ]; then

@@ -58,7 +58,23 @@ optional = {
     "SLACK_WEBHOOK_URL": "",
     "TELEGRAM_BOT_TOKEN": "",
     "TELEGRAM_CHAT_ID": "",
+    "OBSERVABILITY_MODE": "grafana-cloud",
+    "GRAFANA_CLOUD_PROMETHEUS_URL": "",
+    "GRAFANA_CLOUD_PROMETHEUS_USER": "",
+    "GRAFANA_CLOUD_API_KEY": "",
+    "GRAFANA_CLOUD_STACK_URL": "",
+    "GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID": "",
 }
+
+observability_mode = os.environ.get("OBSERVABILITY_MODE", optional["OBSERVABILITY_MODE"])
+if observability_mode == "grafana-cloud":
+    for key in (
+        "GRAFANA_CLOUD_PROMETHEUS_URL",
+        "GRAFANA_CLOUD_PROMETHEUS_USER",
+        "GRAFANA_CLOUD_API_KEY",
+    ):
+        if not os.environ.get(key):
+            raise SystemExit(f"error: {key} required when OBSERVABILITY_MODE=grafana-cloud")
 
 lines = [
     f"SCRAPER_IMAGE={os.environ['SCRAPER_IMAGE']}",

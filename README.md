@@ -93,7 +93,7 @@ For production, choose your own managed PostgreSQL and either Kafka or QStash vi
 | Eventing | Aiven Kafka (SASL_SSL / SCRAM-SHA-256) |
 | Notifications | Spring Boot 3.3, Java 21 |
 | Notifier targets | Discord, Slack, Telegram |
-| Metrics | Prometheus + Grafana |
+| Metrics | Prometheus + Grafana (local); Grafana Cloud + Alloy (prod) |
 | Deployment | Docker Compose, Kubernetes/Helm, Terraform/GCP |
 | Orchestration | GitHub Actions CI/CD |
 
@@ -144,7 +144,11 @@ manga-cdc/
 ├── terraform/                  # GCP Terraform IaC
 ├── docker-compose.yml          # Local dev compose (generated)
 ├── docker-compose.prod.yml     # Production compose (generated)
-└── prometheus.yml              # Metrics scraping config
+├── docker-compose.observability.yml        # Local self-hosted Prometheus + Grafana
+├── docker-compose.observability-cloud.yml  # Prod Alloy → Grafana Cloud remote_write
+├── alloy/config.prod.alloy     # Alloy scrape + remote_write config
+├── grafana/dashboards/         # manga-cdc dashboard JSON
+└── prometheus.yml              # Local metrics scraping config
 ```
 
 ## Development
@@ -178,19 +182,28 @@ type SourceAdapter interface {
 }
 ```
 
-## Dashboard Access
+## Dashboards & Metrics
+
+### Local
 
 | Service | URL |
 |---------|-----|
 | Kafka UI | http://localhost:8085 |
 | Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 (pre-provisioned **manga-cdc** dashboard) |
+| Grafana | http://localhost:3000/d/manga-cdc-overview/manga-cdc |
 | Notification logs API | http://localhost:8080/api/logs?limit=50 |
 | Scraper health | http://localhost:2112/healthz, `/readyz`, `/metrics` |
 
-Import `grafana/dashboards/manga-cdc.json` manually when not using the local Compose Grafana service.
+Local Compose auto-provisions the **manga-cdc** dashboard from `grafana/dashboards/manga-cdc.json`.
 
-## Production (Aiven)
+### Production (Grafana Cloud)
+
+Prod does **not** run Prometheus or Grafana on the VM. **Grafana Alloy** scrapes app metrics and `remote_write`s to your Grafana Cloud stack.
+
+- Dashboard: `https://<stack>.grafana.net/d/manga-cdc-overview/manga-cdc`
+- Import `grafana/dashboards/manga-cdc.json` in the Grafana Cloud UI once (set the Prometheus datasource UID to your stack’s default Prometheus datasource)
+
+## Production (Aiven + GCP)
 
 The production deployment uses [Aiven](https://aiven.io) for both PostgreSQL and Kafka:
 
@@ -199,24 +212,32 @@ The production deployment uses [Aiven](https://aiven.io) for both PostgreSQL and
 
 **Release flow:** push to `master` runs tests only; push a `v*` tag runs the full build, E2E, GitHub release, and GCP deploy.
 
-**Production observability (Grafana):** tag deploys now start Prometheus + Grafana via `docker-compose.observability.yml` and auto-provision the **manga-cdc** dashboard. To enable manually on the VM:
+### Observability
 
-```bash
-./scripts/setup-observability-gcloud.sh mangacdc-vm us-east1-b
-```
+Tag deploys start Alloy via `docker-compose.observability-cloud.yml` (`OBSERVABILITY_MODE=grafana-cloud` by default). Set `OBSERVABILITY_MODE=self-hosted` to use VM-hosted Prometheus + Grafana instead (`docker-compose.observability.yml`).
 
-Grafana: `http://<vm-external-ip>:3000/d/manga-cdc-overview/manga-cdc` (anonymous viewer; port 3000 is open on the VM firewall).
+### GitHub Actions secrets
 
-**Required secrets** in GitHub Actions:
+**GCP deploy**
 
-GCP deploy:
-- `GCP_WORKLOAD_IDENTITY_PROVIDER` — Workload Identity Federation provider resource name
-- `GCP_SERVICE_ACCOUNT` — deploy service account email (e.g. `github-actions-cd@….iam.gserviceaccount.com`)
+- `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- `GCP_SERVICE_ACCOUNT`
 - `GCP_VM_NAME`, `GCP_ZONE`, `GCP_SSH_USER`, `GCP_SSH_PRIVATE_KEY`
 
-Data & notifications:
+**Grafana Cloud** (Alloy `remote_write`)
+
+- `GRAFANA_CLOUD_PROMETHEUS_URL` — `…/api/prom/push` (Cloud Portal → Prometheus → Details)
+- `GRAFANA_CLOUD_PROMETHEUS_USER` — metrics instance ID from the same page
+- `GRAFANA_CLOUD_API_KEY` — Cloud Access Policy token with **`metrics:write`**
+- `GRAFANA_CLOUD_STACK_URL` — e.g. `https://yourstack.grafana.net`
+- `GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID` — optional; default Prometheus datasource UID when importing the dashboard
+
+Create the access policy under Cloud Portal → Security → Access Policies: realm = your stack, scope = **`metrics:write`**.
+
+**Data & notifications**
+
 - `DATABASE_URL`, `KAFKA_BROKERS`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`
-- Discord/Slack/Telegram webhook tokens
+- `DISCORD_WEBHOOK_URL` and/or Slack/Telegram tokens
 
 ## Local Development
 
