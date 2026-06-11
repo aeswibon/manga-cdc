@@ -40,7 +40,7 @@ func NewPublisher(token, destination string) *Publisher {
 		client:      http.DefaultClient,
 		token:       token,
 		destination: destination,
-		apiURL:      "https://qstash.upstash.com/v1/publish/",
+		apiURL:      "https://qstash.upstash.io/v1/publish/",
 	}
 }
 
