@@ -22,6 +22,6 @@ notification-service/bin/
 *.iml
 .vscode/
 
-# Docker
+# Local-only agent docs (never commit — enforced in CI)
 .superpowers/
 docs/superpowers/
