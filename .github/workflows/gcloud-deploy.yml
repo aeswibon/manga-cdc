@@ -82,7 +82,7 @@ jobs:
             fi
             git fetch origin --force --tags
             git reset --hard ${{ github.event.workflow_run.head_sha }}
-            chmod +x scripts/render-prod-env.sh scripts/apply-db-migrations.sh
+            chmod +x scripts/render-prod-env.sh
             export SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
             export NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
             export DATABASE_URL='${{ secrets.DATABASE_URL }}'
@@ -95,7 +95,6 @@ jobs:
             export TELEGRAM_BOT_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}'
             export TELEGRAM_CHAT_ID='${{ secrets.TELEGRAM_CHAT_ID }}'
             export CDC_ENABLED=true
-            ./scripts/apply-db-migrations.sh
             # .env may be root-owned from earlier manual deploys; remove before rewrite
             if [ -f .env ] && [ ! -w .env ]; then
               sudo rm -f .env

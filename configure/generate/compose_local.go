@@ -55,8 +55,8 @@ const composeLocalTemplate = `services:
   scraper:
     image: ${SCRAPER_IMAGE:-manga-cdc-scraper:local}
     build:
-      context: ./scraper
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: scraper/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:

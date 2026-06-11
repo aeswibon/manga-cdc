@@ -128,6 +128,7 @@ manga-cdc/
 │   │   ├── adapter/            # Source adapters (6 sources)
 │   │   ├── model/              # Domain types
 │   │   ├── db/                 # PostgreSQL client (pgx)
+│   │   ├── migrate/            # goose SQL migrations on startup
 │   │   ├── diff/               # Change detection engine
 │   │   ├── kafka/              # Kafka producer (optional)
 │   │   ├── qstash/             # QStash publisher (optional)
@@ -138,7 +139,7 @@ manga-cdc/
 │       ├── service/            # Kafka consumer + notifiers
 │       └── repository/         # JDBC data access
 ├── connectors/                 # Debezium connector configs
-├── db/migrations/              # SQL schema migrations
+├── db/migrations/              # SQL schema migrations (applied by scraper via goose)
 ├── helm/                       # Kubernetes Helm chart
 ├── terraform/                  # GCP Terraform IaC
 ├── docker-compose.yml          # Local dev compose (generated)
@@ -154,7 +155,7 @@ manga-cdc/
 # Start PostgreSQL
 docker compose up -d postgres
 
-# Run scraper (Go)
+# Run scraper (Go) — applies db/migrations automatically on startup
 cd scraper && go run ./cmd/scraper
 
 # Run notification service (Java)

@@ -1,4 +1,7 @@
+-- +goose Up
+-- +goose StatementBegin
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- +goose StatementEnd
 
 CREATE TABLE manga_series (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -44,6 +47,7 @@ CREATE INDEX idx_chapters_is_new ON chapters(is_new);
 CREATE INDEX idx_notification_logs_chapter_id ON notification_logs(chapter_id);
 CREATE INDEX idx_notification_logs_status ON notification_logs(status);
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -56,3 +60,4 @@ CREATE TRIGGER manga_series_updated_at
     BEFORE UPDATE ON manga_series
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at();
+-- +goose StatementEnd

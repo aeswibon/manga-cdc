@@ -14,6 +14,7 @@ import (
 	"github.com/aeswibon/manga-cdc/scraper/internal/db"
 	"github.com/aeswibon/manga-cdc/scraper/internal/diff"
 	"github.com/aeswibon/manga-cdc/scraper/internal/kafka"
+	"github.com/aeswibon/manga-cdc/scraper/internal/migrate"
 	"github.com/aeswibon/manga-cdc/scraper/internal/qstash"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -71,6 +72,11 @@ func main() {
 			log.Error("metrics server error", "error", err)
 		}
 	}()
+
+	if err := migrate.Run(ctx, cfg.DatabaseURL); err != nil {
+		log.Error("failed to apply database migrations", "error", err)
+		os.Exit(1)
+	}
 
 	database, err := db.New(ctx, cfg.DatabaseURL)
 	if err != nil {

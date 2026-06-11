@@ -6,10 +6,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
+	dbmigrate "github.com/aeswibon/manga-cdc/scraper/internal/migrate"
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -30,73 +30,10 @@ func getTestDB(t *testing.T) *DB {
 	return db
 }
 
-func splitSQL(sql string) []string {
-	var stmts []string
-	var current strings.Builder
-	inDollar := false
-
-	for i := 0; i < len(sql); i++ {
-		ch := sql[i]
-
-		if !inDollar && ch == '$' && i+1 < len(sql) && sql[i+1] == '$' {
-			current.WriteString("$$")
-			inDollar = true
-			i++
-			continue
-		}
-
-		if inDollar && ch == '$' && i+1 < len(sql) && sql[i+1] == '$' {
-			current.WriteString("$$")
-			inDollar = false
-			i++
-			continue
-		}
-
-		if !inDollar && ch == ';' {
-			stmt := strings.TrimSpace(current.String())
-			if stmt != "" {
-				stmts = append(stmts, stmt)
-			}
-			current.Reset()
-			continue
-		}
-
-		current.WriteByte(ch)
-	}
-
-	stmt := strings.TrimSpace(current.String())
-	if stmt != "" {
-		stmts = append(stmts, stmt)
-	}
-
-	return stmts
-}
-
-func migrate(t *testing.T, dsn string) {
+func ensureSchema(t *testing.T, dsn string) {
 	t.Helper()
-
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("connect for migration: %v", err)
-	}
-	defer pool.Close()
-
-	migration, err := os.ReadFile("../../db/migrations/001_initial_schema.sql")
-	if err != nil {
-		// try relative to test file
-		migration, err = os.ReadFile("../../../db/migrations/001_initial_schema.sql")
-		if err != nil {
-			t.Fatalf("read migration: %v", err)
-		}
-	}
-
-	for _, stmt := range splitSQL(string(migration)) {
-		if _, err := pool.Exec(context.Background(), stmt); err != nil {
-			// ignore "already exists" errors for idempotency
-			if !strings.Contains(err.Error(), "already exists") {
-				t.Fatalf("migration statement: %v\nSQL: %s", err, stmt)
-			}
-		}
+	if err := dbmigrate.Run(context.Background(), dsn); err != nil {
+		t.Fatalf("migrate: %v", err)
 	}
 }
 
@@ -124,7 +61,7 @@ func dsn() string {
 
 func TestIntegration_UpsertSeries(t *testing.T) {
 	dsn := dsn()
-	migrate(t, dsn)
+	ensureSchema(t, dsn)
 	cleanDB(t, dsn)
 	db := getTestDB(t)
 
@@ -159,7 +96,7 @@ func TestIntegration_UpsertSeries(t *testing.T) {
 
 func TestIntegration_UpsertSeries_UpdateExisting(t *testing.T) {
 	dsn := dsn()
-	migrate(t, dsn)
+	ensureSchema(t, dsn)
 	cleanDB(t, dsn)
 	db := getTestDB(t)
 
@@ -198,7 +135,7 @@ func TestIntegration_UpsertSeries_UpdateExisting(t *testing.T) {
 
 func TestIntegration_InsertChapter(t *testing.T) {
 	dsn := dsn()
-	migrate(t, dsn)
+	ensureSchema(t, dsn)
 	cleanDB(t, dsn)
 	db := getTestDB(t)
 
@@ -248,7 +185,7 @@ func TestIntegration_InsertChapter(t *testing.T) {
 
 func TestIntegration_MarkChapterNotified(t *testing.T) {
 	dsn := dsn()
-	migrate(t, dsn)
+	ensureSchema(t, dsn)
 	cleanDB(t, dsn)
 	db := getTestDB(t)
 
@@ -281,7 +218,7 @@ func TestIntegration_MarkChapterNotified(t *testing.T) {
 
 func TestIntegration_InsertNotificationLog(t *testing.T) {
 	dsn := dsn()
-	migrate(t, dsn)
+	ensureSchema(t, dsn)
 	cleanDB(t, dsn)
 	db := getTestDB(t)
 
@@ -313,7 +250,7 @@ func TestIntegration_InsertNotificationLog(t *testing.T) {
 
 func TestIntegration_GetActiveSeries(t *testing.T) {
 	dsn := dsn()
-	migrate(t, dsn)
+	ensureSchema(t, dsn)
 	cleanDB(t, dsn)
 	db := getTestDB(t)
 
