@@ -40,15 +40,15 @@ jobs:
       - name: Write .env file
         run: |
           cat > /tmp/manga-cdc-env << EOF
-SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ steps.tag.outputs.sha_short }}
-NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ steps.tag.outputs.sha_short }}
-DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
-SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
-TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-QSTASH_TOKEN=${{ secrets.QSTASH_TOKEN }}
-QSTASH_DESTINATION_URL=https://mangacdc.34.73.231.106.sslip.io/api/webhook
-EOF
+          SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ steps.tag.outputs.sha_short }}
+          NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ steps.tag.outputs.sha_short }}
+          DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          QSTASH_TOKEN=${{ secrets.QSTASH_TOKEN }}
+          QSTASH_DESTINATION_URL=https://mangacdc.34.73.231.106.sslip.io/api/webhook
+          EOF
 
       - name: Deploy via gcloud
         env:
