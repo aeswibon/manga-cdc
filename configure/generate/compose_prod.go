@@ -76,7 +76,7 @@ func renderComposeProd(m manifest.Manifest) (string, error) {
 	case manifest.EventingKafka:
 		data.ScraperEnv = strings.TrimSpace(`
       KAFKA_BROKERS: ${KAFKA_BROKERS:?err}
-      KAFKA_TOPIC: ${KAFKA_TOPIC:mangacdc.public.chapters}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-mangacdc.public.chapters}
       KAFKA_USERNAME: ${KAFKA_USERNAME:?err}
       KAFKA_PASSWORD: ${KAFKA_PASSWORD:?err}`)
 		data.NotificationEnv = strings.TrimSpace(`

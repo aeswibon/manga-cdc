@@ -40,7 +40,7 @@ services:
       - --smp 1
       - --memory 512M
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster info | grep -q leader_id"]
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
       interval: 10s
       timeout: 5s
       retries: 10

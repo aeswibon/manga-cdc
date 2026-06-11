@@ -2,13 +2,10 @@
 set -euo pipefail
 
 # Full stack end-to-end test for manga-cdc (local Kafka via Redpanda, direct publish)
-# Prerequisites: Docker, Java 21+, jq
+# Prerequisites: Docker
 #
 # Usage:
-#   ./scripts/e2e.sh              # run full E2E test
-#   ./scripts/e2e.sh --skip-build # skip Java build
-
-SKIP_BUILD="${1:-}"
+#   ./scripts/e2e.sh
 
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
@@ -27,41 +24,64 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [ "$SKIP_BUILD" != "--skip-build" ]; then
-  echo "Building notification service..." | tee -a "$LOG"
-  (cd notification-service && mvn -q package -DskipTests) 2>&1 | tee -a "$LOG"
-fi
-
 echo "Starting Postgres and Redpanda..." | tee -a "$LOG"
-docker compose up -d postgres redpanda 2>&1 | tee -a "$LOG"
+docker compose up -d --remove-orphans postgres redpanda 2>&1 | tee -a "$LOG"
 
 echo "Waiting for services to be healthy..." | tee -a "$LOG"
+postgres_ready=false
 for _ in $(seq 1 30); do
   if docker compose exec postgres pg_isready -U mangacdc >/dev/null 2>&1; then
     echo "PostgreSQL ready" | tee -a "$LOG"
+    postgres_ready=true
     break
   fi
   sleep 2
 done
+if [ "$postgres_ready" != "true" ]; then
+  echo "FAIL: PostgreSQL not ready within timeout" | tee -a "$LOG"
+  exit 1
+fi
 
-for _ in $(seq 1 30); do
-  if docker compose exec redpanda rpk cluster info 2>/dev/null | grep -q leader_id; then
+redpanda_ready=false
+for _ in $(seq 1 60); do
+  if docker compose exec redpanda rpk cluster health 2>/dev/null | grep -q 'Healthy:[[:space:]]*true'; then
     echo "Redpanda ready" | tee -a "$LOG"
+    redpanda_ready=true
     break
   fi
   sleep 2
 done
+if [ "$redpanda_ready" != "true" ]; then
+  echo "FAIL: Redpanda not ready within timeout" | tee -a "$LOG"
+  exit 1
+fi
+
+echo "Creating Kafka topic ${TOPIC}..." | tee -a "$LOG"
+docker compose exec -T redpanda rpk topic create "$TOPIC" 2>&1 | tee -a "$LOG" || true
 
 echo "Setting up test data..." | tee -a "$LOG"
-docker compose exec -T postgres psql -U mangacdc -d mangacdc <<SQL
-  INSERT INTO manga_series (id, source_id, title, source_url, status, is_active)
-  VALUES ('${SERIES_ID}', 'e2e-source', 'E2E Test Series', 'https://example.com/e2e', 'ONGOING', true)
-  ON CONFLICT (source_id) DO NOTHING;
+seed_sql=$(cat <<SQL
+INSERT INTO manga_series (id, source_id, title, source_url, status, is_active)
+VALUES ('${SERIES_ID}', 'e2e-source', 'E2E Test Series', 'https://example.com/e2e', 'ONGOING', true)
+ON CONFLICT (source_id) DO NOTHING;
 
-  INSERT INTO chapters (id, series_id, chapter_num, title, url, is_new)
-  VALUES ('${CHAPTER_ID}', '${SERIES_ID}', 1, 'Chapter 1', 'https://example.com/e2e/ch-1', true)
-  ON CONFLICT (series_id, chapter_num) DO NOTHING;
+INSERT INTO chapters (id, series_id, chapter_num, title, url, is_new)
+VALUES ('${CHAPTER_ID}', '${SERIES_ID}', 1, 'Chapter 1', 'https://example.com/e2e/ch-1', true)
+ON CONFLICT (series_id, chapter_num) DO NOTHING;
 SQL
+)
+seeded=false
+for _ in $(seq 1 15); do
+  if printf '%s\n' "$seed_sql" | docker compose exec -T postgres psql -U mangacdc -d mangacdc >>"$LOG" 2>&1; then
+    seeded=true
+    break
+  fi
+  sleep 2
+done
+if [ "$seeded" != "true" ]; then
+  echo "FAIL: could not seed Postgres test data" | tee -a "$LOG"
+  exit 1
+fi
 
 echo "Publishing chapter event to Kafka (scraper format)..." | tee -a "$LOG"
 EVENT=$(cat <<EOF
@@ -71,23 +91,16 @@ EOF
 echo "$EVENT" | docker compose exec -T redpanda rpk topic produce "$TOPIC" -k "$CHAPTER_ID" 2>&1 | tee -a "$LOG"
 
 echo "Starting notification service..." | tee -a "$LOG"
+DISCORD_WEBHOOK_URL=http://127.0.0.1:9/unreachable \
 CDC_ENABLED=true \
-SPRING_KAFKA_BOOTSTRAP_SERVERS=localhost:9092 \
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/mangacdc \
-SPRING_DATASOURCE_USERNAME=mangacdc \
-SPRING_DATASOURCE_PASSWORD=mangacdc \
-DISCORD_WEBHOOK_URL="http://localhost:9999/mock" \
-java -jar notification-service/target/notification-service-0.0.1-SNAPSHOT.jar >>"$LOG" 2>&1 &
-NOTIFY_PID=$!
+docker compose up -d --build notification-service 2>&1 | tee -a "$LOG"
 
 echo "Waiting for notification consumer..." | tee -a "$LOG"
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   STATUS=$(docker compose exec -T postgres psql -U mangacdc -d mangacdc -tAc \
     "SELECT status FROM notification_logs WHERE channel='discord' AND chapter_id='${CHAPTER_ID}'" 2>/dev/null | tr -d '[:space:]')
   if [ "$STATUS" = "SENT" ] || [ "$STATUS" = "FAILED" ]; then
     echo "PASS: Notification logged (status=$STATUS)" | tee -a "$LOG"
-    kill "$NOTIFY_PID" 2>/dev/null || true
-    wait "$NOTIFY_PID" 2>/dev/null || true
     echo "" | tee -a "$LOG"
     echo "=== E2E Test Complete ===" | tee -a "$LOG"
     exit 0
@@ -96,6 +109,5 @@ for _ in $(seq 1 30); do
 done
 
 echo "FAIL: No notification log found within timeout" | tee -a "$LOG"
-kill "$NOTIFY_PID" 2>/dev/null || true
-wait "$NOTIFY_PID" 2>/dev/null || true
+docker compose logs --tail=50 notification-service 2>&1 | tee -a "$LOG" || true
 exit 1
