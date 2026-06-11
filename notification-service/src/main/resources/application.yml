@@ -31,3 +31,15 @@ telegram:
 cdc:
   enabled: ${CDC_ENABLED:false}
   topic-pattern: mangacdc.public.chapters
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: notification-service

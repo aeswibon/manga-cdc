@@ -184,7 +184,11 @@ type SourceAdapter interface {
 |---------|-----|
 | Kafka UI | http://localhost:8085 |
 | Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 |
+| Grafana | http://localhost:3000 (pre-provisioned **manga-cdc** dashboard) |
+| Notification logs API | http://localhost:8080/api/logs?limit=50 |
+| Scraper health | http://localhost:2112/healthz, `/readyz`, `/metrics` |
+
+Import `grafana/dashboards/manga-cdc.json` manually when not using the local Compose Grafana service.
 
 ## Production (Aiven)
 
@@ -192,6 +196,8 @@ The production deployment uses [Aiven](https://aiven.io) for both PostgreSQL and
 
 - **Aiven PostgreSQL** — scraper connects via `DATABASE_URL` (postgres:// with SSL); notification service connects via derived JDBC URL
 - **Aiven Kafka** — scraper publishes chapter events using SCRAM-SHA-256 over SASL_SSL; notification service consumes from the same topic
+
+**Release flow:** push to `master` runs tests only; push a `v*` tag runs the full build, E2E, GitHub release, and GCP deploy.
 
 **Required secrets** in GitHub Actions:
 

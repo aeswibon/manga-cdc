@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: manga-cdc
+    orgId: 1
+    folder: manga-cdc
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

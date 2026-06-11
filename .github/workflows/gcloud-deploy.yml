@@ -5,16 +5,26 @@ on:
     workflows: [Test and Build]
     types: [completed]
 
+concurrency:
+  group: gcloud-deploy-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
+  GCP_SSH_FLAGS: >-
+    --ssh-flag=-o ServerAliveInterval=15
+    --ssh-flag=-o ServerAliveCountMax=40
+    --ssh-flag=-o ConnectTimeout=30
+    --ssh-flag=-o TCPKeepAlive=yes
 
 jobs:
   resolve-release:
     name: Resolve release tag
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && (github.event.workflow_run.head_branch == '' || startsWith(github.event.workflow_run.head_branch, 'v')) }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       should_deploy: ${{ steps.tag.outputs.should_deploy }}
       release_tag: ${{ steps.tag.outputs.release_tag }}
@@ -29,8 +39,8 @@ jobs:
         id: tag
         run: |
           head_branch='${{ github.event.workflow_run.head_branch }}'
-          if [ -n "$head_branch" ] && [[ "$head_branch" != v* ]]; then
-            echo "Workflow triggered by branch push ($head_branch); skipping deploy."
+          if [ "$head_branch" = "master" ]; then
+            echo "Master push workflow (tests only); deploy runs on tag release workflows."
             echo "should_deploy=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -51,14 +61,24 @@ jobs:
     needs: resolve-release
     if: ${{ needs.resolve-release.outputs.should_deploy == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
+      IMAGE_TAG: ${{ needs.resolve-release.outputs.image_tag }}
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
+
+      - name: Deploy summary
+        run: |
+          echo "Deploying ${RELEASE_TAG} (${IMAGE_TAG}) to GCP VM"
+          echo "Commit: ${DEPLOY_SHA}"
 
       - id: auth
         uses: google-github-actions/auth@v3
@@ -66,57 +86,62 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - id: deploy
-        uses: google-github-actions/ssh-compute@v2
-        with:
-          instance_name: ${{ secrets.GCP_VM_NAME }}
-          zone: ${{ secrets.GCP_ZONE }}
-          user: ${{ secrets.GCP_SSH_USER }}
-          ssh_private_key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
-          command: |
-            set -e
-            mkdir -p manga-cdc
-            cd manga-cdc
-            if [ ! -d .git ]; then
-              git clone https://github.com/aeswibon/manga-cdc.git .
-            fi
-            git fetch origin --force --tags
-            git reset --hard ${{ github.event.workflow_run.head_sha }}
-            chmod +x scripts/render-prod-env.sh
-            export SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
-            export NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
-            export DATABASE_URL='${{ secrets.DATABASE_URL }}'
-            export KAFKA_BROKERS='${{ secrets.KAFKA_BROKERS }}'
-            export KAFKA_TOPIC=mangacdc.public.chapters
-            export KAFKA_USERNAME='${{ secrets.KAFKA_USERNAME }}'
-            export KAFKA_PASSWORD='${{ secrets.KAFKA_PASSWORD }}'
-            export DISCORD_WEBHOOK_URL='${{ secrets.DISCORD_WEBHOOK_URL }}'
-            export SLACK_WEBHOOK_URL='${{ secrets.SLACK_WEBHOOK_URL }}'
-            export TELEGRAM_BOT_TOKEN='${{ secrets.TELEGRAM_BOT_TOKEN }}'
-            export TELEGRAM_CHAT_ID='${{ secrets.TELEGRAM_CHAT_ID }}'
-            export CDC_ENABLED=true
-            # .env may be root-owned from earlier manual deploys; remove before rewrite
-            if [ -f .env ] && [ ! -w .env ]; then
-              sudo rm -f .env
-            fi
-            ./scripts/render-prod-env.sh > .env
-            chmod 600 .env
-            docker compose --env-file .env -f docker-compose.prod.yml pull
-            docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
-            echo "Deployed release ${{ needs.resolve-release.outputs.release_tag }}"
+      - name: Prepare SSH key
+        run: |
+          install -m 600 -D /dev/null "$RUNNER_TEMP/gcp_ssh_key"
+          printf '%s\n' "${{ secrets.GCP_SSH_PRIVATE_KEY }}" > "$RUNNER_TEMP/gcp_ssh_key"
 
-      - name: Verify
-        uses: google-github-actions/ssh-compute@v2
-        with:
-          instance_name: ${{ secrets.GCP_VM_NAME }}
-          zone: ${{ secrets.GCP_ZONE }}
-          user: ${{ secrets.GCP_SSH_USER }}
-          ssh_private_key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
-          command: |
-            cd manga-cdc
-            echo '=== Container Status ==='
-            docker compose --env-file .env -f docker-compose.prod.yml ps
-            echo '=== Image tags ==='
-            grep -E '^(SCRAPER_IMAGE|NOTIFICATION_IMAGE)=' .env
-            echo '=== Scraper metrics ==='
-            curl -sf http://127.0.0.1:2112/metrics | grep -E '^scraper_chapters_' || echo 'scraper metrics unavailable'
+      - name: Render production .env
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_TOPIC: mangacdc.public.chapters
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CDC_ENABLED: "true"
+        run: |
+          chmod +x scripts/render-prod-env.sh
+          ./scripts/render-prod-env.sh > "$RUNNER_TEMP/prod.env"
+          chmod 600 "$RUNNER_TEMP/prod.env"
+
+      - name: Sync repo on VM
+        run: |
+          timeout 180 gcloud compute ssh "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_VM_NAME }}" \
+            --zone "${{ secrets.GCP_ZONE }}" \
+            --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
+            --quiet \
+            ${{ env.GCP_SSH_FLAGS }} \
+            --command "set -euo pipefail; mkdir -p ~/manga-cdc; cd ~/manga-cdc; if [ ! -d .git ]; then git clone https://github.com/aeswibon/manga-cdc.git .; fi; git fetch origin --force --tags; git reset --hard '${{ env.DEPLOY_SHA }}'; chmod +x scripts/deploy-prod-on-vm.sh scripts/verify-prod-on-vm.sh"
+
+      - name: Copy .env to VM
+        run: |
+          timeout 120 gcloud compute scp "$RUNNER_TEMP/prod.env" \
+            "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_VM_NAME }}:~/manga-cdc/.env" \
+            --zone "${{ secrets.GCP_ZONE }}" \
+            --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
+            --quiet \
+            ${{ env.GCP_SSH_FLAGS }}
+
+      - name: Deploy on VM
+        run: |
+          timeout 1200 gcloud compute ssh "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_VM_NAME }}" \
+            --zone "${{ secrets.GCP_ZONE }}" \
+            --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
+            --quiet \
+            ${{ env.GCP_SSH_FLAGS }} \
+            --command "bash ~/manga-cdc/scripts/deploy-prod-on-vm.sh"
+
+      - name: Verify production
+        run: |
+          timeout 180 gcloud compute ssh "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_VM_NAME }}" \
+            --zone "${{ secrets.GCP_ZONE }}" \
+            --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
+            --quiet \
+            ${{ env.GCP_SSH_FLAGS }} \
+            --command "bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
