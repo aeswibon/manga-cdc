@@ -10,8 +10,6 @@ env:
   REGISTRY: ghcr.io
   SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
-  GCP_USER: github-actions-cd
-  GCP_APP_DIR: manga-cdc
 
 jobs:
   gcloud-deploy:
@@ -35,46 +33,45 @@ jobs:
           workload_identity_provider: projects/647451638700/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: github-actions-cd@project-7e7a48a5-81ef-4c4e-97f.iam.gserviceaccount.com
 
-      - uses: google-github-actions/setup-gcloud@v2
-
-      - name: Write .env file
-        run: |
-          cat > /tmp/manga-cdc-env << EOF
-          SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ steps.tag.outputs.sha_short }}
-          NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ steps.tag.outputs.sha_short }}
-          DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
-          SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-          QSTASH_TOKEN=${{ secrets.QSTASH_TOKEN }}
-          QSTASH_DESTINATION_URL=https://mangacdc.34.73.231.106.sslip.io/api/webhook
-          EOF
-
-      - name: Deploy via gcloud
-        env:
-          GCP_VM_NAME: ${{ secrets.GCP_VM_NAME }}
-          GCP_ZONE: ${{ secrets.GCP_ZONE }}
-        run: |
-          gcloud compute ssh ${GCP_USER}@${GCP_VM_NAME} \
-            --zone=${GCP_ZONE} --quiet --command="
+      - id: deploy
+        uses: google-github-actions/ssh-compute@v2
+        with:
+          instance_name: ${{ secrets.GCP_VM_NAME }}
+          zone: ${{ secrets.GCP_ZONE }}
+          user: github-actions-cd
+          ssh_private_key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          command: |
             set -e
-            mkdir -p ${GCP_APP_DIR}
-            cd ${GCP_APP_DIR}
+            mkdir -p manga-cdc
+            cd manga-cdc
             if [ ! -d .git ]; then
               git clone https://github.com/aeswibon/manga-cdc.git .
             fi
-          "
-
-          gcloud compute scp /tmp/manga-cdc-env ${GCP_USER}@${GCP_VM_NAME}:~/${GCP_APP_DIR}/.env \
-            --zone=${GCP_ZONE} --quiet
-
-          gcloud compute ssh ${GCP_USER}@${GCP_VM_NAME} \
-            --zone=${GCP_ZONE} --quiet --command="
-            set -e
-            cd ${GCP_APP_DIR}
+            cat > .env << 'ENVEOF'
+            SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ steps.tag.outputs.sha_short }}
+            NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ steps.tag.outputs.sha_short }}
+            DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
+            SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+            QSTASH_TOKEN=${{ secrets.QSTASH_TOKEN }}
+            QSTASH_DESTINATION_URL=https://mangacdc.34.73.231.106.sslip.io/api/webhook
+            ENVEOF
             git fetch origin master
             git reset --hard origin/master
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             echo 'Deployment complete'
-          "
+
+      - name: Verify
+        uses: google-github-actions/ssh-compute@v2
+        with:
+          instance_name: ${{ secrets.GCP_VM_NAME }}
+          zone: ${{ secrets.GCP_ZONE }}
+          user: github-actions-cd
+          ssh_private_key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          command: |
+            cd manga-cdc
+            echo '=== Container Status ==='
+            docker compose -f docker-compose.prod.yml ps
+            echo '=== All services running ==='
