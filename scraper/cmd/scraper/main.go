@@ -79,6 +79,8 @@ func main() {
 		adapter.NewMangaFireAdapter(),
 		adapter.NewAsuraScansAdapter(),
 		adapter.NewMangaPlusAdapter(),
+		adapter.NewMangaTownAdapter(),
+		adapter.NewMangaPillAdapter(),
 	}
 
 	log.Info("scraper started", "sources", len(sources), "interval", cfg.ScrapeInterval)
