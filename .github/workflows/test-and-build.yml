@@ -35,6 +35,23 @@ jobs:
     defaults:
       run:
         working-directory: scraper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: scraper/go.sum
+      - run: go mod download
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./... -v -count=1
+
+  go-integration-test:
+    name: Go integration tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scraper
     services:
       postgres:
         image: postgres:16-alpine
@@ -57,11 +74,8 @@ jobs:
           go-version: "1.26"
           cache-dependency-path: scraper/go.sum
       - run: go mod download
-      - run: go vet ./...
-      - run: go build ./...
-      - run: go test ./... -v -count=1
       - name: Integration tests
-        run: go test -tags=integration ./internal/db/... -v -count=1
+        run: go test -tags=integration ./internal/... -v -count=1
         env:
           DATABASE_URL_TEST: postgres://mangacdc:mangacdc@localhost:5432/mangacdc?sslmode=disable
 
@@ -98,7 +112,7 @@ jobs:
 
   e2e-test:
     name: End-to-end tests
-    needs: [repo-policy, go-test, configure-test, java-test]
+    needs: [repo-policy, go-test, go-integration-test, configure-test, java-test]
     if: false
     runs-on: ubuntu-latest
     steps:
@@ -118,7 +132,7 @@ jobs:
 
   build:
     name: Build and push Docker images
-    needs: [repo-policy, go-test, configure-test, java-test]
+    needs: [repo-policy, go-test, go-integration-test, configure-test, java-test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
