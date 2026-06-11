@@ -22,11 +22,29 @@ fi
 
 REPO_URL="${MANGA_CDC_REPO_URL:-https://github.com/aeswibon/manga-cdc.git}"
 REF="${MANGA_CDC_REF:-master}"
+USE_IAP="${USE_IAP:-auto}"
+
+ssh_args=(--zone "${ZONE}" --quiet)
+case "$USE_IAP" in
+  true|1|yes) ssh_args+=(--tunnel-through-iap) ;;
+  false|0|no) ;;
+  auto)
+    if gcloud compute instances describe "${INSTANCE}" --zone "${ZONE}" \
+      --format='get(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null | grep -q .; then
+      echo "SSH: using public IP (set USE_IAP=true to force IAP)"
+    else
+      ssh_args+=(--tunnel-through-iap)
+      echo "SSH: no public IP, using IAP"
+    fi
+    ;;
+esac
+
+gcloud_ssh() {
+  gcloud compute ssh "${SSH_USER}@${INSTANCE}" "${ssh_args[@]}" "$@"
+}
 
 echo "=== sync manga-cdc on ${INSTANCE} (${ZONE}) ==="
-gcloud compute ssh "${SSH_USER}@${INSTANCE}" \
-  --zone "${ZONE}" \
-  --tunnel-through-iap \
+gcloud_ssh \
   --command "set -euo pipefail
     mkdir -p ~/manga-cdc
     cd ~/manga-cdc
@@ -37,16 +55,10 @@ gcloud compute ssh "${SSH_USER}@${INSTANCE}" \
   "
 
 echo "=== enable observability stack ==="
-gcloud compute ssh "${SSH_USER}@${INSTANCE}" \
-  --zone "${ZONE}" \
-  --tunnel-through-iap \
-  --command "bash ~/manga-cdc/scripts/enable-observability-on-vm.sh"
+gcloud_ssh --command "bash ~/manga-cdc/scripts/enable-observability-on-vm.sh"
 
 echo "=== verify ==="
-gcloud compute ssh "${SSH_USER}@${INSTANCE}" \
-  --zone "${ZONE}" \
-  --tunnel-through-iap \
-  --command "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh" || true
+gcloud_ssh --command "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh" || true
 
 EXTERNAL_IP="$(gcloud compute instances describe "${INSTANCE}" --zone "${ZONE}" \
   --format='get(networkInterfaces[0].accessConfigs[0].natIP)')"
