@@ -199,6 +199,14 @@ The production deployment uses [Aiven](https://aiven.io) for both PostgreSQL and
 
 **Release flow:** push to `master` runs tests only; push a `v*` tag runs the full build, E2E, GitHub release, and GCP deploy.
 
+**Production observability (Grafana):** tag deploys now start Prometheus + Grafana via `docker-compose.observability.yml` and auto-provision the **manga-cdc** dashboard. To enable manually on the VM:
+
+```bash
+./scripts/setup-observability-gcloud.sh mangacdc-vm us-east1-b
+```
+
+Grafana: `http://<vm-external-ip>:3000/d/manga-cdc-overview/manga-cdc` (anonymous viewer; port 3000 is open on the VM firewall).
+
 **Required secrets** in GitHub Actions:
 
 GCP deploy:
