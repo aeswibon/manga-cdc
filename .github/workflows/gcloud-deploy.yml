@@ -1,8 +1,8 @@
-name: Continuous Deployment
+name: GCloud Deploy
 
 on:
   workflow_run:
-    workflows: [Continuous Integration]
+    workflows: [Test and Build]
     types: [completed]
     branches: [master]
 
@@ -14,12 +14,13 @@ env:
   GCP_APP_DIR: manga-cdc
 
 jobs:
-  deploy:
+  gcloud-deploy:
     name: Deploy to GCP VM
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +32,8 @@ jobs:
       - id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: projects/647451638700/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-actions-cd@project-7e7a48a5-81ef-4c4e-97f.iam.gserviceaccount.com
 
       - uses: google-github-actions/setup-gcloud@v2
 
