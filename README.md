@@ -140,10 +140,7 @@ manga-cdc/
 ├── terraform/                  # GCP Terraform IaC
 ├── docker-compose.yml          # Local dev compose (generated)
 ├── docker-compose.prod.yml     # Production compose (generated)
-├── prometheus.yml              # Metrics scraping config
-└── docs/superpowers/
-    ├── specs/                  # Design documents
-    └── plans/                  # Implementation plans
+└── prometheus.yml              # Metrics scraping config
 ```
 
 ## Development

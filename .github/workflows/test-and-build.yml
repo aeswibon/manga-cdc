@@ -12,6 +12,14 @@ env:
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
 
 jobs:
+  repo-policy:
+    name: Repository policy checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Block tracked agent docs
+        run: ./scripts/check-no-superpowers.sh
+
   go-test:
     name: Go tests
     runs-on: ubuntu-latest
@@ -81,7 +89,7 @@ jobs:
 
   e2e-test:
     name: End-to-end tests
-    needs: [go-test, configure-test, java-test]
+    needs: [repo-policy, go-test, configure-test, java-test]
     if: false
     runs-on: ubuntu-latest
     steps:
@@ -101,7 +109,7 @@ jobs:
 
   build:
     name: Build and push Docker images
-    needs: [go-test, configure-test, java-test]
+    needs: [repo-policy, go-test, configure-test, java-test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
