@@ -1,8 +1,8 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY scraper/go.mod scraper/go.sum ./
 RUN go mod download
-COPY . .
+COPY scraper/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /scraper ./cmd/scraper
 
 FROM alpine:3.20
@@ -15,5 +15,7 @@ LABEL org.opencontainers.image.title="manga-cdc scraper" \
 
 RUN apk --no-cache add ca-certificates
 COPY --from=builder /scraper /scraper
+COPY db/migrations /migrations
+ENV MIGRATIONS_DIR=/migrations
 EXPOSE 2112
 CMD ["/scraper"]

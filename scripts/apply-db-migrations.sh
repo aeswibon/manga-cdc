@@ -1,36 +1,18 @@
 #!/usr/bin/env bash
-# Apply SQL migrations to the configured Postgres database (idempotent).
+# Legacy helper — the scraper applies migrations automatically on startup via goose.
+# This script remains for manual/one-off use outside the scraper container.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DATABASE_URL="${DATABASE_URL:?DATABASE_URL is required}"
+MIGRATIONS_DIR="${MIGRATIONS_DIR:-$ROOT/db/migrations}"
 
-run_sql_file() {
-  local migration="$1"
-  if command -v psql >/dev/null 2>&1; then
-    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
-  else
-    docker run --rm -i postgres:16-alpine psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f - <"$migration"
-  fi
-}
-
-schema_check() {
-  if command -v psql >/dev/null 2>&1; then
-    psql "$DATABASE_URL" -tAc "SELECT to_regclass('public.manga_series')"
-  else
-    docker run --rm postgres:16-alpine psql "$DATABASE_URL" -tAc "SELECT to_regclass('public.manga_series')"
-  fi
-}
-
-if schema_check | grep -q manga_series; then
-  echo "Database schema already present; skipping migrations."
-  exit 0
+if ! command -v goose >/dev/null 2>&1; then
+  echo "error: goose CLI not installed; migrations run automatically when the scraper starts" >&2
+  echo "install: go install github.com/pressly/goose/v3/cmd/goose@latest" >&2
+  exit 1
 fi
 
-echo "Applying database migrations..."
-for migration in "$ROOT"/db/migrations/*.sql; do
-  [ -f "$migration" ] || continue
-  echo "  -> $(basename "$migration")"
-  run_sql_file "$migration"
-done
+echo "Applying database migrations from ${MIGRATIONS_DIR}..."
+goose -dir "$MIGRATIONS_DIR" postgres "$DATABASE_URL" up
 echo "Migrations complete."

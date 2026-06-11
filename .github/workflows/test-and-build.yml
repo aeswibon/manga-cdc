@@ -78,7 +78,7 @@ jobs:
           cache-dependency-path: scraper/go.sum
       - run: go mod download
       - name: Integration tests
-        run: go test -tags=integration ./internal/... -v -count=1
+        run: go test -tags=integration -p 1 ./internal/... -v -count=1
         env:
           DATABASE_URL_TEST: postgres://mangacdc:mangacdc@localhost:5432/mangacdc?sslmode=disable
 
@@ -141,7 +141,8 @@ jobs:
       - name: Build and push scraper snapshot
         uses: docker/build-push-action@v7
         with:
-          context: scraper
+          context: .
+          file: scraper/Dockerfile
           push: true
           tags: ${{ env.SCRAPER_IMAGE }}:${{ env.SNAPSHOT_TAG }}
           cache-from: type=gha,scope=manga-cdc-scraper
@@ -230,7 +231,8 @@ jobs:
       - name: Build and push scraper
         uses: docker/build-push-action@v7
         with:
-          context: scraper
+          context: .
+          file: scraper/Dockerfile
           push: true
           tags: ${{ steps.meta-scraper.outputs.tags }}
           labels: ${{ steps.meta-scraper.outputs.labels }}
