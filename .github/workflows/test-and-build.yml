@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: Test and Build
 
 on:
   pull_request:
@@ -12,8 +12,8 @@ env:
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
 
 jobs:
-  scraper:
-    name: Go scraper tests
+  go-test:
+    name: Go tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -45,8 +45,8 @@ jobs:
         env:
           DATABASE_URL_TEST: postgres://mangacdc:mangacdc@postgres:5432/mangacdc?sslmode=disable
 
-  notification-service:
-    name: Java notification tests
+  java-test:
+    name: Java tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -60,9 +60,9 @@ jobs:
           cache: maven
       - run: mvn verify -B -Pintegration-tests
 
-  e2e:
+  e2e-test:
     name: End-to-end tests
-    needs: [scraper, notification-service]
+    needs: [go-test, java-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,9 +79,9 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ""
 
-  docker:
+  build:
     name: Build and push Docker images
-    needs: [scraper, notification-service]
+    needs: [go-test, java-test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
