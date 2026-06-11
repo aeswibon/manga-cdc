@@ -11,6 +11,17 @@ type Config struct {
 	DatabaseURL    string
 	ScrapeInterval time.Duration
 	LogLevel       string
+	KafkaBrokers   string
+	KafkaTopic     string
+	KafkaUsername  string
+	KafkaPassword  string
+}
+
+func getEnv(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultVal
 }
 
 func Load() (*Config, error) {
@@ -37,5 +48,9 @@ func Load() (*Config, error) {
 		DatabaseURL:    dbURL,
 		ScrapeInterval: interval,
 		LogLevel:       logLevel,
+		KafkaBrokers:   os.Getenv("KAFKA_BROKERS"),
+		KafkaTopic:     getEnv("KAFKA_TOPIC", "mangacdc.public.chapters"),
+		KafkaUsername:  os.Getenv("KAFKA_USERNAME"),
+		KafkaPassword:  os.Getenv("KAFKA_PASSWORD"),
 	}, nil
 }
