@@ -40,7 +40,7 @@ func TestPublishChapterEvent_Success(t *testing.T) {
 		IsNew:    true,
 	}
 
-	err := p.PublishChapterEvent(context.Background(), chapter, "Test Series")
+	err := p.PublishChapterEvent(context.Background(), chapter)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -69,6 +69,9 @@ func TestPublishChapterEvent_Success(t *testing.T) {
 	if after["chapter_num"] != float64(1) {
 		t.Fatalf("expected after.chapter_num=1, got %v", after["chapter_num"])
 	}
+	if after["series_id"] != "s-1" {
+		t.Fatalf("expected after.series_id=s-1, got %v", after["series_id"])
+	}
 	if after["url"] != "https://example.com/ch-1" {
 		t.Fatalf("expected after.url matches")
 	}
@@ -78,7 +81,7 @@ func TestPublishChapterEvent_WriterError(t *testing.T) {
 	mw := &mockWriter{err: errors.New("kafka down")}
 	p := &Producer{writer: mw, topic: "test-topic"}
 
-	err := p.PublishChapterEvent(context.Background(), model.Chapter{}, "")
+	err := p.PublishChapterEvent(context.Background(), model.Chapter{})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
