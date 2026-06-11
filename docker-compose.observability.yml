@@ -1,4 +1,4 @@
-# Optional observability overlay for environments without Prometheus/Grafana in the base compose file.
+# Self-hosted observability overlay (local dev or OBSERVABILITY_MODE=self-hosted on prod).
 #
 # Usage:
 #   docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml up -d

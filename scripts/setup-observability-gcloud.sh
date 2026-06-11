@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Enable Grafana + Prometheus on the prod GCP VM via gcloud SSH.
+# Legacy helper: enable self-hosted Grafana + Prometheus on the VM (OBSERVABILITY_MODE=self-hosted).
+# Prod deploys use Grafana Cloud + Alloy by default; prefer tag deploy with Grafana Cloud secrets.
 #
 # Usage:
 #   ./scripts/setup-observability-gcloud.sh

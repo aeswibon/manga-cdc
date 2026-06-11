@@ -100,6 +100,12 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CDC_ENABLED: "true"
+          OBSERVABILITY_MODE: grafana-cloud
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
         run: |
           chmod +x scripts/render-prod-env.sh
           ./scripts/render-prod-env.sh > "$RUNNER_TEMP/prod.env"
@@ -115,7 +121,7 @@ jobs:
             --ssh-flag="-o ServerAliveCountMax=40" \
             --ssh-flag="-o ConnectTimeout=30" \
             --ssh-flag="-o TCPKeepAlive=yes" \
-            --command "set -euo pipefail; mkdir -p ~/manga-cdc; cd ~/manga-cdc; if [ ! -d .git ]; then git clone https://github.com/aeswibon/manga-cdc.git .; fi; git fetch origin --force --tags; git reset --hard '${{ env.DEPLOY_SHA }}'; chmod +x scripts/deploy-prod-on-vm.sh scripts/verify-prod-on-vm.sh scripts/enable-observability-on-vm.sh"
+            --command "set -euo pipefail; mkdir -p ~/manga-cdc; cd ~/manga-cdc; if [ ! -d .git ]; then git clone https://github.com/aeswibon/manga-cdc.git .; fi; git fetch origin --force --tags; git reset --hard '${{ env.DEPLOY_SHA }}'; chmod +x scripts/deploy-prod-on-vm.sh scripts/verify-prod-on-vm.sh"
 
       - name: Copy .env to VM
         run: |
@@ -155,8 +161,9 @@ jobs:
 
       - name: Observability URLs
         run: |
-          EXTERNAL_IP="$(gcloud compute instances describe "${{ secrets.GCP_VM_NAME }}" \
-            --zone "${{ secrets.GCP_ZONE }}" \
-            --format='get(networkInterfaces[0].accessConfigs[0].natIP)')"
-          echo "Grafana dashboard: http://${EXTERNAL_IP}:3000/d/manga-cdc-overview/manga-cdc"
-          echo "Prometheus:        http://${EXTERNAL_IP}:9090"
+          if [ -n "${{ secrets.GRAFANA_CLOUD_STACK_URL }}" ]; then
+            echo "Grafana Cloud dashboard: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}/d/manga-cdc-overview/manga-cdc"
+          else
+            echo "Set GRAFANA_CLOUD_STACK_URL secret for dashboard link output"
+          fi
+          echo "Metrics path: Alloy on VM -> Grafana Cloud Prometheus (remote_write)"

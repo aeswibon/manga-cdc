@@ -1,0 +1,25 @@
+# Grafana Cloud metrics path for production (Alloy remote_write).
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.observability-cloud.yml up -d
+#
+services:
+  alloy:
+    image: grafana/alloy:v1.4.2
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=127.0.0.1:12345
+    environment:
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:?err}
+      GRAFANA_CLOUD_PROMETHEUS_USER: ${GRAFANA_CLOUD_PROMETHEUS_USER:?err}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY:?err}
+    ports:
+      - "127.0.0.1:12345:12345"
+    volumes:
+      - ./alloy/config.prod.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+
+volumes:
+  alloy-data:
