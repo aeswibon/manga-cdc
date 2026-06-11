@@ -13,7 +13,7 @@ env:
 
 jobs:
   deploy:
-    name: Deploy to DOKS
+    name: Deploy via Docker Compose
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -22,19 +22,27 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
       - id: tag
         run: echo "sha_short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-      - uses: digitalocean/action-doctl@v2
+
+      - uses: webfactory/ssh-agent@v0.9
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-      - run: doctl kubernetes cluster kubeconfig save manga-cdc-prod
-      - uses: azure/setup-helm@v4
-        with:
-          version: "latest"
-      - run: |
-          helm upgrade --install manga-cdc helm/manga-cdc \
-            --namespace manga-cdc --create-namespace \
-            --set images.scraper=${{ env.SCRAPER_IMAGE }}:${{ steps.tag.outputs.sha_short }} \
-            --set images.notification=${{ env.NOTIFICATION_IMAGE }}:${{ steps.tag.outputs.sha_short }} \
-            --set discord.webhookUrl=${{ secrets.DISCORD_WEBHOOK_URL }} \
-            --wait
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Deploy via Docker Compose
         env:
-          KUBECONFIG: /home/runner/.kube/config
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          IMAGE_TAG: ${{ steps.tag.outputs.sha_short }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "
+            set -e
+            cd /opt/manga-cdc
+            git fetch origin master
+            git reset --hard origin/master
+            sed -i 's|SCRAPER_IMAGE=.*|SCRAPER_IMAGE=${SCRAPER_IMAGE}:${IMAGE_TAG}|' .env
+            sed -i 's|NOTIFICATION_IMAGE=.*|NOTIFICATION_IMAGE=${NOTIFICATION_IMAGE}:${IMAGE_TAG}|' .env
+            sed -i 's|DISCORD_WEBHOOK_URL=.*|DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}|' .env
+            docker compose pull
+            docker compose up -d --remove-orphans
+            echo 'Deployment complete'
+          "
