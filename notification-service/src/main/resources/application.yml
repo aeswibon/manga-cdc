@@ -1,10 +1,15 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/mangacdc
-    username: mangacdc
-    password: mangacdc
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mangacdc}
+    username: ${SPRING_DATASOURCE_USERNAME:mangacdc}
+    password: ${SPRING_DATASOURCE_PASSWORD:mangacdc}
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: mangacdc-notification
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     properties:
       sasl.mechanism: ${SPRING_KAFKA_SASL_MECHANISM:PLAIN}
       sasl.jaas.config: ${SPRING_KAFKA_SASL_JAAS_CONFIG:}
@@ -26,6 +31,3 @@ telegram:
 cdc:
   enabled: ${CDC_ENABLED:false}
   topic-pattern: mangacdc.public.chapters
-
-poller:
-  interval-ms: 30000

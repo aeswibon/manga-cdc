@@ -18,24 +18,19 @@ Track manga releases from multiple sources and get notified when new chapters dr
                           │  (diff engine)    │
                           └────────┬─────────┘
                                    │
-                    ┌──────────────┼──────────────┐
-                    ▼              ▼              ▼
-           ┌────────────┐  ┌───────────┐  ┌──────────┐
-           │ PostgreSQL │  │  Kafka    │  │  QStash  │
-           │ (canonical │  │ (optional)│  │(optional)│
-           │  store)    │  └─────┬─────┘  └────┬─────┘
-           └─────┬──────┘        │             │
-                 │               ▼             ▼
-                 │        ┌──────────┐  ┌──────────┐
-                 │        │ Redpanda │  │  Caddy   │
-                 │        └────┬─────┘  └────┬─────┘
-                 │             │             │
-                 ▼             ▼             ▼
-          ┌──────────────────────────────────────┐
-          │      Notification Service            │
-          │  (Spring Boot — Kafka Consumer       │
-          │   + Webhook Receiver)               │
-          └──────────────┬───────────────────────┘
+                    ┌──────────────┴──────────────┐
+                    ▼                             ▼
+           ┌────────────────┐          ┌──────────────────┐
+           │  Aiven Postgres│          │   Aiven Kafka    │
+           │ (canonical     │          │  (SASL_SSL /     │
+           │  store)        │          │  SCRAM-SHA-256)  │
+           └───────┬────────┘          └────────┬─────────┘
+                   │                            │
+                   ▼                            ▼
+          ┌──────────────────────────────────────────┐
+          │      Notification Service                │
+          │  (Spring Boot — Kafka Consumer)          │
+          └──────────────┬───────────────────────────┘
                          │
                          ▼
           ┌──────────┐ ┌───────┐ ┌─────────┐
@@ -48,12 +43,14 @@ Track manga releases from multiple sources and get notified when new chapters dr
                     └──────────────────────┘
 ```
 
-**Two eventing backends supported:**
+**Production deployment** uses [Aiven](https://aiven.io) for managed PostgreSQL and Kafka (SCRAM-SHA-256 over SASL_SSL).
+
+For local development, two eventing backends are available (configured via the setup wizard):
 
 | Backend | How it works |
 |---------|-------------|
-| **Kafka** | Scraper publishes Debezium-compatible JSON → Redpanda → notification service consumer → webhook |
-| **QStash** | Scraper publishes via Upstash QStash HTTP API → Caddy reverse proxy → notification service webhook endpoint |
+| **Kafka** | Scraper publishes Debezium-compatible JSON → Redpanda → notification service consumer |
+| **QStash** | Scraper publishes via Upstash QStash HTTP API → Caddy → notification service webhook |
 
 Use the [setup wizard](#quick-start) to choose your configuration.
 
@@ -62,8 +59,8 @@ Use the [setup wizard](#quick-start) to choose your configuration.
 | Component | Technology |
 |-----------|-----------|
 | Scraper | Go 1.23, pgx, Colly |
-| Database | PostgreSQL 16 |
-| Eventing (optional) | Redpanda/Kafka or Upstash QStash + Caddy |
+| Database | Aiven PostgreSQL 16 |
+| Eventing | Aiven Kafka (SASL_SSL / SCRAM-SHA-256) |
 | Notifications | Spring Boot 3.3, Java 21 |
 | Notifier targets | Discord, Slack, Telegram |
 | Metrics | Prometheus + Grafana |
@@ -102,8 +99,7 @@ manga-cdc/
 │   └── src/main/java/com/mangacdc/
 │       ├── controller/         # Webhook endpoint for QStash
 │       ├── service/            # Kafka consumer + notifiers
-│       ├── repository/         # JDBC data access
-│       └── config/             # Kafka consumer config
+│       └── repository/         # JDBC data access
 ├── connectors/                 # Debezium connector configs
 ├── db/migrations/              # SQL schema migrations
 ├── helm/                       # Kubernetes Helm chart
@@ -155,26 +151,32 @@ type SourceAdapter interface {
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
 
-## Eventing Backends
+## Production (Aiven)
 
-### Kafka Mode
+The production deployment uses [Aiven](https://aiven.io) for both PostgreSQL and Kafka:
 
-- Scraper publishes chapter events as Debezium-compatible JSON to Redpanda/Kafka
-- Notification service consumes from a Kafka topic via `@KafkaListener`
+- **Aiven PostgreSQL** — scraper connects via `DATABASE_URL` (postgres:// with SSL), notification service connects via JDBC
+- **Aiven Kafka** — scraper publishes chapter events using SCRAM-SHA-256 over SASL_SSL; notification service consumes from the same topic
+
+**Required secrets** in GitHub Actions:
+- `DATABASE_URL`, `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`
+- `KAFKA_BROKERS`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`
+
+## Local Development
+
+For local development, two eventing backends are available via the [setup wizard](#quick-start):
+
+### Kafka Mode (local)
+
+- Scraper publishes to self-hosted Redpanda in Docker Compose
+- Notification service consumes from Redpanda
 - Requires: Redpanda, Kafka Connect, Debezium PostgreSQL connector
 
-### QStash Mode
+### QStash Mode (local)
 
-- Scraper publishes chapter events via Upstash QStash HTTP API
-- QStash delivers to the configured webhook URL via Caddy reverse proxy
-- Notification service receives via `POST /api/webhook`
+- Scraper publishes via Upstash QStash HTTP API
+- QStash delivers to Caddy → notification service webhook
 - Requires: Caddy, QStash account (free tier available)
-
-### No Eventing (DB Polling)
-
-- Notification service polls `chapters WHERE is_new = true` directly
-- No external eventing dependencies required
-- Simpler but higher latency
 
 ## License
 
