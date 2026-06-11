@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Drop Cursor agent co-author trailers injected by editor/tooling.
+set -euo pipefail
+
+msg_file="${1:?}"
+[ -f "$msg_file" ] || exit 0
+
+tmp="$(mktemp)"
+awk 'tolower($0) !~ /^co-authored-by:[[:space:]]*cursor/' "$msg_file" >"$tmp"
+mv "$tmp" "$msg_file"

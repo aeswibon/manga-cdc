@@ -1,0 +1,9 @@
+---
+description: Git commit standards — signing and no agent co-authors
+alwaysApply: true
+---
+
+# Git commits
+
+- Never add `Co-authored-by: Cursor` or any Cursor agent co-author trailer to commit messages.
+- Commits must be GPG-signed (`git commit -S`). This repo enables signing via local git config and hooks.

@@ -19,6 +19,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Block tracked agent docs
         run: ./scripts/check-no-superpowers.sh
+      - name: Require signed commits without Cursor co-authors
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ./scripts/check-commit-policy.sh "origin/${{ github.event.pull_request.base.ref }}"
+          elif [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            ./scripts/check-commit-policy.sh "${{ github.event.before }}"
+          else
+            ./scripts/check-commit-policy.sh "HEAD"
+          fi
 
   go-test:
     name: Go tests
