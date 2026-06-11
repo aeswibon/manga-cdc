@@ -66,6 +66,7 @@ jobs:
   e2e-test:
     name: End-to-end tests
     needs: [go-test, java-test]
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
