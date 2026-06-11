@@ -2,22 +2,30 @@ package com.mangacdc.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mangacdc.repository.ChapterRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ChapterEventServiceTest {
 
     private ObjectMapper mapper;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         mapper = new ObjectMapper();
+        meterRegistry = new SimpleMeterRegistry();
+    }
+
+    private ChapterEventService newService(NotifierRegistry registry, ChapterRepository repo, JdbcTemplate jdbc) {
+        return new ChapterEventService(registry, repo, jdbc, meterRegistry);
     }
 
     private String cdcEvent(String op, String id, String seriesId, String chapterNum, String title, String url, boolean isNew) {
@@ -44,7 +52,7 @@ class ChapterEventServiceTest {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
 
         service.processChapterEvent(cdcEvent("r", "ch1", "s1", "1", "Title", "https://ex.com", true));
         service.processChapterEvent(cdcEvent("u", "ch1", "s1", "1", "Title", "https://ex.com", true));
@@ -57,7 +65,7 @@ class ChapterEventServiceTest {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
 
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "1", "Title", "https://ex.com", false));
         verifyNoInteractions(registry, repo, jdbc);
@@ -68,7 +76,7 @@ class ChapterEventServiceTest {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
 
         service.processChapterEvent("{\"op\":\"c\"}");
         verifyNoInteractions(registry, repo, jdbc);
@@ -84,7 +92,7 @@ class ChapterEventServiceTest {
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", true));
 
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "1100", "The Final Chapter", "https://ex.com/ch/1100", true));
 
         verify(registry).sendAll("One Piece", "1100", "The Final Chapter", "https://ex.com/ch/1100");
@@ -102,7 +110,7 @@ class ChapterEventServiceTest {
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", true));
 
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "1", "", "https://ex.com", true));
 
         verify(registry).sendAll("Unknown", "1", "", "https://ex.com");
@@ -119,7 +127,7 @@ class ChapterEventServiceTest {
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", false));
 
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "700", "", "https://ex.com", true));
 
         verify(repo).logNotification("ch1", "FAILED", "discord", "Webhook returned error");
@@ -136,7 +144,7 @@ class ChapterEventServiceTest {
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", true, "slack", false, "telegram", true));
 
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "377", "", "https://ex.com", true));
 
         verify(repo).logNotification("ch1", "SENT", "discord", null);
@@ -155,7 +163,7 @@ class ChapterEventServiceTest {
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", false, "slack", false));
 
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "700", "", "https://ex.com", true));
 
         verify(repo, never()).markNotified(anyString());
@@ -169,7 +177,7 @@ class ChapterEventServiceTest {
         when(jdbc.queryForObject(anyString(), eq(String.class), anyString()))
             .thenThrow(new RuntimeException("DB connection lost"));
 
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "1", "", "https://ex.com", true));
 
         verify(registry, never()).sendAll(anyString(), anyString(), anyString(), anyString());
@@ -177,11 +185,45 @@ class ChapterEventServiceTest {
     }
 
     @Test
+    void processChapterEvent_shouldRecordDeliveryMetrics() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForObject(anyString(), eq(String.class), anyString()))
+            .thenReturn("Berserk");
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+            .thenReturn(Map.of("discord", true, "slack", false, "telegram", true));
+
+        ChapterEventService service = newService(registry, repo, jdbc);
+        service.processChapterEvent(cdcEvent("c", "ch1", "s1", "377", "", "https://ex.com", true));
+
+        assertEquals(1.0, meterRegistry.counter("notification_deliveries_total",
+            "channel", "discord", "status", "SENT").count());
+        assertEquals(1.0, meterRegistry.counter("notification_deliveries_total",
+            "channel", "slack", "status", "FAILED").count());
+        assertEquals(1.0, meterRegistry.counter("notification_deliveries_total",
+            "channel", "telegram", "status", "SENT").count());
+    }
+
+    @Test
+    void processChapterEvent_skippedEvents_shouldNotRecordDeliveryMetrics() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ChapterEventService service = newService(registry, repo, jdbc);
+
+        service.processChapterEvent(cdcEvent("r", "ch1", "s1", "1", "Title", "https://ex.com", true));
+        service.processChapterEvent(cdcEvent("c", "ch1", "s1", "1", "Title", "https://ex.com", false));
+
+        assertEquals(0, meterRegistry.find("notification_deliveries_total").counters().size());
+    }
+
+    @Test
     void processChapterEvent_shouldHandleMalformedJson() {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        ChapterEventService service = new ChapterEventService(registry, repo, jdbc);
+        ChapterEventService service = newService(registry, repo, jdbc);
 
         service.processChapterEvent("{invalid json}");
         verifyNoInteractions(registry, repo, jdbc);

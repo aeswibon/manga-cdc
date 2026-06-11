@@ -14,10 +14,16 @@ env:
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
   SNAPSHOT_TAG: ci-${{ github.sha }}
 
+# Avoid duplicate full pipelines when master and a release tag are pushed for the same commit.
+concurrency:
+  group: test-build-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   repo-policy:
     name: Repository policy checks
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
       - name: Block tracked agent docs
@@ -35,6 +41,7 @@ jobs:
   go-test:
     name: Go tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: scraper
@@ -54,6 +61,7 @@ jobs:
   go-integration-test:
     name: Go integration tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: scraper
@@ -87,6 +95,7 @@ jobs:
   configure-test:
     name: Configure tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: configure
@@ -103,6 +112,7 @@ jobs:
   java-test:
     name: Java tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: notification-service
@@ -113,12 +123,15 @@ jobs:
           java-version: "21"
           distribution: "temurin"
           cache: maven
+      - run: mvn test -B
       - run: mvn verify -B -Pintegration-tests
 
   docker-snapshot:
     name: Build CI snapshot images
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     needs: [repo-policy, go-test, go-integration-test, configure-test, java-test]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -161,8 +174,10 @@ jobs:
 
   e2e-test:
     name: End-to-end tests
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     needs: [docker-snapshot]
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       SCRAPER_IMAGE: ${{ needs.docker-snapshot.outputs.scraper_image }}
       NOTIFICATION_IMAGE: ${{ needs.docker-snapshot.outputs.notification_image }}
@@ -177,8 +192,10 @@ jobs:
 
   build:
     name: Build and push Docker images
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [docker-snapshot, e2e-test]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -213,8 +230,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/master' }}
-            type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name != 'pull_request' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
             type=ref,event=pr
 
       - name: Docker meta (notification-service)
@@ -226,8 +243,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/master' }}
-            type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name != 'pull_request' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
             type=ref,event=pr
 
       - name: Build and push scraper
@@ -264,6 +281,7 @@ jobs:
     needs: [build]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:

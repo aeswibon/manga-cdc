@@ -3,6 +3,7 @@ package com.mangacdc.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mangacdc.repository.ChapterRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,14 +19,17 @@ public class ChapterEventService {
     private final NotifierRegistry notifierRegistry;
     private final ChapterRepository chapterRepo;
     private final JdbcTemplate jdbc;
+    private final MeterRegistry meterRegistry;
     private final ObjectMapper mapper;
 
     public ChapterEventService(NotifierRegistry notifierRegistry,
                                 ChapterRepository chapterRepo,
-                                JdbcTemplate jdbc) {
+                                JdbcTemplate jdbc,
+                                MeterRegistry meterRegistry) {
         this.notifierRegistry = notifierRegistry;
         this.chapterRepo = chapterRepo;
         this.jdbc = jdbc;
+        this.meterRegistry = meterRegistry;
         this.mapper = new ObjectMapper();
     }
 
@@ -69,6 +73,7 @@ public class ChapterEventService {
                 String status = success ? "SENT" : "FAILED";
                 String error = success ? null : "Webhook returned error";
                 chapterRepo.logNotification(chapterId, status, channel, error);
+                recordDelivery(channel, status);
                 if (success) {
                     anySuccess = true;
                 }
@@ -84,5 +89,10 @@ public class ChapterEventService {
         } catch (Exception e) {
             log.error("Failed to process chapter event: {}", e.getMessage(), e);
         }
+    }
+
+    private void recordDelivery(String channel, String status) {
+        meterRegistry.counter("notification_deliveries_total", "channel", channel, "status", status)
+                .increment();
     }
 }
