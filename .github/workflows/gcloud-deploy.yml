@@ -117,7 +117,7 @@ jobs:
             --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
             --quiet \
             ${{ env.GCP_SSH_FLAGS }} \
-            --command "set -euo pipefail; mkdir -p ~/manga-cdc; cd ~/manga-cdc; if [ ! -d .git ]; then git clone https://github.com/aeswibon/manga-cdc.git .; fi; git fetch origin --force --tags; git reset --hard '${{ env.DEPLOY_SHA }}'; chmod +x scripts/deploy-prod-on-vm.sh scripts/verify-prod-on-vm.sh"
+            --command "set -euo pipefail; mkdir -p ~/manga-cdc; cd ~/manga-cdc; if [ ! -d .git ]; then git clone https://github.com/aeswibon/manga-cdc.git .; fi; git fetch origin --force --tags; git reset --hard '${{ env.DEPLOY_SHA }}'; chmod +x scripts/deploy-prod-on-vm.sh scripts/verify-prod-on-vm.sh scripts/enable-observability-on-vm.sh"
 
       - name: Copy .env to VM
         run: |
@@ -144,4 +144,12 @@ jobs:
             --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
             --quiet \
             ${{ env.GCP_SSH_FLAGS }} \
-            --command "bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
+            --command "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
+
+      - name: Observability URLs
+        run: |
+          EXTERNAL_IP="$(gcloud compute instances describe "${{ secrets.GCP_VM_NAME }}" \
+            --zone "${{ secrets.GCP_ZONE }}" \
+            --format='get(networkInterfaces[0].accessConfigs[0].natIP)')"
+          echo "Grafana dashboard: http://${EXTERNAL_IP}:3000/d/manga-cdc-overview/manga-cdc"
+          echo "Prometheus:        http://${EXTERNAL_IP}:9090"
