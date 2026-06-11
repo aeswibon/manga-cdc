@@ -46,13 +46,14 @@ const composeLocalTemplate = `services:
       - --smp 1
       - --memory 512M
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster info | grep -q leader_id"]
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
 
   scraper:
+    image: ${SCRAPER_IMAGE:-manga-cdc-scraper:local}
     build:
       context: ./scraper
       dockerfile: Dockerfile
@@ -72,6 +73,7 @@ const composeLocalTemplate = `services:
       - "2112:2112"
 
   notification-service:
+    image: ${NOTIFICATION_IMAGE:-manga-cdc-notification-service:local}
     build:
       context: ./notification-service
       dockerfile: Dockerfile

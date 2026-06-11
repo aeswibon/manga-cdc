@@ -47,6 +47,7 @@ services:
       start_period: 30s
 
   scraper:
+    image: ${SCRAPER_IMAGE:-manga-cdc-scraper:local}
     build:
       context: ./scraper
       dockerfile: Dockerfile
@@ -66,6 +67,7 @@ services:
       - "2112:2112"
 
   notification-service:
+    image: ${NOTIFICATION_IMAGE:-manga-cdc-notification-service:local}
     build:
       context: ./notification-service
       dockerfile: Dockerfile
