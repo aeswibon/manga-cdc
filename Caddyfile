@@ -1,0 +1,3 @@
+mangacdc.34.73.231.106.sslip.io {
+    reverse_proxy notification-service:8080
+}
