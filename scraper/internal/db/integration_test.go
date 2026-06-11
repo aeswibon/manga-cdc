@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -29,6 +30,48 @@ func getTestDB(t *testing.T) *DB {
 	return db
 }
 
+func splitSQL(sql string) []string {
+	var stmts []string
+	var current strings.Builder
+	inDollar := false
+
+	for i := 0; i < len(sql); i++ {
+		ch := sql[i]
+
+		if !inDollar && ch == '$' && i+1 < len(sql) && sql[i+1] == '$' {
+			current.WriteString("$$")
+			inDollar = true
+			i++
+			continue
+		}
+
+		if inDollar && ch == '$' && i+1 < len(sql) && sql[i+1] == '$' {
+			current.WriteString("$$")
+			inDollar = false
+			i++
+			continue
+		}
+
+		if !inDollar && ch == ';' {
+			stmt := strings.TrimSpace(current.String())
+			if stmt != "" {
+				stmts = append(stmts, stmt)
+			}
+			current.Reset()
+			continue
+		}
+
+		current.WriteByte(ch)
+	}
+
+	stmt := strings.TrimSpace(current.String())
+	if stmt != "" {
+		stmts = append(stmts, stmt)
+	}
+
+	return stmts
+}
+
 func migrate(t *testing.T, dsn string) {
 	t.Helper()
 
@@ -47,12 +90,7 @@ func migrate(t *testing.T, dsn string) {
 		}
 	}
 
-	statements := strings.Split(string(migration), ";")
-	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
+	for _, stmt := range splitSQL(string(migration)) {
 		if _, err := pool.Exec(context.Background(), stmt); err != nil {
 			// ignore "already exists" errors for idempotency
 			if !strings.Contains(err.Error(), "already exists") {
@@ -285,7 +323,7 @@ func TestIntegration_GetActiveSeries(t *testing.T) {
 			active = false
 		}
 		_, err := db.UpsertSeries(context.Background(), model.Series{
-			SourceID:  "active-test-" + time.Now().String()[:10],
+			SourceID:  fmt.Sprintf("active-test-%d-%d", time.Now().UnixNano(), i),
 			Title:     "Active Test",
 			SourceURL: "https://example.com/active",
 			Status:    "ONGOING",
