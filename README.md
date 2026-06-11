@@ -193,6 +193,13 @@ The production deployment uses [Aiven](https://aiven.io) for both PostgreSQL and
 - **Aiven Kafka** — scraper publishes chapter events using SCRAM-SHA-256 over SASL_SSL; notification service consumes from the same topic
 
 **Required secrets** in GitHub Actions:
+
+GCP deploy:
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` — Workload Identity Federation provider resource name
+- `GCP_SERVICE_ACCOUNT` — deploy service account email (e.g. `github-actions-cd@….iam.gserviceaccount.com`)
+- `GCP_VM_NAME`, `GCP_ZONE`, `GCP_SSH_USER`, `GCP_SSH_PRIVATE_KEY`
+
+Data & notifications:
 - `DATABASE_URL`, `KAFKA_BROKERS`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`
 - Discord/Slack/Telegram webhook tokens
 
