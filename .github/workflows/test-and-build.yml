@@ -254,3 +254,34 @@ jobs:
             type=registry,ref=${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
           provenance: mode=max
           sbom: true
+
+  release:
+    name: Publish release notes
+    needs: [build]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          chmod +x scripts/generate-release-notes.sh
+          ./scripts/generate-release-notes.sh "$VERSION" > release-notes.md
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "semver=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.version }}
+          name: ${{ steps.notes.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          make_latest: true
