@@ -11,9 +11,39 @@ env:
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
 
 jobs:
+  resolve-release:
+    name: Resolve release tag
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request' }}
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.tag.outputs.should_deploy }}
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Require version tag on commit
+        id: tag
+        run: |
+          git fetch --tags origin
+          release_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
+          if [ -z "$release_tag" ]; then
+            echo "No release tag on ${{ github.event.workflow_run.head_sha }}; skipping deploy."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Release tag: $release_tag"
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${release_tag#v}" >> "$GITHUB_OUTPUT"
+
   gcloud-deploy:
     name: Deploy to GCP VM
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request' }}
+    needs: resolve-release
+    if: ${{ needs.resolve-release.outputs.should_deploy == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,17 +53,6 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-
-      - name: Resolve image tag
-        id: image-tag
-        run: |
-          git fetch --tags origin
-          release_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
-          if [ -n "$release_tag" ]; then
-            echo "tag=${release_tag#v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
-          fi
 
       - id: auth
         uses: google-github-actions/auth@v3
@@ -55,11 +74,11 @@ jobs:
             if [ ! -d .git ]; then
               git clone https://github.com/aeswibon/manga-cdc.git .
             fi
-            git fetch origin master --tags
-            git reset --hard origin/master
+            git fetch origin --tags
+            git reset --hard ${{ needs.resolve-release.outputs.release_tag }}
             chmod +x scripts/render-prod-env.sh
-            export SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ steps.image-tag.outputs.tag }}
-            export NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ steps.image-tag.outputs.tag }}
+            export SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
+            export NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ needs.resolve-release.outputs.image_tag }}
             export DATABASE_URL='${{ secrets.DATABASE_URL }}'
             export KAFKA_BROKERS='${{ secrets.KAFKA_BROKERS }}'
             export KAFKA_TOPIC=mangacdc.public.chapters
@@ -73,7 +92,7 @@ jobs:
             ./scripts/render-prod-env.sh > .env
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            echo "Deployed images tagged ${{ steps.image-tag.outputs.tag }}"
+            echo "Deployed release ${{ needs.resolve-release.outputs.release_tag }}"
 
       - name: Verify
         uses: google-github-actions/ssh-compute@v2
