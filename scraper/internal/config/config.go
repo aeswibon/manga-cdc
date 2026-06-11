@@ -8,13 +8,15 @@ import (
 )
 
 type Config struct {
-	DatabaseURL    string
-	ScrapeInterval time.Duration
-	LogLevel       string
-	KafkaBrokers   string
-	KafkaTopic     string
-	KafkaUsername  string
-	KafkaPassword  string
+	DatabaseURL        string
+	ScrapeInterval     time.Duration
+	LogLevel           string
+	KafkaBrokers       string
+	KafkaTopic         string
+	KafkaUsername      string
+	KafkaPassword      string
+	QStashToken        string
+	QStashDestination  string
 }
 
 func getEnv(key, defaultVal string) string {
@@ -45,12 +47,14 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		DatabaseURL:    dbURL,
-		ScrapeInterval: interval,
-		LogLevel:       logLevel,
-		KafkaBrokers:   os.Getenv("KAFKA_BROKERS"),
-		KafkaTopic:     getEnv("KAFKA_TOPIC", "mangacdc.public.chapters"),
-		KafkaUsername:  os.Getenv("KAFKA_USERNAME"),
-		KafkaPassword:  os.Getenv("KAFKA_PASSWORD"),
+		DatabaseURL:        dbURL,
+		ScrapeInterval:     interval,
+		LogLevel:           logLevel,
+		KafkaBrokers:       os.Getenv("KAFKA_BROKERS"),
+		KafkaTopic:         getEnv("KAFKA_TOPIC", "mangacdc.public.chapters"),
+		KafkaUsername:      os.Getenv("KAFKA_USERNAME"),
+		KafkaPassword:      os.Getenv("KAFKA_PASSWORD"),
+		QStashToken:        os.Getenv("QSTASH_TOKEN"),
+		QStashDestination:  os.Getenv("QSTASH_DESTINATION_URL"),
 	}, nil
 }

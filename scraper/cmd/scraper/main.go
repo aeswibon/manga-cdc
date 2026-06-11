@@ -14,6 +14,7 @@ import (
 	"github.com/aeswibon/manga-cdc/scraper/internal/db"
 	"github.com/aeswibon/manga-cdc/scraper/internal/diff"
 	"github.com/aeswibon/manga-cdc/scraper/internal/kafka"
+	"github.com/aeswibon/manga-cdc/scraper/internal/qstash"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -38,7 +39,7 @@ var (
 
 	chaptersPublished = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "scraper_chapters_published_total",
-		Help: "Total chapters published to Kafka",
+		Help: "Total chapters published to message broker",
 	})
 )
 
@@ -91,6 +92,12 @@ func main() {
 		log.Info("Kafka producer enabled", "brokers", cfg.KafkaBrokers, "topic", cfg.KafkaTopic)
 	}
 
+	var qstashPublisher *qstash.Publisher
+	if cfg.QStashToken != "" && cfg.QStashDestination != "" {
+		qstashPublisher = qstash.NewPublisher(cfg.QStashToken, cfg.QStashDestination)
+		log.Info("QStash publisher enabled", "destination", cfg.QStashDestination)
+	}
+
 	sources := []adapter.SourceAdapter{
 		adapter.NewMangaDexAdapter(),
 		adapter.NewMangaFireAdapter(),
@@ -106,7 +113,7 @@ func main() {
 	defer ticker.Stop()
 
 	for _, source := range sources {
-		scrapeSource(ctx, log, engine, source, kafkaProducer)
+		scrapeSource(ctx, log, engine, source, kafkaProducer, qstashPublisher)
 	}
 
 	for {
@@ -122,12 +129,12 @@ func main() {
 		}
 
 		for _, source := range sources {
-			scrapeSource(ctx, log, engine, source, kafkaProducer)
+			scrapeSource(ctx, log, engine, source, kafkaProducer, qstashPublisher)
 		}
 	}
 }
 
-func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, source adapter.SourceAdapter, kafkaProducer *kafka.Producer) {
+func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, source adapter.SourceAdapter, kafkaProducer *kafka.Producer, qstashPublisher *qstash.Publisher) {
 	start := time.Now()
 	results, err := engine.ProcessSource(ctx, source)
 	duration := time.Since(start).Seconds()
@@ -151,6 +158,20 @@ func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, so
 			for _, ch := range r.Chapters {
 				if err := kafkaProducer.PublishChapterEvent(ctx, ch); err != nil {
 					log.Error("failed to publish chapter event",
+						"source", source.Name(),
+						"series", r.SeriesTitle,
+						"chapter", ch.Number,
+						"error", err)
+					continue
+				}
+				chaptersPublished.Inc()
+			}
+		}
+
+		if qstashPublisher != nil {
+			for _, ch := range r.Chapters {
+				if err := qstashPublisher.PublishChapterEvent(ctx, ch); err != nil {
+					log.Error("failed to publish via QStash",
 						"source", source.Name(),
 						"series", r.SeriesTitle,
 						"chapter", ch.Number,
