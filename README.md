@@ -155,7 +155,7 @@ manga-cdc/
 # Start PostgreSQL
 docker compose up -d postgres
 
-# Run scraper (Go) — applies db/migrations automatically on startup
+# Run scraper (Go) — applies db/migrations on startup; exposes :2112/metrics, /healthz, /readyz
 cd scraper && go run ./cmd/scraper
 
 # Run notification service (Java)

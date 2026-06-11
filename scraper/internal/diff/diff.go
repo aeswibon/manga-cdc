@@ -29,10 +29,15 @@ type Result struct {
 	Chapters    []model.Chapter
 }
 
-func (e *Engine) ProcessSource(ctx context.Context, source adapter.SourceAdapter) ([]Result, error) {
+type SourceRun struct {
+	Results       []Result
+	SeriesFetched int
+}
+
+func (e *Engine) ProcessSource(ctx context.Context, source adapter.SourceAdapter) (SourceRun, error) {
 	seriesList, err := source.FetchLatest(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("fetch latest from %s: %w", source.Name(), err)
+		return SourceRun{}, fmt.Errorf("fetch latest from %s: %w", source.Name(), err)
 	}
 
 	var results []Result
@@ -80,5 +85,8 @@ func (e *Engine) ProcessSource(ctx context.Context, source adapter.SourceAdapter
 		}
 	}
 
-	return results, nil
+	return SourceRun{
+		Results:       results,
+		SeriesFetched: len(seriesList),
+	}, nil
 }

@@ -38,6 +38,10 @@ func (d *DB) Close() {
 	d.pool.Close()
 }
 
+func (d *DB) Ping(ctx context.Context) error {
+	return d.pool.Ping(ctx)
+}
+
 func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 	var id string
 	err := d.pool.QueryRow(ctx, `

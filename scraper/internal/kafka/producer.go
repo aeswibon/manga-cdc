@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -19,8 +20,9 @@ type Writer interface {
 }
 
 type Producer struct {
-	writer Writer
-	topic  string
+	writer  Writer
+	topic   string
+	brokers []string
 }
 
 func NewProducer(brokers, topic, username, password string) (*Producer, error) {
@@ -42,7 +44,11 @@ func NewProducer(brokers, topic, username, password string) (*Producer, error) {
 		}
 	}
 
-	return &Producer{writer: w, topic: topic}, nil
+	return &Producer{
+		writer:  w,
+		topic:   topic,
+		brokers: strings.Split(brokers, ","),
+	}, nil
 }
 
 type chapterEvent struct {
@@ -91,4 +97,16 @@ func (p *Producer) PublishChapterEvent(ctx context.Context, chapter model.Chapte
 
 func (p *Producer) Close() error {
 	return p.writer.Close()
+}
+
+func (p *Producer) Ping(ctx context.Context) error {
+	if len(p.brokers) == 0 {
+		return fmt.Errorf("no kafka brokers configured")
+	}
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", strings.TrimSpace(p.brokers[0]))
+	if err != nil {
+		return fmt.Errorf("dial kafka broker: %w", err)
+	}
+	return conn.Close()
 }
