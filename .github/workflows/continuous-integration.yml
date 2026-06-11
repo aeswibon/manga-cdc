@@ -1,4 +1,4 @@
-name: CI
+name: Continuous Integration
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ env:
 
 jobs:
   scraper:
-    name: Go scraper
+    name: Go scraper tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -46,7 +46,7 @@ jobs:
           DATABASE_URL_TEST: postgres://mangacdc:mangacdc@postgres:5432/mangacdc?sslmode=disable
 
   notification-service:
-    name: Java notification service
+    name: Java notification tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -61,7 +61,7 @@ jobs:
       - run: mvn verify -B -Pintegration-tests
 
   e2e:
-    name: End-to-end test
+    name: End-to-end tests
     needs: [scraper, notification-service]
     runs-on: ubuntu-latest
     steps:
