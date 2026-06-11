@@ -21,6 +21,8 @@ jobs:
     services:
       postgres:
         image: postgres:16-alpine
+        ports:
+          - 5432:5432
         env:
           POSTGRES_DB: mangacdc
           POSTGRES_USER: mangacdc
@@ -44,7 +46,7 @@ jobs:
       - name: Integration tests
         run: go test -tags=integration ./internal/db/... -v -count=1
         env:
-          DATABASE_URL_TEST: postgres://mangacdc:mangacdc@postgres:5432/mangacdc?sslmode=disable
+          DATABASE_URL_TEST: postgres://mangacdc:mangacdc@localhost:5432/mangacdc?sslmode=disable
 
   java-test:
     name: Java tests
