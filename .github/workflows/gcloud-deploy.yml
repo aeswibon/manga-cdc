@@ -55,13 +55,23 @@ jobs:
           GCP_VM_NAME: ${{ secrets.GCP_VM_NAME }}
           GCP_ZONE: ${{ secrets.GCP_ZONE }}
         run: |
+          gcloud compute ssh ${GCP_USER}@${GCP_VM_NAME} \
+            --zone=${GCP_ZONE} --quiet --command="
+            set -e
+            mkdir -p ${GCP_APP_DIR}
+            cd ${GCP_APP_DIR}
+            if [ ! -d .git ]; then
+              git clone https://github.com/aeswibon/manga-cdc.git .
+            fi
+          "
+
           gcloud compute scp /tmp/manga-cdc-env ${GCP_USER}@${GCP_VM_NAME}:~/${GCP_APP_DIR}/.env \
             --zone=${GCP_ZONE} --quiet
 
           gcloud compute ssh ${GCP_USER}@${GCP_VM_NAME} \
             --zone=${GCP_ZONE} --quiet --command="
             set -e
-            cd /home/${GCP_USER}/${GCP_APP_DIR}
+            cd ${GCP_APP_DIR}
             git fetch origin master
             git reset --hard origin/master
             docker compose -f docker-compose.prod.yml pull
