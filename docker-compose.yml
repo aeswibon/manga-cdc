@@ -66,6 +66,7 @@ services:
         condition: service_healthy
 
   scraper:
+    image: ${SCRAPER_IMAGE:-manga-cdc-scraper}
     build:
       context: ./scraper
       dockerfile: Dockerfile
@@ -83,6 +84,7 @@ services:
       - "2112:2112"
 
   notification-service:
+    image: ${NOTIFICATION_IMAGE:-manga-cdc-notification-service}
     build:
       context: ./notification-service
       dockerfile: Dockerfile
@@ -97,7 +99,7 @@ services:
       SPRING_DATASOURCE_USERNAME: mangacdc
       SPRING_DATASOURCE_PASSWORD: mangacdc
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-      DISCORD_WEBHOOK_URL: ""
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL}"
       CDC_ENABLED: "true"
     ports:
       - "8080:8080"
