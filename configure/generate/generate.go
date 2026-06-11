@@ -2,70 +2,48 @@ package generate
 
 import (
 	"fmt"
+
+	"github.com/aeswibon/manga-cdc/configure/manifest"
 )
 
-type EventingMode int
-
-const (
-	EventingNone   EventingMode = iota
-	EventingKafka
-	EventingQStash
-	EventingBoth
-)
-
-func (m EventingMode) String() string {
-	switch m {
-	case EventingNone:
-		return "none"
-	case EventingKafka:
-		return "kafka"
-	case EventingQStash:
-		return "qstash"
-	case EventingBoth:
-		return "both"
-	default:
-		return "unknown"
+func All(m manifest.Manifest) error {
+	if err := m.Validate(); err != nil {
+		return err
 	}
-}
 
-type Config struct {
-	Eventing    EventingMode
-	Notifiers   []string
-	Deployments []string
-}
-
-var RootDir = "."
-
-func All(cfg Config) error {
 	fmt.Println()
 	fmt.Println("Generating files...")
 
-	if err := writeEnvFile(cfg); err != nil {
+	if err := writeEnvFile(m); err != nil {
 		return fmt.Errorf("env: %w", err)
 	}
 	fmt.Println("  ✔ .env.example")
 
-	for _, dep := range cfg.Deployments {
-		switch dep {
-		case "local-compose", "prod-compose":
-			if err := writeDockerCompose(cfg, dep); err != nil {
-				return fmt.Errorf("docker-compose (%s): %w", dep, err)
+	switch m.Tier {
+	case manifest.TierLocal:
+		if err := writeComposeLocal(m); err != nil {
+			return fmt.Errorf("docker-compose: %w", err)
+		}
+		fmt.Println("  ✔ docker-compose.yml")
+	case manifest.TierProduction:
+		if m.HasDeployTarget("docker-compose-prod") {
+			if err := writeComposeProd(m); err != nil {
+				return fmt.Errorf("docker-compose prod: %w", err)
 			}
-			fmt.Printf("  ✔ docker-compose.%s\n", composeFilename(dep))
-		case "helm":
-			if err := writeHelmValues(cfg); err != nil {
+			fmt.Println("  ✔ docker-compose.prod.yml")
+			if m.Eventing.Backend == manifest.EventingQStash {
+				fmt.Println("  ✔ Caddyfile")
+			}
+		}
+		if m.HasDeployTarget("helm") {
+			if err := writeHelmValues(m); err != nil {
 				return fmt.Errorf("helm: %w", err)
 			}
 			fmt.Println("  ✔ helm/manga-cdc/values-override.yaml")
-		case "terraform":
-			if err := writeTerraformTfvars(cfg); err != nil {
-				return fmt.Errorf("terraform: %w", err)
-			}
-			fmt.Println("  ✔ terraform/terraform.tfvars")
 		}
 	}
 
-	if err := writeGuide(cfg); err != nil {
+	if err := writeGuide(m); err != nil {
 		return fmt.Errorf("guide: %w", err)
 	}
 	fmt.Println("  ✔ SETUP.md")
@@ -73,9 +51,10 @@ func All(cfg Config) error {
 	return nil
 }
 
-func composeFilename(dep string) string {
-	if dep == "local-compose" {
-		return "yml"
+func AllFromFile(path string) error {
+	m, err := manifest.Load(path)
+	if err != nil {
+		return err
 	}
-	return "prod.yml"
+	return All(m)
 }

@@ -70,12 +70,9 @@ flowchart TB
 
 **Production deployment** uses [Aiven](https://aiven.io) for managed PostgreSQL and Kafka (SCRAM-SHA-256 over SASL_SSL).
 
-For local development, two eventing backends are available (configured via the [setup wizard](#quick-start)):
+For local development, the [setup wizard](#quick-start) provisions Postgres and Redpanda in Docker Compose. The scraper publishes Debezium-compatible JSON directly to Redpanda (no Debezium connector).
 
-| Backend | How it works |
-|---------|-------------|
-| **Kafka** | Scraper publishes Debezium-compatible JSON → Redpanda → notification service consumer |
-| **QStash** | Scraper publishes via Upstash QStash HTTP API → Caddy → notification service webhook |
+For production, choose your own managed PostgreSQL and either Kafka or QStash via the wizard — deploy with Docker Compose or Helm.
 
 ## Why This Stack
 
@@ -85,7 +82,7 @@ For local development, two eventing backends are available (configured via the [
 | **Why Spring Boot / Java for notifications?** | Rich ecosystem for notification integrations, JDBC/R2DBC, battle-tested Kafka client |
 | **Why Kafka?** | Reliable at-least-once delivery, persistent event log, consumer group rebalancing, Debezium-compatible schema |
 | **Why Aiven?** | Managed Kafka + Postgres under one provider, SCRAM-SHA-256 auth, no operational overhead |
-| **Why both Kafka and QStash paths?** | Kafka for production-grade streaming; QStash for simpler local dev without a persistent broker |
+| **Why both Kafka and QStash paths?** | Kafka for production-grade streaming; QStash as a production HTTP alternative without running a broker |
 
 ## Tech Stack
 
@@ -107,8 +104,12 @@ For local development, two eventing backends are available (configured via the [
 git clone https://github.com/aeswibon/manga-cdc.git
 cd manga-cdc
 
-# Run the setup wizard
+# Run the setup wizard (local or production tier)
 go run ./configure
+
+# Re-generate artifacts from a saved manifest
+cp manga-cdc.config.example.yaml manga-cdc.config.yaml
+go run ./configure generate
 
 # Follow the generated guide
 cat SETUP.md
@@ -118,7 +119,9 @@ cat SETUP.md
 
 ```
 manga-cdc/
-├── configure/                  # Setup wizard (Go CLI)
+├── configure/                  # Setup wizard (Go CLI, manifest + generators)
+│   ├── manifest/               # manga-cdc.config.yaml schema + validation
+│   └── presets/                # Provider hint presets (Aiven, Neon, Upstash, etc.)
 ├── scraper/                    # Go scraper module
 │   ├── cmd/scraper/            # Scraper entrypoint
 │   ├── internal/
@@ -195,19 +198,7 @@ The production deployment uses [Aiven](https://aiven.io) for both PostgreSQL and
 
 ## Local Development
 
-For local development, two eventing backends are available via the [setup wizard](#quick-start):
-
-### Kafka Mode (local)
-
-- Scraper publishes to self-hosted Redpanda in Docker Compose
-- Notification service consumes from Redpanda
-- Requires: Redpanda, Kafka Connect, Debezium PostgreSQL connector
-
-### QStash Mode (local)
-
-- Scraper publishes via Upstash QStash HTTP API
-- QStash delivers to Caddy → notification service webhook
-- Requires: Caddy, QStash account (free tier available)
+The [setup wizard](#quick-start) local tier provisions Postgres, Redpanda, scraper, notification service, Prometheus, and Grafana in Docker Compose. QStash is available as a production bring-your-own option only.
 
 ## License
 

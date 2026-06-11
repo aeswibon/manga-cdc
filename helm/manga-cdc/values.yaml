@@ -1,6 +1,30 @@
 global:
   namespace: manga-cdc
 
+tier: production
+
+database:
+  external: true
+  url: ""
+  jdbcUrl: ""
+
+eventing:
+  kafka:
+    enabled: false
+    brokers: ""
+    topic: mangacdc.public.chapters
+    username: ""
+    password: ""
+  qstash:
+    enabled: false
+    token: ""
+    destinationUrl: ""
+
+infra:
+  postgres: false
+  redpanda: false
+  connect: false
+
 images:
   scraper: ghcr.io/aeswibon/manga-cdc/scraper:latest
   notification: ghcr.io/aeswibon/manga-cdc/notification-service:latest
@@ -21,6 +45,18 @@ storage:
 
 discord:
   webhookUrl: ""
+
+slack:
+  webhookUrl: ""
+
+telegram:
+  botToken: ""
+  chatId: ""
+
+notifiers:
+  discord: false
+  slack: false
+  telegram: false
 
 debezium:
   autoRegister: true

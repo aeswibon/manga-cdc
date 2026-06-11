@@ -25,3 +25,7 @@ notification-service/bin/
 # Local-only agent docs (never commit — enforced in CI)
 .superpowers/
 docs/superpowers/
+
+# User-specific configure output
+manga-cdc.config.yaml
+helm/manga-cdc/values-override.yaml

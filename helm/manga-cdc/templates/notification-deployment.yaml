@@ -1,0 +1,78 @@
+{{- if eq .Values.tier "production" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "manga-cdc.name" . }}-notification
+  labels:
+    app.kubernetes.io/name: {{ include "manga-cdc.name" . }}
+    app.kubernetes.io/component: notification
+    {{- include "manga-cdc.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas.notification }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: notification
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "manga-cdc.name" . }}
+        app.kubernetes.io/component: notification
+    spec:
+      containers:
+        - name: notification-service
+          image: {{ .Values.images.notification }}
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: {{ .Values.database.jdbcUrl | quote }}
+            {{- if .Values.eventing.kafka.enabled }}
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.eventing.kafka.brokers | quote }}
+            - name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+              value: SCRAM-SHA-256
+            - name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+              value: SASL_SSL
+            - name: SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: kafka-jaas-config
+            - name: CDC_ENABLED
+              value: "true"
+            {{- else }}
+            - name: CDC_ENABLED
+              value: "false"
+            {{- end }}
+            {{- if .Values.notifiers.discord }}
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: discord-webhook-url
+                  optional: true
+            {{- end }}
+            {{- if .Values.notifiers.slack }}
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: slack-webhook-url
+                  optional: true
+            {{- end }}
+            {{- if .Values.notifiers.telegram }}
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: telegram-bot-token
+                  optional: true
+            - name: TELEGRAM_CHAT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: telegram-chat-id
+                  optional: true
+            {{- end }}
+{{- end }}
