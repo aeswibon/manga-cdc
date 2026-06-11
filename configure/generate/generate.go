@@ -36,10 +36,6 @@ type Config struct {
 
 var RootDir = "."
 
-// stubs — will be replaced by future tasks
-func writeGuide(Config) error                { return nil }
-func renderGuide(Config) (string, error)     { return "", nil }
-
 func All(cfg Config) error {
 	fmt.Println()
 	fmt.Println("Generating files...")
