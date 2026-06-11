@@ -1,24 +1,61 @@
 # manga-cdc
 
-A production-grade manga chapter notification system built with Change Data Capture (CDC) architecture.
-
-Track manga releases from multiple sources and get notified via Discord when new chapters drop — powered by Go, PostgreSQL, Debezium, and Redpanda/Kafka.
+Track manga releases from multiple sources and get notified when new chapters drop — via Discord, Slack, or Telegram.
 
 ## Architecture
 
 ```
-[Go Scraper] → [PostgreSQL] → [WAL] → [Debezium] → [Redpanda] → [Spring Boot Consumer] → [Discord Webhook]
-       │                        │
-       ▼                        ▼
-[Prometheus + Grafana]    [notification_logs]
+                          ┌──────────────────┐
+                          │   Source Adapters │
+                          │ (MangaDex, Fire,  │
+                          │  Plus, Asura,     │
+                          │  Town, Pill)      │
+                          └────────┬─────────┘
+                                   │
+                                   ▼
+                          ┌──────────────────┐
+                          │  Go Scraper       │
+                          │  (diff engine)    │
+                          └────────┬─────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼              ▼
+           ┌────────────┐  ┌───────────┐  ┌──────────┐
+           │ PostgreSQL │  │  Kafka    │  │  QStash  │
+           │ (canonical │  │ (optional)│  │(optional)│
+           │  store)    │  └─────┬─────┘  └────┬─────┘
+           └─────┬──────┘        │             │
+                 │               ▼             ▼
+                 │        ┌──────────┐  ┌──────────┐
+                 │        │ Redpanda │  │  Caddy   │
+                 │        └────┬─────┘  └────┬─────┘
+                 │             │             │
+                 ▼             ▼             ▼
+          ┌──────────────────────────────────────┐
+          │      Notification Service            │
+          │  (Spring Boot — Kafka Consumer       │
+          │   + Webhook Receiver)               │
+          └──────────────┬───────────────────────┘
+                         │
+                         ▼
+          ┌──────────┐ ┌───────┐ ┌─────────┐
+          │ Discord  │ │ Slack │ │ Telegram│
+          └──────────┘ └───────┘ └─────────┘
+
+                    ┌──────────────────────┐
+                    │ Prometheus + Grafana │
+                    │   (observability)    │
+                    └──────────────────────┘
 ```
 
-- **Scraper** (Go) — Polls MangaDex API, diffs against DB state, inserts new chapters
-- **PostgreSQL** — Central data store; Write-Ahead Log (WAL) feeds CDC
-- **Debezium** — Streams WAL changes to Redpanda via Kafka Connect
-- **Redpanda** — Kafka-compatible event backbone
-- **Notification Service** (Spring Boot / Java 21) — Consumes CDC events, dispatches Discord embeds
-- **Observability** — Prometheus metrics + Grafana dashboards
+**Two eventing backends supported:**
+
+| Backend | How it works |
+|---------|-------------|
+| **Kafka** | Scraper publishes Debezium-compatible JSON → Redpanda → notification service consumer → webhook |
+| **QStash** | Scraper publishes via Upstash QStash HTTP API → Caddy reverse proxy → notification service webhook endpoint |
+
+Use the [setup wizard](#quick-start) to choose your configuration.
 
 ## Tech Stack
 
@@ -26,107 +63,81 @@ Track manga releases from multiple sources and get notified via Discord when new
 |-----------|-----------|
 | Scraper | Go 1.23, pgx, Colly |
 | Database | PostgreSQL 16 |
-| CDC | Debezium 2.7, Kafka Connect |
-| Event Stream | Redpanda 24.2 |
+| Eventing (optional) | Redpanda/Kafka or Upstash QStash + Caddy |
 | Notifications | Spring Boot 3.3, Java 21 |
+| Notifier targets | Discord, Slack, Telegram |
 | Metrics | Prometheus + Grafana |
-| Containerization | Docker Compose |
-| Deployment (future) | Kubernetes + Terraform |
+| Deployment | Docker Compose, Kubernetes/Helm, Terraform/GCP |
 
-## Getting Started
-
-### Prerequisites
-
-- Docker & Docker Compose
-- Git
-
-### Clone & Run
+## Quick Start
 
 ```bash
+# Clone the repo
 git clone https://github.com/aeswibon/manga-cdc.git
 cd manga-cdc
-docker compose up --build -d
-```
 
-This starts all 8 services: postgres, redpanda, connect (Debezium), scraper, notification-service, kafkaui, prometheus, grafana.
+# Run the setup wizard
+go run ./configure
 
-### First Scrape
-
-The scraper runs immediately on startup and then every 5 minutes. Check the logs:
-
-```bash
-docker compose logs scraper
-# Expected: "scraper started" with MangaDex source, "new chapters detected"
-```
-
-### Enable Discord Notifications
-
-```bash
-DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/your-webhook-id/your-webhook-token" \
-  docker compose up -d notification-service
-```
-
-### Verify CDC Pipeline
-
-```bash
-# Check Debezium connector status
-curl -s http://localhost:8083/connectors/mangacdc-connector/status | jq
-
-# Consume a CDC message
-docker compose exec redpanda rpk topic consume mangacdc.public.chapters --num 1
-
-# Check notification logs
-docker compose exec postgres psql -U mangacdc -d mangacdc \
-  -c "SELECT COUNT(*) FROM notification_logs WHERE status = 'SENT';"
+# Follow the generated guide
+cat SETUP.md
 ```
 
 ## Project Structure
 
 ```
 manga-cdc/
+├── configure/                  # ✨ Setup wizard (Go CLI)
 ├── scraper/                    # Go scraper module
-│   ├── cmd/scraper/main.go     # Entrypoint
-│   └── internal/
-│       ├── adapter/            # Source adapters (MangaDex, extensible)
-│       ├── model/              # Domain types
-│       ├── db/                 # PostgreSQL client (pgx)
-│       ├── diff/               # Change detection engine
-│       └── config/             # Env-based config
+│   ├── cmd/scraper/            # Scraper entrypoint
+│   ├── internal/
+│   │   ├── adapter/            # Source adapters (6 sources)
+│   │   ├── model/              # Domain types
+│   │   ├── db/                 # PostgreSQL client (pgx)
+│   │   ├── diff/               # Change detection engine
+│   │   ├── kafka/              # Kafka producer (optional)
+│   │   ├── qstash/             # QStash publisher (optional)
+│   │   └── config/             # Env-based config
 ├── notification-service/       # Spring Boot notification service
 │   └── src/main/java/com/mangacdc/
-│       ├── config/             # Kafka consumer config
-│       ├── model/              # Chapter data record
+│       ├── controller/         # Webhook endpoint for QStash
+│       ├── service/            # Kafka consumer + notifiers
 │       ├── repository/         # JDBC data access
-│       └── service/            # Discord notifier + Kafka consumer
+│       └── config/             # Kafka consumer config
 ├── connectors/                 # Debezium connector configs
 ├── db/migrations/              # SQL schema migrations
-├── docker-compose.yml          # All services
+├── helm/                       # Kubernetes Helm chart
+├── terraform/                  # GCP Terraform IaC
+├── docker-compose.yml          # Local dev compose (generated)
+├── docker-compose.prod.yml     # Production compose (generated)
 ├── prometheus.yml              # Metrics scraping config
-└── docs/
-    └── superpowers/
-        ├── specs/              # Design documents
-        └── plans/              # Implementation plans
+└── docs/superpowers/
+    ├── specs/                  # Design documents
+    └── plans/                  # Implementation plans
 ```
 
 ## Development
 
-### Local Development (without Docker)
+### Without the wizard
 
 ```bash
-# Terminal 1: PostgreSQL
+# Start PostgreSQL
 docker compose up -d postgres
 
-# Terminal 2: Scraper
+# Run scraper (Go)
 cd scraper && go run ./cmd/scraper
 
-# Terminal 3: Notification Service (with Discord webhook)
-cd notification-service
-./mvnw spring-boot:run -Dspring-boot.run.arguments=--discord.webhook-url=$WEBHOOK_URL
+# Run notification service (Java)
+cd notification-service && ./mvnw spring-boot:run
 ```
+
+### Environment Variables
+
+See `.env.example` (generated by the setup wizard) for all available options.
 
 ### Adding a New Source
 
-Implement the `SourceAdapter` interface:
+Implement the `SourceAdapter` interface in `scraper/internal/adapter/`:
 
 ```go
 type SourceAdapter interface {
@@ -144,20 +155,26 @@ type SourceAdapter interface {
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
 
-## Phase 2: CDC Pipeline
+## Eventing Backends
 
-The DB polling mechanism (Phase 1) was replaced with a CDC pipeline (Phase 2):
+### Kafka Mode
 
-- **Before:** Notification service polled `chapters WHERE is_new = true` every 30s
-- **After:** Debezium streams WAL changes → Redpanda → Kafka consumer triggers notifications in real-time
+- Scraper publishes chapter events as Debezium-compatible JSON to Redpanda/Kafka
+- Notification service consumes from a Kafka topic via `@KafkaListener`
+- Requires: Redpanda, Kafka Connect, Debezium PostgreSQL connector
 
-## Contributing
+### QStash Mode
 
-1. Fork the repo
-2. Create a feature branch (`git checkout -b feat/amazing-feature`)
-3. Commit your changes (`git commit -m "feat: add amazing feature"`)
-4. Push (`git push origin feat/amazing-feature`)
-5. Open a Pull Request
+- Scraper publishes chapter events via Upstash QStash HTTP API
+- QStash delivers to the configured webhook URL via Caddy reverse proxy
+- Notification service receives via `POST /api/webhook`
+- Requires: Caddy, QStash account (free tier available)
+
+### No Eventing (DB Polling)
+
+- Notification service polls `chapters WHERE is_new = true` directly
+- No external eventing dependencies required
+- Simpler but higher latency
 
 ## License
 
