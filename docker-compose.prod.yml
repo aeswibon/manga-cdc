@@ -10,6 +10,8 @@ services:
       KAFKA_TOPIC: ${KAFKA_TOPIC:-mangacdc.public.chapters}
       KAFKA_USERNAME: ${KAFKA_USERNAME:?err}
       KAFKA_PASSWORD: ${KAFKA_PASSWORD:?err}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      ZERO_RESULT_ALERT_THRESHOLD: ${ZERO_RESULT_ALERT_THRESHOLD:-3}
     ports:
       - "2112:2112"
 

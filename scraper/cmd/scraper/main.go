@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/aeswibon/manga-cdc/scraper/internal/adapter"
+	"github.com/aeswibon/manga-cdc/scraper/internal/alert"
 	"github.com/aeswibon/manga-cdc/scraper/internal/config"
 	"github.com/aeswibon/manga-cdc/scraper/internal/db"
 	"github.com/aeswibon/manga-cdc/scraper/internal/diff"
+	"github.com/aeswibon/manga-cdc/scraper/internal/health"
 	"github.com/aeswibon/manga-cdc/scraper/internal/kafka"
 	"github.com/aeswibon/manga-cdc/scraper/internal/migrate"
 	"github.com/aeswibon/manga-cdc/scraper/internal/qstash"
@@ -63,16 +65,6 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	mux := http.NewServeMux()
-	mux.Handle("GET /metrics", promhttp.Handler())
-	metricsServer := &http.Server{Addr: ":2112", Handler: mux}
-	go func() {
-		log.Info("metrics server starting", "addr", ":2112")
-		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("metrics server error", "error", err)
-		}
-	}()
-
 	if err := migrate.Run(ctx, cfg.DatabaseURL); err != nil {
 		log.Error("failed to apply database migrations", "error", err)
 		os.Exit(1)
@@ -104,6 +96,22 @@ func main() {
 		log.Info("QStash publisher enabled", "destination", cfg.QStashDestination)
 	}
 
+	zeroMonitor := alert.New(log, cfg.AdminDiscordWebhookURL, cfg.ZeroResultAlertThreshold)
+	if cfg.AdminDiscordWebhookURL != "" {
+		log.Info("zero-result alerts enabled", "threshold", cfg.ZeroResultAlertThreshold)
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", promhttp.Handler())
+	health.New(database, kafkaProducer, cfg.KafkaBrokers != "").Register(mux)
+	metricsServer := &http.Server{Addr: ":2112", Handler: mux}
+	go func() {
+		log.Info("metrics server starting", "addr", ":2112")
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("metrics server error", "error", err)
+		}
+	}()
+
 	sources := []adapter.SourceAdapter{
 		adapter.NewMangaDexAdapter(),
 		adapter.NewMangaFireAdapter(),
@@ -119,7 +127,7 @@ func main() {
 	defer ticker.Stop()
 
 	for _, source := range sources {
-		scrapeSource(ctx, log, engine, source, kafkaProducer, qstashPublisher)
+		scrapeSource(ctx, log, engine, zeroMonitor, source, kafkaProducer, qstashPublisher)
 	}
 
 	for {
@@ -135,14 +143,22 @@ func main() {
 		}
 
 		for _, source := range sources {
-			scrapeSource(ctx, log, engine, source, kafkaProducer, qstashPublisher)
+			scrapeSource(ctx, log, engine, zeroMonitor, source, kafkaProducer, qstashPublisher)
 		}
 	}
 }
 
-func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, source adapter.SourceAdapter, kafkaProducer *kafka.Producer, qstashPublisher *qstash.Publisher) {
+func scrapeSource(
+	ctx context.Context,
+	log *slog.Logger,
+	engine *diff.Engine,
+	zeroMonitor *alert.Monitor,
+	source adapter.SourceAdapter,
+	kafkaProducer *kafka.Producer,
+	qstashPublisher *qstash.Publisher,
+) {
 	start := time.Now()
-	results, err := engine.ProcessSource(ctx, source)
+	run, err := engine.ProcessSource(ctx, source)
 	duration := time.Since(start).Seconds()
 
 	if err != nil {
@@ -152,8 +168,9 @@ func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, so
 	}
 
 	scrapeDuration.WithLabelValues(source.Name()).Observe(duration)
+	zeroMonitor.RecordScrape(ctx, source.Name(), run.SeriesFetched)
 
-	for _, r := range results {
+	for _, r := range run.Results {
 		chaptersDetected.Add(float64(r.NewChapters))
 		log.Info("source update",
 			"source", source.Name(),

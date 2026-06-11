@@ -8,15 +8,17 @@ import (
 )
 
 type Config struct {
-	DatabaseURL        string
-	ScrapeInterval     time.Duration
-	LogLevel           string
-	KafkaBrokers       string
-	KafkaTopic         string
-	KafkaUsername      string
-	KafkaPassword      string
-	QStashToken        string
-	QStashDestination  string
+	DatabaseURL              string
+	ScrapeInterval           time.Duration
+	LogLevel                 string
+	KafkaBrokers             string
+	KafkaTopic               string
+	KafkaUsername            string
+	KafkaPassword            string
+	QStashToken              string
+	QStashDestination        string
+	AdminDiscordWebhookURL   string
+	ZeroResultAlertThreshold int
 }
 
 func getEnv(key, defaultVal string) string {
@@ -46,15 +48,31 @@ func Load() (*Config, error) {
 		logLevel = "info"
 	}
 
+	adminWebhook := os.Getenv("ADMIN_DISCORD_WEBHOOK_URL")
+	if adminWebhook == "" {
+		adminWebhook = os.Getenv("DISCORD_WEBHOOK_URL")
+	}
+
+	threshold := 3
+	if v := os.Getenv("ZERO_RESULT_ALERT_THRESHOLD"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ZERO_RESULT_ALERT_THRESHOLD: %w", err)
+		}
+		threshold = parsed
+	}
+
 	return &Config{
-		DatabaseURL:        dbURL,
-		ScrapeInterval:     interval,
-		LogLevel:           logLevel,
-		KafkaBrokers:       os.Getenv("KAFKA_BROKERS"),
-		KafkaTopic:         getEnv("KAFKA_TOPIC", "mangacdc.public.chapters"),
-		KafkaUsername:      os.Getenv("KAFKA_USERNAME"),
-		KafkaPassword:      os.Getenv("KAFKA_PASSWORD"),
-		QStashToken:        os.Getenv("QSTASH_TOKEN"),
-		QStashDestination:  os.Getenv("QSTASH_DESTINATION_URL"),
+		DatabaseURL:              dbURL,
+		ScrapeInterval:           interval,
+		LogLevel:                 logLevel,
+		KafkaBrokers:             os.Getenv("KAFKA_BROKERS"),
+		KafkaTopic:               getEnv("KAFKA_TOPIC", "mangacdc.public.chapters"),
+		KafkaUsername:            os.Getenv("KAFKA_USERNAME"),
+		KafkaPassword:            os.Getenv("KAFKA_PASSWORD"),
+		QStashToken:              os.Getenv("QSTASH_TOKEN"),
+		QStashDestination:        os.Getenv("QSTASH_DESTINATION_URL"),
+		AdminDiscordWebhookURL:   adminWebhook,
+		ZeroResultAlertThreshold: threshold,
 	}, nil
 }

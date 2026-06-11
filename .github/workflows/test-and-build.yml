@@ -47,6 +47,8 @@ jobs:
       - run: go mod download
       - run: go vet ./...
       - run: go build ./...
+      - name: Adapter parser tests
+        run: go test ./internal/adapter/... -count=1 -v
       - run: go test ./... -v -count=1
 
   go-integration-test:

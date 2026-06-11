@@ -38,6 +38,8 @@ const composeProdTemplate = `services:
       SCRAPE_INTERVAL_SECONDS: "300"
       LOG_LEVEL: info
 {{ .ScraperEnv }}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      ZERO_RESULT_ALERT_THRESHOLD: ${ZERO_RESULT_ALERT_THRESHOLD:-3}
     ports:
       - "2112:2112"
 

@@ -7,6 +7,22 @@ import (
 	"testing"
 )
 
+func TestAsuraScansAdapter_FetchLatest_Fixture(t *testing.T) {
+	srv := fixtureServer(t, "asurascans_latest.html")
+	defer srv.Close()
+
+	adapter := NewAsuraScansAdapter()
+	adapter.SetCollector(newCollyForTest(srv))
+
+	series, err := adapter.FetchLatest(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(series) != 2 {
+		t.Fatalf("expected 2 series from fixture, got %d", len(series))
+	}
+}
+
 func TestAsuraScansAdapter_FetchLatest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html>
