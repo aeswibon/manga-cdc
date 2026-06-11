@@ -1,0 +1,56 @@
+{{- if eq .Values.tier "production" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "manga-cdc.name" . }}-scraper
+  labels:
+    app.kubernetes.io/name: {{ include "manga-cdc.name" . }}
+    app.kubernetes.io/component: scraper
+    {{- include "manga-cdc.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas.scraper }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: scraper
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "manga-cdc.name" . }}
+        app.kubernetes.io/component: scraper
+    spec:
+      containers:
+        - name: scraper
+          image: {{ .Values.images.scraper }}
+          ports:
+            - containerPort: 2112
+              name: metrics
+          env:
+            - name: DATABASE_URL
+              value: {{ .Values.database.url | quote }}
+            - name: SCRAPE_INTERVAL_SECONDS
+              value: "300"
+            - name: LOG_LEVEL
+              value: info
+            {{- if .Values.eventing.kafka.enabled }}
+            - name: KAFKA_BROKERS
+              value: {{ .Values.eventing.kafka.brokers | quote }}
+            - name: KAFKA_TOPIC
+              value: {{ .Values.eventing.kafka.topic | quote }}
+            - name: KAFKA_USERNAME
+              value: {{ .Values.eventing.kafka.username | quote }}
+            - name: KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: kafka-password
+            {{- end }}
+            {{- if .Values.eventing.qstash.enabled }}
+            - name: QSTASH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: qstash-token
+            - name: QSTASH_DESTINATION_URL
+              value: {{ .Values.eventing.qstash.destinationUrl | quote }}
+            {{- end }}
+{{- end }}

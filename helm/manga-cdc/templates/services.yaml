@@ -1,0 +1,29 @@
+{{- if eq .Values.tier "production" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "manga-cdc.name" . }}-scraper
+  labels:
+    {{- include "manga-cdc.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/component: scraper
+  ports:
+    - name: metrics
+      port: 2112
+      targetPort: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "manga-cdc.name" . }}-notification
+  labels:
+    {{- include "manga-cdc.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/component: notification
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}
