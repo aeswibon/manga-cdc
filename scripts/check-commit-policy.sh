@@ -14,11 +14,22 @@ else
   range="HEAD"
 fi
 
+has_gpgsig() {
+  git cat-file -p "$1" | grep -q '^gpgsig '
+}
+
 failed=0
 while read -r sha; do
+  if ! has_gpgsig "$sha"; then
+    echo "error: commit $sha has no GPG signature" >&2
+    failed=1
+    continue
+  fi
+  # %G? needs the signer's public key in the keyring; CI runners don't have it and
+  # report E even for valid signatures. Reject only when gpg is available and says bad.
   status="$(git log -1 --format='%G?' "$sha")"
-  if [[ "$status" != "G" ]]; then
-    echo "error: commit $sha is not GPG-verified (status=$status)" >&2
+  if [[ "$status" == "B" || "$status" == "R" ]]; then
+    echo "error: commit $sha has an invalid GPG signature (status=$status)" >&2
     failed=1
   fi
   if git log -1 --format='%B' "$sha" | grep -qiE '^co-authored-by:[[:space:]]*cursor'; then
