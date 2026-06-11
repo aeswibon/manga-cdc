@@ -47,13 +47,12 @@ jobs:
             if [ ! -d .git ]; then
               git clone https://github.com/aeswibon/manga-cdc.git .
             fi
-            cat > .env << 'ENVEOF'
+            SPRING_DATASOURCE_URL=$(echo "${{ secrets.DATABASE_URL }}" | sed 's/^postgres:/jdbc:postgresql:/')
+            cat > .env << ENVEOF
             SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ steps.tag.outputs.sha_short }}
             NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ steps.tag.outputs.sha_short }}
             DATABASE_URL=${{ secrets.DATABASE_URL }}
-            SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }}
-            SPRING_DATASOURCE_USERNAME=${{ secrets.SPRING_DATASOURCE_USERNAME }}
-            SPRING_DATASOURCE_PASSWORD=${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+            SPRING_DATASOURCE_URL=$SPRING_DATASOURCE_URL
             KAFKA_BROKERS=${{ secrets.KAFKA_BROKERS }}
             KAFKA_USERNAME=${{ secrets.KAFKA_USERNAME }}
             KAFKA_PASSWORD=${{ secrets.KAFKA_PASSWORD }}
