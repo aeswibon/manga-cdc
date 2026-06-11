@@ -13,6 +13,7 @@ import (
 	"github.com/aeswibon/manga-cdc/scraper/internal/config"
 	"github.com/aeswibon/manga-cdc/scraper/internal/db"
 	"github.com/aeswibon/manga-cdc/scraper/internal/diff"
+	"github.com/aeswibon/manga-cdc/scraper/internal/kafka"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -33,6 +34,11 @@ var (
 	chaptersDetected = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "scraper_chapters_detected_total",
 		Help: "Total new chapters detected",
+	})
+
+	chaptersPublished = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "scraper_chapters_published_total",
+		Help: "Total chapters published to Kafka",
 	})
 )
 
@@ -74,6 +80,17 @@ func main() {
 
 	engine := diff.New(database, log)
 
+	var kafkaProducer *kafka.Producer
+	if cfg.KafkaBrokers != "" {
+		kafkaProducer, err = kafka.NewProducer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaUsername, cfg.KafkaPassword)
+		if err != nil {
+			log.Error("failed to create Kafka producer", "error", err)
+			os.Exit(1)
+		}
+		defer kafkaProducer.Close()
+		log.Info("Kafka producer enabled", "brokers", cfg.KafkaBrokers, "topic", cfg.KafkaTopic)
+	}
+
 	sources := []adapter.SourceAdapter{
 		adapter.NewMangaDexAdapter(),
 		adapter.NewMangaFireAdapter(),
@@ -89,7 +106,7 @@ func main() {
 	defer ticker.Stop()
 
 	for _, source := range sources {
-		scrapeSource(ctx, log, engine, source)
+		scrapeSource(ctx, log, engine, source, kafkaProducer)
 	}
 
 	for {
@@ -105,12 +122,12 @@ func main() {
 		}
 
 		for _, source := range sources {
-			scrapeSource(ctx, log, engine, source)
+			scrapeSource(ctx, log, engine, source, kafkaProducer)
 		}
 	}
 }
 
-func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, source adapter.SourceAdapter) {
+func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, source adapter.SourceAdapter, kafkaProducer *kafka.Producer) {
 	start := time.Now()
 	results, err := engine.ProcessSource(ctx, source)
 	duration := time.Since(start).Seconds()
@@ -129,5 +146,19 @@ func scrapeSource(ctx context.Context, log *slog.Logger, engine *diff.Engine, so
 			"source", source.Name(),
 			"series", r.SeriesTitle,
 			"new_chapters", r.NewChapters)
+
+		if kafkaProducer != nil {
+			for _, ch := range r.Chapters {
+				if err := kafkaProducer.PublishChapterEvent(ctx, ch); err != nil {
+					log.Error("failed to publish chapter event",
+						"source", source.Name(),
+						"series", r.SeriesTitle,
+						"chapter", ch.Number,
+						"error", err)
+					continue
+				}
+				chaptersPublished.Inc()
+			}
+		}
 	}
 }
