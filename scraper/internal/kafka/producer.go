@@ -23,27 +23,19 @@ type Producer struct {
 }
 
 func NewProducer(brokers, topic, username, password string) (*Producer, error) {
-	var w *segkafka.Writer
+	w := &segkafka.Writer{
+		Addr:         segkafka.TCP(strings.Split(brokers, ",")...),
+		Topic:        topic,
+		BatchTimeout: 50 * time.Millisecond,
+		BatchSize:    1,
+	}
 
 	if username != "" && password != "" {
 		mechanism, err := scram.Mechanism(scram.SHA256, username, password)
 		if err != nil {
 			return nil, fmt.Errorf("create SCRAM mechanism: %w", err)
 		}
-		w = &segkafka.Writer{
-			Addr:         segkafka.TCP(strings.Split(brokers, ",")...),
-			Topic:        topic,
-			Transport:    &segkafka.Transport{SASL: mechanism},
-			BatchTimeout: 50 * time.Millisecond,
-			BatchSize:    1,
-		}
-	} else {
-		w = &segkafka.Writer{
-			Addr:         segkafka.TCP(strings.Split(brokers, ",")...),
-			Topic:        topic,
-			BatchTimeout: 50 * time.Millisecond,
-			BatchSize:    1,
-		}
+		w.Transport = &segkafka.Transport{SASL: mechanism}
 	}
 
 	return &Producer{writer: w, topic: topic}, nil
@@ -63,7 +55,7 @@ type chapterData struct {
 	IsNew       bool    `json:"is_new"`
 }
 
-func (p *Producer) PublishChapterEvent(ctx context.Context, chapter model.Chapter, seriesTitle string) error {
+func (p *Producer) PublishChapterEvent(ctx context.Context, chapter model.Chapter) error {
 	event := chapterEvent{
 		Op: "c",
 		After: chapterData{
