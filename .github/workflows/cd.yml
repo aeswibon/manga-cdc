@@ -13,7 +13,7 @@ env:
 
 jobs:
   deploy:
-    name: Deploy via Docker Compose
+    name: Deploy to GCP VM
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -27,22 +27,33 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
+      - name: Write .env file
+        run: |
+          cat > /tmp/manga-cdc-env << EOF
+SCRAPER_IMAGE=${{ env.SCRAPER_IMAGE }}:${{ steps.tag.outputs.sha_short }}
+NOTIFICATION_IMAGE=${{ env.NOTIFICATION_IMAGE }}:${{ steps.tag.outputs.sha_short }}
+DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
+SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
+TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+KAFKA_BROKERS=${{ secrets.KAFKA_BROKERS }}
+KAFKA_USERNAME=${{ secrets.KAFKA_USERNAME }}
+KAFKA_PASSWORD=${{ secrets.KAFKA_PASSWORD }}
+CDC_ENABLED=true
+EOF
+
       - name: Deploy via Docker Compose
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          IMAGE_TAG: ${{ steps.tag.outputs.sha_short }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          scp -o StrictHostKeyChecking=no /tmp/manga-cdc-env $DEPLOY_USER@$DEPLOY_HOST:/home/$DEPLOY_USER/manga-cdc/.env
           ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "
             set -e
-            cd /opt/manga-cdc
+            cd /home/$DEPLOY_USER/manga-cdc
             git fetch origin master
             git reset --hard origin/master
-            sed -i 's|SCRAPER_IMAGE=.*|SCRAPER_IMAGE=${SCRAPER_IMAGE}:${IMAGE_TAG}|' .env
-            sed -i 's|NOTIFICATION_IMAGE=.*|NOTIFICATION_IMAGE=${NOTIFICATION_IMAGE}:${IMAGE_TAG}|' .env
-            sed -i 's|DISCORD_WEBHOOK_URL=.*|DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}|' .env
-            docker compose pull
-            docker compose up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
             echo 'Deployment complete'
           "
