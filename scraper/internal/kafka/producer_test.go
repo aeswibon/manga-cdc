@@ -77,6 +77,19 @@ func TestPublishChapterEvent_Success(t *testing.T) {
 	}
 }
 
+func TestNewProducer_WithSASLUsesTLS(t *testing.T) {
+	p, err := NewProducer("broker.example:9092", "chapters", "user", "pass")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected producer")
+	}
+	if err := p.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+}
+
 func TestPublishChapterEvent_WriterError(t *testing.T) {
 	mw := &mockWriter{err: errors.New("kafka down")}
 	p := &Producer{writer: mw, topic: "test-topic"}
