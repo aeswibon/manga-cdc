@@ -13,7 +13,7 @@ env:
 jobs:
   resolve-release:
     name: Resolve release tag
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && (github.event.workflow_run.head_branch == '' || startsWith(github.event.workflow_run.head_branch, 'v')) }}
     runs-on: ubuntu-latest
     outputs:
       should_deploy: ${{ steps.tag.outputs.should_deploy }}
@@ -28,6 +28,12 @@ jobs:
       - name: Require version tag on commit
         id: tag
         run: |
+          head_branch='${{ github.event.workflow_run.head_branch }}'
+          if [ -n "$head_branch" ] && [[ "$head_branch" != v* ]]; then
+            echo "Workflow triggered by branch push ($head_branch); skipping deploy."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git fetch --tags origin
           release_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
           if [ -z "$release_tag" ]; then
