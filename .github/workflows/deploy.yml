@@ -358,20 +358,26 @@ jobs:
       - name: Terraform Apply
         if: env.DEPLOY_METHOD == 'terraform'
         working-directory: terraform/${{ env.CLOUD_PROVIDER }}
-        env:
-          TF_VAR_do_token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
         run: |
+          # Dynamically inject cloud-specific variables to maintain cloud-agnostic YAML
+          provider_vars=""
+          if [ "${{ env.CLOUD_PROVIDER }}" = "digitalocean" ]; then
+            provider_vars="$provider_vars -var=\"do_token=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}\""
+          elif [ "${{ env.CLOUD_PROVIDER }}" = "gcp" ]; then
+            provider_vars="$provider_vars -var=\"project_id=${{ secrets.GCP_PROJECT_ID }}\""
+          fi
+
           terraform init
-          terraform apply -auto-approve \
-            -var="deployment_target=${{ env.DEPLOYMENT_TARGET }}" \
-            -var="scraper_image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}" \
-            -var="notification_image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}" \
-            -var="database_url=${{ secrets.DATABASE_URL }}" \
-            -var="kafka_brokers=${{ secrets.KAFKA_BROKERS || '' }}" \
-            -var="kafka_username=${{ secrets.KAFKA_USERNAME || '' }}" \
-            -var="kafka_password=${{ secrets.KAFKA_PASSWORD || '' }}" \
-            -var="discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL || '' }}" \
-            -var="slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL || '' }}" \
-            -var="telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN || '' }}" \
-            -var="telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID || '' }}"
+          eval "terraform apply -auto-approve \
+            $provider_vars \
+            -var=\"deployment_target=${{ env.DEPLOYMENT_TARGET }}\" \
+            -var=\"scraper_image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}\" \
+            -var=\"notification_image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}\" \
+            -var=\"database_url=${{ secrets.DATABASE_URL }}\" \
+            -var=\"kafka_brokers=${{ secrets.KAFKA_BROKERS || '' }}\" \
+            -var=\"kafka_username=${{ secrets.KAFKA_USERNAME || '' }}\" \
+            -var=\"kafka_password=${{ secrets.KAFKA_PASSWORD || '' }}\" \
+            -var=\"discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL || '' }}\" \
+            -var=\"slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL || '' }}\" \
+            -var=\"telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN || '' }}\" \
+            -var=\"telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID || '' }}\""
