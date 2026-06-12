@@ -41,6 +41,21 @@ case "$cloud" in
     export GOOGLE_OAUTH_ACCESS_TOKEN="${GOOGLE_OAUTH_ACCESS_TOKEN:-ci-dummy-token}"
     export GOOGLE_PROJECT="${GOOGLE_PROJECT:-ci-validate-project}"
     ;;
+  aws)
+    extra_vars+=(-var="ci_plan_mode=true")
+    export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-testing}"
+    export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-testing}"
+    export AWS_EC2_METADATA_DISABLED="${AWS_EC2_METADATA_DISABLED:-true}"
+    ;;
+  azure)
+    extra_vars+=(-var="ci_plan_mode=true")
+    export ARM_USE_CLI="${ARM_USE_CLI:-false}"
+    export ARM_SKIP_PROVIDER_REGISTRATION="${ARM_SKIP_PROVIDER_REGISTRATION:-true}"
+    export ARM_SUBSCRIPTION_ID="${ARM_SUBSCRIPTION_ID:-11111111-1111-1111-1111-111111111111}"
+    export ARM_TENANT_ID="${ARM_TENANT_ID:-22222222-2222-2222-2222-222222222222}"
+    export ARM_CLIENT_ID="${ARM_CLIENT_ID:-33333333-3333-3333-3333-333333333333}"
+    export ARM_CLIENT_SECRET="${ARM_CLIENT_SECRET:-ci-dummy-secret}"
+    ;;
   digitalocean)
     extra_vars+=(-var="do_token=ci-dummy-token")
     export DIGITALOCEAN_TOKEN="${DIGITALOCEAN_TOKEN:-ci-dummy-token}"
@@ -56,6 +71,12 @@ cd "$module_dir"
 
 terraform init -input=false -backend=false
 terraform validate
+
+if [ "$cloud" = "azure" ]; then
+  # azurerm still requires a live Azure token to plan; validate configuration offline instead.
+  echo "terraform validate succeeded for ${cloud}/${target} (Azure plan skipped in CI offline mode)"
+  exit 0
+fi
 
 set +e
 terraform plan -refresh=false -input=false -lock=false -detailed-exitcode \

@@ -18,6 +18,10 @@ terraform {
 
 provider "azurerm" {
   features {}
+
+  subscription_id            = var.ci_plan_mode ? "11111111-1111-1111-1111-111111111111" : null
+  tenant_id                  = var.ci_plan_mode ? "22222222-2222-2222-2222-222222222222" : null
+  skip_provider_registration = var.ci_plan_mode
 }
 
 resource "azurerm_resource_group" "rg" {

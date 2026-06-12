@@ -18,16 +18,23 @@ terraform {
 
 provider "aws" {
   region = var.region
+
+  access_key                  = var.ci_plan_mode ? "ci-dummy-access-key" : null
+  secret_key                  = var.ci_plan_mode ? "ci-dummy-secret-key" : null
+  skip_credentials_validation = var.ci_plan_mode
+  skip_requesting_account_id  = var.ci_plan_mode
 }
 
 data "aws_vpc" "default" {
+  count   = var.ci_plan_mode ? 0 : 1
   default = true
 }
 
 data "aws_subnets" "default" {
+  count = var.ci_plan_mode ? 0 : 1
   filter {
     name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
+    values = [data.aws_vpc.default[0].id]
   }
 }
 
@@ -43,6 +50,18 @@ locals {
   db_path           = local.db_parts.path != null ? local.db_parts.path : "/postgres"
   db_query          = local.db_parts.query != null ? "?${local.db_parts.query}" : ""
   db_path_and_query = "${local.db_path}${local.db_query}"
+
+  aws_vpc_id     = var.ci_plan_mode ? "vpc-ci000000000000000" : data.aws_vpc.default[0].id
+  aws_subnet_ids = var.ci_plan_mode ? ["subnet-ci00000000000000"] : data.aws_subnets.default[0].ids
+  aws_ami_id = var.ci_plan_mode ? "ami-0c7217cdde317cfec" : (
+    var.deployment_target == "vm" ? data.aws_ami.ubuntu[0].id : "ami-unused"
+  )
+  aws_account_id = var.ci_plan_mode ? "123456789012" : (
+    var.deployment_target == "serverless" ? data.aws_caller_identity.current[0].account_id : "123456789012"
+  )
+  aws_eks_token = var.ci_plan_mode ? "ci-dummy-eks-token" : (
+    var.deployment_target == "kubernetes" ? data.aws_eks_cluster_auth.eks[0].token : ""
+  )
 
   # Render application .env content for EC2
   env_file_content = <<EOT
@@ -76,7 +95,7 @@ resource "aws_security_group" "vm_sg" {
   count       = var.deployment_target == "vm" ? 1 : 0
   name        = "manga-cdc-vm-sg-${var.environment}"
   description = "Security group for manga-cdc VM"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = local.aws_vpc_id
 
   # Bound internally to 127.0.0.1; only SSH and Caddy (if using QStash proxy) exposed
   ingress {
@@ -113,7 +132,7 @@ resource "aws_security_group" "vm_sg" {
 }
 
 data "aws_ami" "ubuntu" {
-  count       = var.deployment_target == "vm" ? 1 : 0
+  count       = var.ci_plan_mode ? 0 : (var.deployment_target == "vm" ? 1 : 0)
   most_recent = true
   owners      = ["099720109477"] # Canonical
 
@@ -125,9 +144,9 @@ data "aws_ami" "ubuntu" {
 
 resource "aws_instance" "app_ec2" {
   count                  = var.deployment_target == "vm" ? 1 : 0
-  ami                    = data.aws_ami.ubuntu[0].id
+  ami                    = local.aws_ami_id
   instance_type          = var.instance_type
-  subnet_id              = data.aws_subnets.default.ids[0]
+  subnet_id              = local.aws_subnet_ids[0]
   vpc_security_group_ids = [aws_security_group.vm_sg[0].id]
 
   user_data = templatefile("${path.module}/../templates/startup.sh.tftpl", {
@@ -179,7 +198,7 @@ resource "aws_eks_cluster" "eks" {
   role_arn = aws_iam_role.eks_role[0].arn
 
   vpc_config {
-    subnet_ids = data.aws_subnets.default.ids
+    subnet_ids = local.aws_subnet_ids
   }
 
   depends_on = [aws_iam_role_policy_attachment.eks_policy]
@@ -224,7 +243,7 @@ resource "aws_eks_node_group" "eks_nodes" {
   cluster_name    = aws_eks_cluster.eks[0].name
   node_group_name = "manga-cdc-node-group"
   node_role_arn   = aws_iam_role.node_role[0].arn
-  subnet_ids      = data.aws_subnets.default.ids
+  subnet_ids      = local.aws_subnet_ids
   instance_types  = [var.eks_node_type]
 
   scaling_config {
@@ -241,21 +260,21 @@ resource "aws_eks_node_group" "eks_nodes" {
 }
 
 data "aws_eks_cluster_auth" "eks" {
-  count = var.deployment_target == "kubernetes" ? 1 : 0
+  count = var.ci_plan_mode ? 0 : (var.deployment_target == "kubernetes" ? 1 : 0)
   name  = aws_eks_cluster.eks[0].name
 }
 
 provider "kubernetes" {
   host                   = var.deployment_target == "kubernetes" ? aws_eks_cluster.eks[0].endpoint : ""
   cluster_ca_certificate = var.deployment_target == "kubernetes" ? base64decode(aws_eks_cluster.eks[0].certificate_authority[0].data) : ""
-  token                  = var.deployment_target == "kubernetes" ? data.aws_eks_cluster_auth.eks[0].token : ""
+  token                  = var.deployment_target == "kubernetes" ? local.aws_eks_token : ""
 }
 
 provider "helm" {
   kubernetes {
     host                   = var.deployment_target == "kubernetes" ? aws_eks_cluster.eks[0].endpoint : ""
     cluster_ca_certificate = var.deployment_target == "kubernetes" ? base64decode(aws_eks_cluster.eks[0].certificate_authority[0].data) : ""
-    token                  = var.deployment_target == "kubernetes" ? data.aws_eks_cluster_auth.eks[0].token : ""
+    token                  = var.deployment_target == "kubernetes" ? local.aws_eks_token : ""
   }
 }
 
@@ -468,7 +487,7 @@ resource "aws_security_group" "fargate_sg" {
   count       = var.deployment_target == "serverless" ? 1 : 0
   name        = "manga-cdc-fargate-sg-${var.environment}"
   description = "Security group for manga-cdc ECS tasks"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = local.aws_vpc_id
 
   ingress {
     from_port   = 8080
@@ -494,7 +513,7 @@ resource "aws_ecs_service" "notifier" {
   desired_count   = 1
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
+    subnets          = local.aws_subnet_ids
     security_groups  = [aws_security_group.fargate_sg[0].id]
     assign_public_ip = true
   }
@@ -557,7 +576,7 @@ resource "aws_scheduler_schedule" "scraper_schedule" {
   schedule_expression = var.aws_scheduler_schedule
 
   target {
-    arn      = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current[0].account_id}:cluster/${aws_ecs_cluster.ecs[0].name}"
+    arn      = "arn:aws:ecs:${var.region}:${local.aws_account_id}:cluster/${aws_ecs_cluster.ecs[0].name}"
     role_arn = aws_iam_role.scheduler_role[0].arn
 
     input = jsonencode({
@@ -566,7 +585,7 @@ resource "aws_scheduler_schedule" "scraper_schedule" {
       networkConfiguration = {
         awsvpcConfiguration = {
           assignPublicIp = "ENABLED"
-          subnets        = data.aws_subnets.default.ids
+          subnets        = local.aws_subnet_ids
           securityGroups = [aws_security_group.fargate_sg[0].id]
         }
       }
@@ -580,5 +599,5 @@ resource "aws_scheduler_schedule" "scraper_schedule" {
 }
 
 data "aws_caller_identity" "current" {
-  count = var.deployment_target == "serverless" ? 1 : 0
+  count = var.ci_plan_mode ? 0 : (var.deployment_target == "serverless" ? 1 : 0)
 }

@@ -1,3 +1,9 @@
+variable "ci_plan_mode" {
+  description = "When true, use dummy AWS credentials and placeholder network IDs for offline CI terraform plan."
+  type        = bool
+  default     = false
+}
+
 variable "region" {
   description = "AWS region"
   type        = string

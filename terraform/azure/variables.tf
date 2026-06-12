@@ -1,3 +1,9 @@
+variable "ci_plan_mode" {
+  description = "When true, use offline-friendly Azure provider settings for CI terraform plan."
+  type        = bool
+  default     = false
+}
+
 variable "location" {
   description = "Azure region location"
   type        = string
