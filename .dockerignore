@@ -1,0 +1,15 @@
+# Exclude build artifacts and dependency caches
+**/target/
+**/node_modules/
+**/.env
+
+# Exclude unrelated services
+notification-service/
+configure/
+terraform/
+helm/
+k8s/
+
+# Exclude git metadata
+.git
+.github
