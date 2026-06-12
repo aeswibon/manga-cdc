@@ -68,11 +68,9 @@ flowchart TB
     style Notifications fill:#34a853,color:#fff
 ```
 
-**Production deployment** uses [Aiven](https://aiven.io) for managed PostgreSQL and Kafka (SCRAM-SHA-256 over SASL_SSL).
+**Production** uses managed PostgreSQL and Kafka (e.g. [Aiven](https://aiven.io)) plus cloud-hosted containers. The scraper publishes Debezium-compatible JSON directly to Kafka.
 
-For local development, the [setup wizard](#quick-start) provisions Postgres and Redpanda in Docker Compose. The scraper publishes Debezium-compatible JSON directly to Redpanda (no Debezium connector).
-
-For production, choose your own managed PostgreSQL and either Kafka or QStash via the wizard — deploy with Docker Compose or Helm.
+For local development, the [setup wizard](#quick-start) provisions Postgres and Redpanda in Docker Compose.
 
 ## Why This Stack
 
@@ -82,7 +80,6 @@ For production, choose your own managed PostgreSQL and either Kafka or QStash vi
 | **Why Spring Boot / Java for notifications?** | Rich ecosystem for notification integrations, JDBC/R2DBC, battle-tested Kafka client |
 | **Why Kafka?** | Reliable at-least-once delivery, persistent event log, consumer group rebalancing, Debezium-compatible schema |
 | **Why Aiven?** | Managed Kafka + Postgres under one provider, SCRAM-SHA-256 auth, no operational overhead |
-| **Why both Kafka and QStash paths?** | Kafka for production-grade streaming; QStash as a production HTTP alternative without running a broker |
 
 ## Tech Stack
 
@@ -94,7 +91,7 @@ For production, choose your own managed PostgreSQL and either Kafka or QStash vi
 | Notifications | Spring Boot 3.3, Java 21 |
 | Notifier targets | Discord, Slack, Telegram |
 | Metrics | Prometheus + Grafana (local); Grafana Cloud + Alloy (prod) |
-| Deployment | Docker Compose, Kubernetes/Helm, Terraform (GCP, AWS, Azure, DigitalOcean) |
+| Deployment | Docker Compose (local), Terraform (GCP/AWS/Azure/DO), Helm (Kubernetes), GitHub Actions CI/CD |
 | Orchestration | GitHub Actions CI/CD |
 
 ## Quick Start
@@ -198,38 +195,175 @@ Local Compose auto-provisions the **manga-cdc** dashboard from `grafana/dashboar
 
 ### Production (Grafana Cloud)
 
-Prod does **not** run Prometheus or Grafana on the VM. **Grafana Alloy** scrapes app metrics and `remote_write`s to your Grafana Cloud stack.
+On **GCP serverless**, metrics are exposed on each Cloud Run service (`/metrics`, `/actuator/prometheus`). If Grafana Cloud secrets are set, they are injected as environment variables at deploy time — import the dashboard once in Grafana Cloud:
 
-- Dashboard: `https://<stack>.grafana.net/d/manga-cdc-overview/manga-cdc`
-- Import `grafana/dashboards/manga-cdc.json` in the Grafana Cloud UI once (set the Prometheus datasource UID to your stack’s default Prometheus datasource)
+- Dashboard JSON: `grafana/dashboards/manga-cdc.json`
+- URL pattern: `https://<stack>.grafana.net/d/manga-cdc-overview/manga-cdc`
 
-## Production Deployments (Multi-Cloud)
+On **VM** deployments, Grafana Alloy can `remote_write` to Grafana Cloud via `docker-compose.observability-cloud.yml`.
 
-Manga-CDC supports production deployments across multiple major cloud providers (**GCP**, **AWS**, **Azure**, and **DigitalOcean**) using **VM (Docker Compose)**, **Kubernetes (Helm)**, or **Serverless (Containers + Cron)** targets.
+## Production Setup
 
-For complete architectural details, variables settings, local CLI workflow, and GitHub Actions CI/CD setup, refer to the **[Multi-Cloud Production Setup Guide](file:///Volumes/Seagate/developer/personal/manga-cdc/docs/cloud-setup.md)**.
+Production runs the **scraper** and **notification service** as containers against your managed Postgres + Kafka, deployed via **Terraform** and **GitHub Actions**. The recommended path is **GCP serverless** (Cloud Run + Cloud Scheduler) — no VMs to maintain.
 
-### Release Flow
+For VM, Kubernetes, or other clouds, see [docs/cloud-setup.md](docs/cloud-setup.md) and [terraform/README.md](terraform/README.md).
 
-* Pushes to `master` run tests and checks only.
-* Pushing a version tag (`v*`) runs tests, builds CI container snapshots, executes end-to-end tests, creates a GitHub release, and triggers the deployment pipeline.
+### Prerequisites
 
-### Observability
+Before bootstrapping, provision these **outside** the repo (keep credentials handy):
 
-Tag deploys start Alloy via `docker-compose.observability-cloud.yml` (`OBSERVABILITY_MODE=grafana-cloud` by default). Set `OBSERVABILITY_MODE=self-hosted` to use VM-hosted Prometheus + Grafana instead (`docker-compose.observability.yml`).
+| Service | Purpose |
+|---------|---------|
+| **PostgreSQL** | Series/chapter state (e.g. Aiven Postgres 16) |
+| **Kafka** | Chapter events, SASL_SSL + SCRAM-SHA-256 (e.g. Aiven Kafka) |
+| **Discord / Slack / Telegram** | At least one notification channel |
+| **Grafana Cloud** (optional) | Metrics via env vars injected into Cloud Run |
+| **GitHub repo** | Fork or use `aeswibon/manga-cdc` with Actions enabled |
 
-### Grafana Cloud (Alloy `remote_write`) Secrets
+### Step 1 — One-time cloud bootstrap
 
-If you are using Grafana Cloud for monitoring, set up these secrets in your GitHub repository:
-- `GRAFANA_CLOUD_PROMETHEUS_URL` — push URL (Cloud Portal → Prometheus → Details)
-- `GRAFANA_CLOUD_PROMETHEUS_USER` — metrics instance ID
-- `GRAFANA_CLOUD_API_KEY` — Access policy token with **`metrics:write`** scope
-- `GRAFANA_CLOUD_STACK_URL` — e.g. `https://yourstack.grafana.net`
-- `GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID` — optional stack Prometheus datasource UID
+Bootstrap creates the Terraform **remote state bucket**, enables required **GCP APIs**, and wires **GitHub Actions → GCP** via Workload Identity Federation. It also pushes CI secrets when `gh` is logged in.
+
+```bash
+# Authenticate
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT_ID
+
+# Optional: app secrets for gh secret sync (otherwise set in GitHub UI)
+cp .env.example .env   # edit DATABASE_URL, KAFKA_*, webhooks, Grafana Cloud
+
+# Bootstrap GCP serverless
+chmod +x scripts/bootstrap.sh
+./scripts/bootstrap.sh --cloud gcp --target serverless
+```
+
+Other clouds use the same script: `--cloud aws|azure|digitalocean` (see [terraform/README.md](terraform/README.md)).
+
+Use `--skip-gh-secrets` if you prefer setting secrets manually in GitHub. Use `--dry-run` to preview the Terraform plan.
+
+### Step 2 — GitHub repository secrets
+
+If bootstrap ran with `gh auth login`, routing and cloud auth secrets are set automatically. Otherwise configure these in **Settings → Secrets and variables → Actions**:
+
+**Routing (required)**
+
+| Secret | Example / notes |
+|--------|-----------------|
+| `DEPLOY_CLOUD` | `gcp` |
+| `DEPLOY_TARGET` | `serverless` |
+| `DEPLOY_METHOD` | `terraform` for first deploy; `direct` afterward |
+
+**GCP auth + state (required for GCP)**
+
+| Secret | Description |
+|--------|-------------|
+| `GCP_PROJECT_ID` | Your GCP project ID |
+| `GCP_REGION` | e.g. `us-central1` |
+| `TF_STATE_BUCKET` | GCS bucket from bootstrap |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Full WIF provider resource name |
+| `GCP_SERVICE_ACCOUNT` | Deploy service account email |
+
+**Application (required)**
+
+| Secret | Description |
+|--------|-------------|
+| `DATABASE_URL` | `postgres://...` connection string |
+| `KAFKA_BROKERS` | Comma-separated broker list |
+| `KAFKA_USERNAME` | Kafka SASL username |
+| `KAFKA_PASSWORD` | Kafka SASL password |
+| `DISCORD_WEBHOOK_URL` | Or Slack/Telegram secrets |
+
+**Observability (optional)**
+
+| Secret | Description |
+|--------|-------------|
+| `GRAFANA_CLOUD_PROMETHEUS_URL` | Push URL from Grafana Cloud |
+| `GRAFANA_CLOUD_PROMETHEUS_USER` | Metrics instance ID |
+| `GRAFANA_CLOUD_API_KEY` | Token with `metrics:write` |
+| `GRAFANA_CLOUD_STACK_URL` | e.g. `https://yourstack.grafana.net` |
+| `GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID` | For dashboard import |
+
+GCP VM SSH secrets (`GCP_SSH_*`, `GCP_VM_NAME`, `GCP_ZONE`) are **not** used — GCP VM direct deploy is not supported in CI; use `serverless`, `kubernetes`, or Terraform `deployment_target=vm`.
+
+### Step 3 — Release and deploy
+
+Pushes to `master` run **tests only**. Production deploys happen on **version tags**:
+
+```bash
+# After changes are merged to master
+git tag -s v0.3.7 -m "v0.3.7"
+git push origin v0.3.7
+```
+
+The **Test and Build** workflow on the tag will:
+
+1. Run Go/Java tests and E2E
+2. Build and push images to `ghcr.io/aeswibon/manga-cdc/{scraper,notification-service}:<semver>`
+3. Create a GitHub Release
+4. Trigger the **Deploy** workflow
+
+First deploy uses `DEPLOY_METHOD=terraform`, which runs `terraform apply` in `terraform/gcp` with `deployment_target=serverless`. That creates:
+
+| Resource | Name (prod) |
+|----------|-------------|
+| Cloud Run Service | `manga-cdc-notifier-prod` |
+| Cloud Run Job | `manga-cdc-scraper-job-prod` |
+| Cloud Scheduler | Triggers scraper on cron (`*/15 * * * *` UTC) |
+
+You can also trigger deploy manually: **Actions → Deploy → Run workflow** (`cloud_provider=gcp`, `deployment_target=serverless`, `deploy_method=terraform`).
+
+### Step 4 — After the first successful deploy
+
+Switch to image-only updates on future tag releases:
+
+```bash
+gh secret set DEPLOY_METHOD --body "direct"
+```
+
+With `direct`, CI runs `gcloud run services update` / `gcloud run jobs update` — faster, no full Terraform apply.
+
+### Step 5 — Verify
+
+```bash
+# Cloud Run notifier URL (from GCP console or terraform output)
+curl -s "https://<notifier-url>/actuator/health"
+
+# Trigger a scraper run manually (optional)
+gcloud run jobs execute manga-cdc-scraper-job-prod --region=$GCP_REGION
+
+# Check notification delivery log (if notifier is reachable)
+curl -s "https://<notifier-url>/api/logs?limit=10"
+```
+
+Import `grafana/dashboards/manga-cdc.json` into Grafana Cloud once (set the Prometheus datasource UID to match your stack).
+
+### Release flow summary
+
+```mermaid
+flowchart LR
+    Tag["Push tag v*"] --> CI["Test and Build"]
+    CI --> GHCR["Push GHCR images"]
+    CI --> Release["GitHub Release"]
+    Release --> Deploy["Deploy workflow"]
+    Deploy --> TF{"DEPLOY_METHOD?"}
+    TF -->|terraform| Apply["terraform apply\nCloud Run + Scheduler"]
+    TF -->|direct| Update["gcloud run update\nimages only"]
+```
+
+### Other deployment targets
+
+| Target | Cloud | Notes |
+|--------|-------|-------|
+| **serverless** | GCP, AWS, Azure, DO | Recommended; pay per use |
+| **kubernetes** | All four | Helm chart in `helm/manga-cdc/` |
+| **vm** | AWS, Azure, DO | Docker Compose over SSH in CI; GCP VM via Terraform only |
+
+Full variable reference and provider auth: [docs/cloud-setup.md](docs/cloud-setup.md).
 
 ## Local Development
 
-The [setup wizard](#quick-start) local tier provisions Postgres, Redpanda, scraper, notification service, Prometheus, and Grafana in Docker Compose. QStash is available as a production bring-your-own option only.
+The [setup wizard](#quick-start) local tier provisions Postgres, Redpanda, scraper, notification service, Prometheus, and Grafana in Docker Compose.
 
 ## License
 
