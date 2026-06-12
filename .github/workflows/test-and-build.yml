@@ -190,6 +190,16 @@ jobs:
       - name: Validate and plan
         run: bash ./scripts/ci/terraform-matrix-check.sh "${{ matrix.cloud }}" "${{ matrix.target }}"
 
+  terraform:
+    name: Terraform
+    needs: [gate, terraform-fmt, terraform-validate-plan]
+    if: ${{ needs.gate.outputs.proceed == 'true' && needs.terraform-fmt.result == 'success' && needs.terraform-validate-plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Terraform checks passed
+        run: echo "fmt and all cloud/target validate+plan checks succeeded"
+
   java-test:
     name: Java tests
     needs: gate
@@ -211,7 +221,7 @@ jobs:
   docker-snapshot:
     name: Build CI snapshot images
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
-    needs: [gate, repo-policy]
+    needs: [gate, repo-policy, terraform]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -257,7 +267,7 @@ jobs:
   e2e-test:
     name: End-to-end tests
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
-    needs: [gate, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test]
+    needs: [gate, terraform, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
