@@ -85,6 +85,8 @@ jobs:
         run: |
           install -m 600 -D /dev/null "$RUNNER_TEMP/gcp_ssh_key"
           printf '%s\n' "${{ secrets.GCP_SSH_PRIVATE_KEY }}" > "$RUNNER_TEMP/gcp_ssh_key"
+          ssh-keygen -y -f "$RUNNER_TEMP/gcp_ssh_key" > "$RUNNER_TEMP/gcp_ssh_key.pub"
+          chmod 644 "$RUNNER_TEMP/gcp_ssh_key.pub"
 
       - name: Render production .env
         env:
