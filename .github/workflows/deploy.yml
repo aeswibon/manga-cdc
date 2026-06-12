@@ -180,6 +180,23 @@ jobs:
             --image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} \
             --region=${{ env.GCP_REGION }}
 
+      - name: Push images to Docker Hub
+        if: env.DEPLOY_METHOD == 'terraform'
+        env:
+          GHCR_SCRAPER: ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+          GHCR_NOTIFIER: ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
+          DOCKER_SCRAPER: docker.io/aeswibon/manga-cdc/scraper:${{ env.IMAGE_TAG }}
+          DOCKER_NOTIFIER: docker.io/aeswibon/manga-cdc/notification-service:${{ env.IMAGE_TAG }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login docker.io -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+          docker pull "$GHCR_SCRAPER"
+          docker pull "$GHCR_NOTIFIER"
+          docker tag "$GHCR_SCRAPER" "$DOCKER_SCRAPER"
+          docker tag "$GHCR_NOTIFIER" "$DOCKER_NOTIFIER"
+          docker push "$DOCKER_SCRAPER"
+          docker push "$DOCKER_NOTIFIER"
+
       - name: Setup Terraform
         if: env.DEPLOY_METHOD == 'terraform'
         uses: hashicorp/setup-terraform@v4
@@ -190,8 +207,8 @@ jobs:
         if: env.DEPLOY_METHOD == 'terraform'
         env:
           DEPLOYMENT_TARGET: ${{ env.DEPLOYMENT_TARGET }}
-          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
-          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          SCRAPER_IMAGE: docker.io/aeswibon/manga-cdc/scraper
+          NOTIFICATION_IMAGE: docker.io/aeswibon/manga-cdc/notification-service
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
