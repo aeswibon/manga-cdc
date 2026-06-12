@@ -14,8 +14,10 @@ LABEL org.opencontainers.image.title="manga-cdc scraper" \
       org.opencontainers.image.base.name="docker.io/library/alpine:3.20"
 
 RUN apk --no-cache add ca-certificates
+RUN addgroup -S mangacdc && adduser -S mangacdc -G mangacdc
 COPY --from=builder /scraper /scraper
-COPY db/migrations /migrations
+COPY --chown=mangacdc:mangacdc db/migrations /migrations
 ENV MIGRATIONS_DIR=/migrations
 EXPOSE 2112
+USER mangacdc
 CMD ["/scraper"]
