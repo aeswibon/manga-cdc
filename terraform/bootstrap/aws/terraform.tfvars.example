@@ -1,0 +1,3 @@
+region            = "us-east-1"
+github_repository = "aeswibon/manga-cdc"
+deployment_target = "serverless"

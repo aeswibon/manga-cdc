@@ -1,0 +1,3 @@
+location          = "eastus"
+github_repository = "aeswibon/manga-cdc"
+deployment_target = "serverless"

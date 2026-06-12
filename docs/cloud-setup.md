@@ -152,8 +152,9 @@ If you use the `terraform` deploy method, the pipeline can dynamically provision
 * `GCP_WORKLOAD_IDENTITY_PROVIDER`: Workload Identity Provider string (e.g., `projects/12345/locations/global/workloadIdentityPools/my-pool/providers/my-provider`).
 * `GCP_SERVICE_ACCOUNT`: Service Account Email.
 * `GCP_ZONE` / `GCP_REGION`: Target GCP Zone/Region.
-* `GCP_SSH_USER` / `GCP_SSH_PRIVATE_KEY` / `GCP_VM_NAME`: Credentials for VM mode.
 * `GKE_CLUSTER_NAME`: Target cluster for Kubernetes mode.
+
+GCP VM direct SSH deploy is not supported in CI; use `deployment_target=vm` with `deploy_method=terraform`, or choose `serverless` / `kubernetes`.
 
 #### AWS Target Secrets
 * `AWS_ACCESS_KEY_ID`: AWS Access Key.
