@@ -19,7 +19,7 @@ on:
       deployment_target:
         description: "Deployment Target (vm, kubernetes, serverless)"
         required: true
-        default: "vm"
+        default: "serverless"
         type: choice
         options:
           - vm
@@ -28,7 +28,7 @@ on:
       deploy_method:
         description: "Deployment Method (direct, terraform)"
         required: true
-        default: "direct"
+        default: "terraform"
         type: choice
         options:
           - direct
@@ -50,13 +50,16 @@ env:
 jobs:
   resolve-release:
     name: Resolve release tag
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       should_deploy: ${{ steps.tag.outputs.should_deploy }}
       release_tag: ${{ steps.tag.outputs.release_tag }}
       image_tag: ${{ steps.tag.outputs.image_tag }}
+      cloud_provider: ${{ steps.config.outputs.cloud_provider }}
+      deployment_target: ${{ steps.config.outputs.deployment_target }}
+      deploy_method: ${{ steps.config.outputs.deploy_method }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -73,12 +76,6 @@ jobs:
             exit 0
           fi
 
-          head_branch='${{ github.event.workflow_run.head_branch }}'
-          if [ "$head_branch" = "master" ]; then
-            echo "Master push workflow (tests only); deploy runs on tag release workflows."
-            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           git fetch --tags origin
           release_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
           if [ -z "$release_tag" ]; then
@@ -91,42 +88,53 @@ jobs:
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "image_tag=${release_tag#v}" >> "$GITHUB_OUTPUT"
 
-  deploy:
-    name: Deploy Application
+      - name: Resolve deploy configuration
+        id: config
+        env:
+          INPUT_CLOUD: ${{ github.event.inputs.cloud_provider }}
+          INPUT_TARGET: ${{ github.event.inputs.deployment_target }}
+          INPUT_METHOD: ${{ github.event.inputs.deploy_method }}
+          SECRET_CLOUD: ${{ secrets.DEPLOY_CLOUD }}
+          SECRET_TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SECRET_METHOD: ${{ secrets.DEPLOY_METHOD }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            cloud="$INPUT_CLOUD"
+            target="$INPUT_TARGET"
+            method="$INPUT_METHOD"
+          else
+            cloud="${SECRET_CLOUD:-gcp}"
+            target="${SECRET_TARGET:-serverless}"
+            method="${SECRET_METHOD:-terraform}"
+          fi
+          echo "cloud_provider=$cloud" >> "$GITHUB_OUTPUT"
+          echo "deployment_target=$target" >> "$GITHUB_OUTPUT"
+          echo "deploy_method=$method" >> "$GITHUB_OUTPUT"
+
+  deploy-gcp:
+    name: Deploy (GCP)
     needs: resolve-release
-    if: ${{ needs.resolve-release.outputs.should_deploy == 'true' }}
+    if: ${{ needs.resolve-release.outputs.should_deploy == 'true' && needs.resolve-release.outputs.cloud_provider == 'gcp' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
     env:
-      RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
       IMAGE_TAG: ${{ needs.resolve-release.outputs.image_tag }}
-      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-      CLOUD_PROVIDER: ${{ github.event.inputs.cloud_provider || secrets.DEPLOY_CLOUD || 'gcp' }}
-      DEPLOYMENT_TARGET: ${{ github.event.inputs.deployment_target || secrets.DEPLOY_TARGET || 'vm' }}
-      DEPLOY_METHOD: ${{ github.event.inputs.deploy_method || secrets.DEPLOY_METHOD || 'direct' }}
-      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
-      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      DEPLOYMENT_TARGET: ${{ needs.resolve-release.outputs.deployment_target }}
+      DEPLOY_METHOD: ${{ needs.resolve-release.outputs.deploy_method }}
+      GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
-          fetch-depth: 0
 
       - name: Deploy summary
         run: |
-          echo "Deploying to Cloud: ${CLOUD_PROVIDER} (Target: ${DEPLOYMENT_TARGET}, Method: ${DEPLOY_METHOD})"
-          echo "Image tag: ${IMAGE_TAG}"
-          echo "Commit: ${DEPLOY_SHA}"
+          echo "GCP deploy — target=${DEPLOYMENT_TARGET} method=${DEPLOY_METHOD} image=${IMAGE_TAG}"
 
-      # -------------------------------------------------------------------------
-      # Authentication
-      # -------------------------------------------------------------------------
       - name: Authenticate to Google Cloud
-        if: env.CLOUD_PROVIDER == 'gcp'
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -134,49 +142,118 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup gcloud
-        if: env.CLOUD_PROVIDER == 'gcp'
         uses: google-github-actions/setup-gcloud@v3
 
+      - name: Configure GKE kubeconfig
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER_NAME }} --zone ${{ secrets.GCP_ZONE || 'us-central1-a' }}
+
+      - name: Parse DATABASE_URL for JDBC
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        id: db_parser
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: bash ./scripts/ci/parse-database-url.sh
+
+      - name: Deploy to Kubernetes via Helm
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JDBC_URL: ${{ steps.db_parser.outputs.jdbc_url }}
+          DB_USER: ${{ steps.db_parser.outputs.db_user }}
+          DB_PASS: ${{ steps.db_parser.outputs.db_pass }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bash ./scripts/ci/helm-deploy.sh
+
+      - name: Deploy to Cloud Run
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'serverless'
+        run: |
+          gcloud run services update manga-cdc-notifier-prod \
+            --image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }} \
+            --region=${{ env.GCP_REGION }}
+          gcloud run jobs update manga-cdc-scraper-job-prod \
+            --image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} \
+            --region=${{ env.GCP_REGION }}
+
+      - name: Setup Terraform
+        if: env.DEPLOY_METHOD == 'terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.0"
+
+      - name: Terraform apply
+        if: env.DEPLOY_METHOD == 'terraform'
+        env:
+          DEPLOYMENT_TARGET: ${{ env.DEPLOYMENT_TARGET }}
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ env.GCP_REGION }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+        run: bash ./scripts/ci/terraform-apply.sh gcp
+
+  deploy-aws:
+    name: Deploy (AWS)
+    needs: resolve-release
+    if: ${{ needs.resolve-release.outputs.should_deploy == 'true' && needs.resolve-release.outputs.cloud_provider == 'aws' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE_TAG: ${{ needs.resolve-release.outputs.image_tag }}
+      DEPLOYMENT_TARGET: ${{ needs.resolve-release.outputs.deployment_target }}
+      DEPLOY_METHOD: ${{ needs.resolve-release.outputs.deploy_method }}
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Deploy summary
+        run: |
+          echo "AWS deploy — target=${DEPLOYMENT_TARGET} method=${DEPLOY_METHOD} image=${IMAGE_TAG}"
+
       - name: Configure AWS Credentials (OIDC)
-        if: env.CLOUD_PROVIDER == 'aws' && env.AWS_ROLE_ARN != ''
+        if: env.AWS_ROLE_ARN != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure AWS Credentials (access keys)
-        if: env.CLOUD_PROVIDER == 'aws' && env.AWS_ROLE_ARN == ''
+        if: env.AWS_ROLE_ARN == ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Log in to Azure (OIDC)
-        if: env.CLOUD_PROVIDER == 'azure' && env.AZURE_CLIENT_ID != ''
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Log in to Azure (service principal JSON)
-        if: env.CLOUD_PROVIDER == 'azure' && env.AZURE_CLIENT_ID == ''
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Setup doctl
-        if: env.CLOUD_PROVIDER == 'digitalocean'
-        uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      # -------------------------------------------------------------------------
-      # Setup configuration & Render Environment variables
-      # -------------------------------------------------------------------------
       - name: Render production .env
-        if: env.DEPLOY_METHOD == 'direct'
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
         env:
           SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
           NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
@@ -196,162 +273,313 @@ jobs:
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
           GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
-        run: |
-          chmod +x scripts/render-prod-env.sh
-          ./scripts/render-prod-env.sh > "$RUNNER_TEMP/prod.env"
-          chmod 600 "$RUNNER_TEMP/prod.env"
+        run: bash ./scripts/ci/render-direct-env.sh
 
-      - name: Parse DATABASE_URL for JDBC
-        if: env.DEPLOY_METHOD == 'direct'
-        id: db_parser
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          python3 -c "
-          import urllib.parse, os
-          url = os.environ.get('DATABASE_URL', '')
-          if url:
-              u = urllib.parse.urlparse(url)
-              jdbc_query = f'?{u.query}' if u.query else ''
-              print(f'db_user={u.username or \"\"}')
-              print(f'db_pass={u.password or \"\"}')
-              print(f'jdbc_url=jdbc:postgresql://{u.hostname}:{u.port or 5432}{u.path}{jdbc_query}')
-              
-              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write(f'db_user={u.username or \"\"}\n')
-                  f.write(f'db_pass={u.password or \"\"}\n')
-                  f.write(f'jdbc_url=jdbc:postgresql://{u.hostname}:{u.port or 5432}{u.path}{jdbc_query}\n')
-          "
-
-      # -------------------------------------------------------------------------
-      # Path A: VM Deployment (Docker Compose)
-      # -------------------------------------------------------------------------
-      - name: Package deployment files
+      - name: Deploy to VM
         if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
-        run: |
-          files_to_pack=(
-            docker-compose.prod.yml
-            docker-compose.observability-cloud.yml
-            docker-compose.observability.yml
-            alloy
-            prometheus.prod.yml
-            grafana
-            scripts/deploy-prod-on-vm.sh
-            scripts/verify-prod-on-vm.sh
-          )
-          if [ -f Caddyfile ]; then
-            files_to_pack+=(Caddyfile)
-          fi
-          tar -czf "$RUNNER_TEMP/deploy.tar.gz" "${files_to_pack[@]}"
-
-      - name: Deploy to VM (AWS/Azure/DO)
-        if: env.DEPLOY_METHOD == 'direct' && (env.CLOUD_PROVIDER == 'aws' || env.CLOUD_PROVIDER == 'azure' || env.CLOUD_PROVIDER == 'digitalocean') && env.DEPLOYMENT_TARGET == 'vm'
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           VM_USER: ${{ secrets.VM_USER }}
           VM_HOST: ${{ secrets.VM_HOST }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          
-          # SCP files
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "$RUNNER_TEMP/deploy.tar.gz" "${VM_USER}@${VM_HOST}:~/deploy.tar.gz"
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "$RUNNER_TEMP/prod.env" "${VM_USER}@${VM_HOST}:~/prod.env"
-          
-          # Unpack and Deploy
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "${VM_USER}@${VM_HOST}" \
-            "mkdir -p ~/manga-cdc; tar -xzf ~/deploy.tar.gz -C ~/manga-cdc; mv ~/prod.env ~/manga-cdc/.env; chmod +x ~/manga-cdc/scripts/deploy-prod-on-vm.sh ~/manga-cdc/scripts/verify-prod-on-vm.sh"
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "${VM_USER}@${VM_HOST}" \
-            "bash ~/manga-cdc/scripts/deploy-prod-on-vm.sh"
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "${VM_USER}@${VM_HOST}" \
-            "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
+        run: bash ./scripts/ci/vm-direct-deploy.sh
 
-      # -------------------------------------------------------------------------
-      # Path B: Kubernetes Deployment (Helm)
-      # -------------------------------------------------------------------------
-      - name: Configure GKE Kubeconfig
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'kubernetes'
-        run: |
-          gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER_NAME }} --zone ${{ secrets.GCP_ZONE || 'us-central1-a' }}
+      - name: Configure EKS kubeconfig
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
 
-      - name: Configure EKS Kubeconfig
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'aws' && env.DEPLOYMENT_TARGET == 'kubernetes'
-        run: |
-          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
-
-      - name: Configure AKS Kubeconfig
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'azure' && env.DEPLOYMENT_TARGET == 'kubernetes'
-        run: |
-          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
-
-      - name: Configure DOKS Kubeconfig
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'digitalocean' && env.DEPLOYMENT_TARGET == 'kubernetes'
-        run: |
-          doctl kubernetes cluster kubeconfig save ${{ secrets.DOKS_CLUSTER_NAME }}
+      - name: Parse DATABASE_URL for JDBC
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        id: db_parser
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: bash ./scripts/ci/parse-database-url.sh
 
       - name: Deploy to Kubernetes via Helm
         if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
-        run: |
-          helm upgrade --install manga-cdc ./helm/manga-cdc \
-            --namespace default \
-            --set images.scraper=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} \
-            --set images.notification=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }} \
-            --set database.url=${{ secrets.DATABASE_URL }} \
-            --set database.jdbcUrl="${{ steps.db_parser.outputs.jdbc_url }}" \
-            --set database.username="${{ steps.db_parser.outputs.db_user }}" \
-            --set database.password="${{ steps.db_parser.outputs.db_pass }}" \
-            --set eventing.kafka.enabled=${{ secrets.KAFKA_BROKERS != '' && 'true' || 'false' }} \
-            --set eventing.kafka.brokers=${{ secrets.KAFKA_BROKERS }} \
-            --set eventing.kafka.username=${{ secrets.KAFKA_USERNAME }} \
-            --set eventing.kafka.password=${{ secrets.KAFKA_PASSWORD }} \
-            --set discord.webhookUrl=${{ secrets.DISCORD_WEBHOOK_URL }} \
-            --set slack.webhookUrl=${{ secrets.SLACK_WEBHOOK_URL }} \
-            --set telegram.botToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
-            --set telegram.chatId=${{ secrets.TELEGRAM_CHAT_ID }} \
-            --set notifiers.discord=${{ secrets.DISCORD_WEBHOOK_URL != '' && 'true' || 'false' }} \
-            --set notifiers.slack=${{ secrets.SLACK_WEBHOOK_URL != '' && 'true' || 'false' }} \
-            --set notifiers.telegram=${{ secrets.TELEGRAM_BOT_TOKEN != '' && 'true' || 'false' }}
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JDBC_URL: ${{ steps.db_parser.outputs.jdbc_url }}
+          DB_USER: ${{ steps.db_parser.outputs.db_user }}
+          DB_PASS: ${{ steps.db_parser.outputs.db_pass }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bash ./scripts/ci/helm-deploy.sh
 
-      # -------------------------------------------------------------------------
-      # Path C: Serverless Deployment (Direct CLI)
-      # -------------------------------------------------------------------------
-      - name: Deploy to GCP Cloud Run
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'serverless'
+      - name: Deploy to ECS Fargate
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'serverless'
         run: |
-          gcloud run services update manga-cdc-notifier-prod --image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }} --region=${{ secrets.GCP_REGION || 'us-central1' }}
-          gcloud run jobs update manga-cdc-scraper-job-prod --image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} --region=${{ secrets.GCP_REGION || 'us-central1' }}
-
-      - name: Deploy to AWS ECS Fargate
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'aws' && env.DEPLOYMENT_TARGET == 'serverless'
-        run: |
-          # Update Notifier Fargate Service
           TASK_DEF=$(aws ecs describe-task-definition --task-definition manga-cdc-notifier)
-          NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+          NEW_TASK_DEF=$(echo "$TASK_DEF" | jq --arg IMAGE "${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
           NEW_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
-          aws ecs update-service --cluster manga-cdc-ecs-prod --service manga-cdc-notifier --task-definition $NEW_ARN
-          
-          # Update Scraper Fargate Job
+          aws ecs update-service --cluster manga-cdc-ecs-prod --service manga-cdc-notifier --task-definition "$NEW_ARN"
+
           TASK_DEF_SCRAPER=$(aws ecs describe-task-definition --task-definition manga-cdc-scraper)
-          NEW_TASK_DEF_SCRAPER=$(echo $TASK_DEF_SCRAPER | jq --arg IMAGE "${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+          NEW_TASK_DEF_SCRAPER=$(echo "$TASK_DEF_SCRAPER" | jq --arg IMAGE "${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
           aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF_SCRAPER"
 
-      - name: Deploy to Azure Container Apps
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'azure' && env.DEPLOYMENT_TARGET == 'serverless'
-        run: |
-          az containerapp update -n manga-cdc-notifier-prod -g rg-manga-cdc-prod --image ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
-          az containerapp job update -n manga-cdc-scraper-job-prod -g rg-manga-cdc-prod --image ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+      - name: Setup Terraform
+        if: env.DEPLOY_METHOD == 'terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.0"
 
-      - name: Deploy to DigitalOcean App Platform
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'digitalocean' && env.DEPLOYMENT_TARGET == 'serverless'
-        run: |
-          doctl apps create-deployment ${{ secrets.DO_APP_ID }}
+      - name: Terraform apply
+        if: env.DEPLOY_METHOD == 'terraform'
+        env:
+          DEPLOYMENT_TARGET: ${{ env.DEPLOYMENT_TARGET }}
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+        run: bash ./scripts/ci/terraform-apply.sh aws
 
-      # -------------------------------------------------------------------------
-      # Path D: Terraform Apply (Infrastructure + App)
-      # -------------------------------------------------------------------------
-      - name: Export DigitalOcean Spaces credentials for Terraform backend
-        if: env.DEPLOY_METHOD == 'terraform' && env.CLOUD_PROVIDER == 'digitalocean'
+  deploy-azure:
+    name: Deploy (Azure)
+    needs: resolve-release
+    if: ${{ needs.resolve-release.outputs.should_deploy == 'true' && needs.resolve-release.outputs.cloud_provider == 'azure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE_TAG: ${{ needs.resolve-release.outputs.image_tag }}
+      DEPLOYMENT_TARGET: ${{ needs.resolve-release.outputs.deployment_target }}
+      DEPLOY_METHOD: ${{ needs.resolve-release.outputs.deploy_method }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Deploy summary
+        run: |
+          echo "Azure deploy — target=${DEPLOYMENT_TARGET} method=${DEPLOY_METHOD} image=${IMAGE_TAG}"
+
+      - name: Log in to Azure (OIDC)
+        if: env.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure (service principal JSON)
+        if: env.AZURE_CLIENT_ID == ''
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Render production .env
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_TOPIC: mangacdc.public.chapters
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CDC_ENABLED: "true"
+          OBSERVABILITY_MODE: grafana-cloud
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
+        run: bash ./scripts/ci/render-direct-env.sh
+
+      - name: Deploy to VM
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: bash ./scripts/ci/vm-direct-deploy.sh
+
+      - name: Configure AKS kubeconfig
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Parse DATABASE_URL for JDBC
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        id: db_parser
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: bash ./scripts/ci/parse-database-url.sh
+
+      - name: Deploy to Kubernetes via Helm
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JDBC_URL: ${{ steps.db_parser.outputs.jdbc_url }}
+          DB_USER: ${{ steps.db_parser.outputs.db_user }}
+          DB_PASS: ${{ steps.db_parser.outputs.db_pass }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bash ./scripts/ci/helm-deploy.sh
+
+      - name: Deploy to Container Apps
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'serverless'
+        run: |
+          az containerapp update -n manga-cdc-notifier-prod -g rg-manga-cdc-prod \
+            --image ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
+          az containerapp job update -n manga-cdc-scraper-job-prod -g rg-manga-cdc-prod \
+            --image ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+
+      - name: Setup Terraform
+        if: env.DEPLOY_METHOD == 'terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.0"
+
+      - name: Terraform apply
+        if: env.DEPLOY_METHOD == 'terraform'
+        env:
+          DEPLOYMENT_TARGET: ${{ env.DEPLOYMENT_TARGET }}
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+        run: bash ./scripts/ci/terraform-apply.sh azure
+
+  deploy-digitalocean:
+    name: Deploy (DigitalOcean)
+    needs: resolve-release
+    if: ${{ needs.resolve-release.outputs.should_deploy == 'true' && needs.resolve-release.outputs.cloud_provider == 'digitalocean' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE_TAG: ${{ needs.resolve-release.outputs.image_tag }}
+      DEPLOYMENT_TARGET: ${{ needs.resolve-release.outputs.deployment_target }}
+      DEPLOY_METHOD: ${{ needs.resolve-release.outputs.deploy_method }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Deploy summary
+        run: |
+          echo "DigitalOcean deploy — target=${DEPLOYMENT_TARGET} method=${DEPLOY_METHOD} image=${IMAGE_TAG}"
+
+      - name: Setup doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Render production .env
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_TOPIC: mangacdc.public.chapters
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CDC_ENABLED: "true"
+          OBSERVABILITY_MODE: grafana-cloud
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
+        run: bash ./scripts/ci/render-direct-env.sh
+
+      - name: Deploy to VM
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: bash ./scripts/ci/vm-direct-deploy.sh
+
+      - name: Configure DOKS kubeconfig
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: doctl kubernetes cluster kubeconfig save ${{ secrets.DOKS_CLUSTER_NAME }}
+
+      - name: Parse DATABASE_URL for JDBC
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        id: db_parser
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: bash ./scripts/ci/parse-database-url.sh
+
+      - name: Deploy to Kubernetes via Helm
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JDBC_URL: ${{ steps.db_parser.outputs.jdbc_url }}
+          DB_USER: ${{ steps.db_parser.outputs.db_user }}
+          DB_PASS: ${{ steps.db_parser.outputs.db_pass }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bash ./scripts/ci/helm-deploy.sh
+
+      - name: Deploy to App Platform
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'serverless'
+        run: doctl apps create-deployment ${{ secrets.DO_APP_ID }}
+
+      - name: Export Spaces credentials for Terraform backend
+        if: env.DEPLOY_METHOD == 'terraform'
         run: |
           echo "AWS_ACCESS_KEY_ID=${{ secrets.DO_SPACES_ACCESS_KEY }}" >> "$GITHUB_ENV"
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.DO_SPACES_SECRET_KEY }}" >> "$GITHUB_ENV"
@@ -362,74 +590,26 @@ jobs:
         with:
           terraform_version: "1.8.0"
 
-      - name: Terraform Apply
+      - name: Terraform apply
         if: env.DEPLOY_METHOD == 'terraform'
-        working-directory: terraform/${{ env.CLOUD_PROVIDER }}
-        run: |
-          # Dynamically write backend.tf if state storage secrets are available (bypasses manual config)
-          if [ "${{ env.CLOUD_PROVIDER }}" = "gcp" ] && [ -n "${{ secrets.TF_STATE_BUCKET }}" ]; then
-            echo 'terraform {' > backend.tf
-            echo '  backend "gcs" {' >> backend.tf
-            echo '    bucket = "${{ secrets.TF_STATE_BUCKET }}"' >> backend.tf
-            echo '    prefix = "terraform/state"' >> backend.tf
-            echo '  }' >> backend.tf
-            echo '}' >> backend.tf
-          elif [ "${{ env.CLOUD_PROVIDER }}" = "aws" ] && [ -n "${{ secrets.TF_STATE_BUCKET }}" ]; then
-            echo 'terraform {' > backend.tf
-            echo '  backend "s3" {' >> backend.tf
-            echo '    bucket = "${{ secrets.TF_STATE_BUCKET }}"' >> backend.tf
-            echo '    key    = "terraform/state/terraform.tfstate"' >> backend.tf
-            echo '    region = "${{ env.AWS_REGION }}"' >> backend.tf
-            echo '  }' >> backend.tf
-            echo '}' >> backend.tf
-          elif [ "${{ env.CLOUD_PROVIDER }}" = "azure" ] && [ -n "${{ secrets.AZURE_STORAGE_ACCOUNT }}" ]; then
-            echo 'terraform {' > backend.tf
-            echo '  backend "azurerm" {' >> backend.tf
-            echo '    resource_group_name  = "${{ secrets.AZURE_RESOURCE_GROUP }}"' >> backend.tf
-            echo '    storage_account_name = "${{ secrets.AZURE_STORAGE_ACCOUNT }}"' >> backend.tf
-            echo '    container_name       = "tfstate"' >> backend.tf
-            echo '    key                  = "terraform.tfstate"' >> backend.tf
-            echo '  }' >> backend.tf
-            echo '}' >> backend.tf
-          elif [ "${{ env.CLOUD_PROVIDER }}" = "digitalocean" ] && [ -n "${{ secrets.TF_STATE_BUCKET }}" ] && [ -n "${{ secrets.DO_SPACE_ENDPOINT }}" ]; then
-            echo 'terraform {' > backend.tf
-            echo '  backend "s3" {' >> backend.tf
-            echo '    endpoint                    = "${{ secrets.DO_SPACE_ENDPOINT }}"' >> backend.tf
-            echo '    region                      = "us-east-1"' >> backend.tf
-            echo '    bucket                      = "${{ secrets.TF_STATE_BUCKET }}"' >> backend.tf
-            echo '    key                         = "terraform.tfstate"' >> backend.tf
-            echo '    skip_credentials_validation = true' >> backend.tf
-            echo '    skip_metadata_api_check     = true' >> backend.tf
-            echo '    skip_region_validation      = true' >> backend.tf
-            echo '  }' >> backend.tf
-            echo '}' >> backend.tf
-          fi
-
-          # Dynamically inject cloud-specific variables to maintain cloud-agnostic YAML
-          provider_vars=""
-          if [ "${{ env.CLOUD_PROVIDER }}" = "digitalocean" ]; then
-            provider_vars="$provider_vars -var=\"do_token=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}\""
-          elif [ "${{ env.CLOUD_PROVIDER }}" = "gcp" ]; then
-            provider_vars="$provider_vars -var=\"project_id=${{ secrets.GCP_PROJECT_ID }}\""
-            provider_vars="$provider_vars -var=\"region=${{ secrets.GCP_REGION || 'us-central1' }}\""
-          fi
-
-          terraform init
-          eval "terraform apply -auto-approve \
-            $provider_vars \
-            -var=\"deployment_target=${{ env.DEPLOYMENT_TARGET }}\" \
-            -var=\"scraper_image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}\" \
-            -var=\"notification_image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}\" \
-            -var=\"database_url=${{ secrets.DATABASE_URL }}\" \
-            -var=\"kafka_brokers=${{ secrets.KAFKA_BROKERS || '' }}\" \
-            -var=\"kafka_username=${{ secrets.KAFKA_USERNAME || '' }}\" \
-            -var=\"kafka_password=${{ secrets.KAFKA_PASSWORD || '' }}\" \
-            -var=\"discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL || '' }}\" \
-            -var=\"slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL || '' }}\" \
-            -var=\"telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN || '' }}\" \
-            -var=\"telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID || '' }}\" \
-            -var=\"observability_mode=grafana-cloud\" \
-            -var=\"grafana_cloud_prometheus_url=${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL || '' }}\" \
-            -var=\"grafana_cloud_prometheus_user=${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER || '' }}\" \
-            -var=\"grafana_cloud_api_key=${{ secrets.GRAFANA_CLOUD_API_KEY || '' }}\" \
-            -var=\"grafana_cloud_stack_url=${{ secrets.GRAFANA_CLOUD_STACK_URL || '' }}\""
+        env:
+          DEPLOYMENT_TARGET: ${{ env.DEPLOYMENT_TARGET }}
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          DO_SPACE_ENDPOINT: ${{ secrets.DO_SPACE_ENDPOINT }}
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+        run: bash ./scripts/ci/terraform-apply.sh digitalocean

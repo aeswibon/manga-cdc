@@ -7,6 +7,7 @@ on:
     branches: [master]
     tags:
       - "v*"
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -14,14 +15,41 @@ env:
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
   SNAPSHOT_TAG: ci-${{ github.sha }}
 
-# Avoid duplicate full pipelines when master and a release tag are pushed for the same commit.
+# Tag and branch pushes for the same commit use different concurrency groups so a
+# master push cannot cancel an in-flight release (tag) pipeline.
 concurrency:
-  group: test-build-${{ github.event.pull_request.number || github.sha }}
+  group: test-build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  gate:
+    name: Pipeline gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Skip duplicate master push for tagged releases
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            git fetch --tags origin
+            if git tag --points-at HEAD | grep -qE '^v[0-9]'; then
+              echo "Commit is tagged for release; the tag push runs the full pipeline."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
   repo-policy:
     name: Repository policy checks
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -40,6 +68,8 @@ jobs:
 
   go-test:
     name: Go tests
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -60,6 +90,8 @@ jobs:
 
   go-integration-test:
     name: Go integration tests
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -94,6 +126,8 @@ jobs:
 
   configure-test:
     name: Configure tests
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -109,8 +143,57 @@ jobs:
       - run: go vet ./...
       - run: go test ./... -v -count=1
 
+  terraform-fmt:
+    name: Terraform fmt
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.0"
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive terraform/
+
+  terraform-validate-plan:
+    name: Terraform (${{ matrix.cloud }} / ${{ matrix.target }})
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cloud: [gcp, aws, azure, digitalocean]
+        target: [vm, kubernetes, serverless]
+    env:
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
+      AWS_EC2_METADATA_DISABLED: true
+      ARM_USE_CLI: false
+      ARM_SKIP_PROVIDER_REGISTRATION: true
+      ARM_SUBSCRIPTION_ID: 00000000-0000-0000-0000-000000000000
+      ARM_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      ARM_CLIENT_ID: 00000000-0000-0000-0000-000000000000
+      ARM_CLIENT_SECRET: ci-dummy-secret
+      GOOGLE_CLOUD_PROJECT: ci-validate-project
+      GOOGLE_OAUTH_ACCESS_TOKEN: ci-dummy-token
+      DIGITALOCEAN_TOKEN: ci-dummy-token
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.0"
+          terraform_wrapper: false
+      - name: Validate and plan
+        run: bash ./scripts/ci/terraform-matrix-check.sh "${{ matrix.cloud }}" "${{ matrix.target }}"
+
   java-test:
     name: Java tests
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -127,8 +210,8 @@ jobs:
 
   docker-snapshot:
     name: Build CI snapshot images
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-    needs: [repo-policy]
+    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
+    needs: [gate, repo-policy]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -173,8 +256,8 @@ jobs:
 
   e2e-test:
     name: End-to-end tests
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-    needs: [docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test]
+    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
+    needs: [gate, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -191,8 +274,8 @@ jobs:
 
   build:
     name: Build and push Docker images
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [docker-snapshot, e2e-test]
+    if: needs.gate.outputs.proceed == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [gate, docker-snapshot, e2e-test]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -264,8 +347,8 @@ jobs:
 
   release:
     name: Publish release notes
-    needs: [build]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [gate, build]
+    if: needs.gate.outputs.proceed == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

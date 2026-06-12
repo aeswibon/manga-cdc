@@ -273,7 +273,9 @@ resource "helm_release" "manga_cdc" {
 # TARGET: Cloud Run + Cloud Scheduler Deployment (Serverless)
 # -----------------------------------------------------------------------------
 locals {
-  cloud_run_env = {
+  # tomap() is required: a keyed literal with a for expression is typed as object,
+  # but dynamic for_each only accepts map/set.
+  cloud_run_env = tomap({
     for k, v in {
       DATABASE_URL                  = var.database_url
       SPRING_DATASOURCE_URL         = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
@@ -294,7 +296,7 @@ locals {
       GRAFANA_CLOUD_API_KEY         = var.grafana_cloud_api_key
       GRAFANA_CLOUD_STACK_URL       = var.grafana_cloud_stack_url
     } : k => v if v != ""
-  }
+  })
 }
 
 resource "google_cloud_run_v2_job" "scraper_job" {
