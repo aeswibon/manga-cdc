@@ -137,6 +137,12 @@ The workflow supports two deployment methods, configured via the `DEPLOY_METHOD`
 ### GitHub Repository Secrets
 To enable automated deployments, configure the following secrets in your GitHub repository:
 
+#### Terraform State Secrets (Optional / For `deploy_method: terraform`)
+If you use the `terraform` deploy method, the pipeline can dynamically provision and manage your remote state storage bucket. Set up these secrets to let the pipeline handle the configuration automatically:
+* `TF_STATE_BUCKET`: The name of the storage bucket (GCS for GCP, S3 for AWS, Space for DigitalOcean).
+* `DO_SPACE_ENDPOINT`: The Space API endpoint (e.g. `sfo3.digitaloceanspaces.com`, required for DigitalOcean).
+* `AZURE_STORAGE_ACCOUNT`: The Azure Storage Account name (required for Azure).
+
 #### Core Secrets (All Targets)
 * `DATABASE_URL`: PostgreSQL connection string (starts with `postgres://` or `postgresql://`).
 * `KAFKA_BROKERS`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`: Message streaming credentials (optional).
