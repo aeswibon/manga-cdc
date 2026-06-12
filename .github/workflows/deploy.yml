@@ -94,18 +94,15 @@ jobs:
           INPUT_CLOUD: ${{ github.event.inputs.cloud_provider }}
           INPUT_TARGET: ${{ github.event.inputs.deployment_target }}
           INPUT_METHOD: ${{ github.event.inputs.deploy_method }}
-          SECRET_CLOUD: ${{ secrets.DEPLOY_CLOUD }}
-          SECRET_TARGET: ${{ secrets.DEPLOY_TARGET }}
-          SECRET_METHOD: ${{ secrets.DEPLOY_METHOD }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             cloud="$INPUT_CLOUD"
             target="$INPUT_TARGET"
             method="$INPUT_METHOD"
           else
-            cloud="${SECRET_CLOUD:-gcp}"
-            target="${SECRET_TARGET:-serverless}"
-            method="${SECRET_METHOD:-terraform}"
+            cloud="gcp"
+            target="serverless"
+            method="terraform"
           fi
           echo "cloud_provider=$cloud" >> "$GITHUB_OUTPUT"
           echo "deployment_target=$target" >> "$GITHUB_OUTPUT"
