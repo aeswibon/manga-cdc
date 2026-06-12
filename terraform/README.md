@@ -123,6 +123,17 @@ Generate an API token from your DigitalOcean Control Panel under **API -> Person
 
 The repository includes a unified CI/CD workflow at `.github/workflows/deploy.yml` which deploys your application automatically on release tags (`v*`) or manually via the Actions UI.
 
+### Deployment Methods (`deploy_method`)
+
+The workflow supports two deployment methods, configured via the `DEPLOY_METHOD` secret/variable (defaults to `direct`) or selected manually via `workflow_dispatch`:
+
+1. **`direct` (Default / Low-Friction)**:
+   * Deploys container updates directly to your environment using SSH/SCP (for VMs), Helm (for Kubernetes), or cloud CLIs (for Serverless).
+   * **No state setup required**: Ideal for quick setups as it does not touch your Terraform state.
+2. **`terraform` (IaC / GitOps)**:
+   * Executes `terraform init` and `terraform apply -auto-approve` inside the runner, applying both infrastructure and container updates together.
+   * **Remote Backend Requirement**: To use this method, you **must** configure a remote backend (e.g. AWS S3, GCP GCS, Azure Blob, or Terraform Cloud) in your Terraform files to persist the state. Using the default local backend will cause state loss between runner executions, resulting in deployment failures.
+
 ### GitHub Repository Secrets
 To enable automated deployments, configure the following secrets in your GitHub repository:
 
