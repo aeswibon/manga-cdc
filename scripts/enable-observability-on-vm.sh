@@ -34,11 +34,14 @@ timeout "${UP_TIMEOUT_SECONDS}" "${compose[@]}" up -d prometheus grafana
 echo "=== observability status ==="
 "${compose[@]}" ps prometheus grafana
 
-VM_IP="$(curl -sf --max-time 5 -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip 2>/dev/null || true)"
-if [ -n "$VM_IP" ]; then
-  echo "Grafana:    http://${VM_IP}:3000/d/manga-cdc-overview/manga-cdc"
-  echo "Prometheus: http://${VM_IP}:9090"
-else
-  echo "Grafana:    http://<vm-external-ip>:3000/d/manga-cdc-overview/manga-cdc"
-  echo "Prometheus: http://<vm-external-ip>:9090"
-fi
+echo ""
+echo "Security Note: Grafana and Prometheus ports are bound to 127.0.0.1."
+echo "To access them securely from your local browser, establish an SSH tunnel or use GCP IAP TCP forwarding:"
+echo ""
+echo "For Grafana (port 3000):"
+echo "  gcloud compute start-iap-tunnel <vm-instance-name> 3000 --local-host-port=localhost:3000 --zone=<zone>"
+echo "  Then open: http://localhost:3000/d/manga-cdc-overview/manga-cdc"
+echo ""
+echo "For Prometheus (port 9090):"
+echo "  gcloud compute start-iap-tunnel <vm-instance-name> 9090 --local-host-port=localhost:9090 --zone=<zone>"
+echo "  Then open: http://localhost:9090"

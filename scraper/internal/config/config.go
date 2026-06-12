@@ -19,6 +19,7 @@ type Config struct {
 	QStashDestination        string
 	AdminDiscordWebhookURL   string
 	ZeroResultAlertThreshold int
+	RunOnce                  bool
 }
 
 func getEnv(key, defaultVal string) string {
@@ -62,6 +63,14 @@ func Load() (*Config, error) {
 		threshold = parsed
 	}
 
+	runOnce := false
+	if v := os.Getenv("RUN_ONCE"); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err == nil {
+			runOnce = parsed
+		}
+	}
+
 	return &Config{
 		DatabaseURL:              dbURL,
 		ScrapeInterval:           interval,
@@ -74,5 +83,6 @@ func Load() (*Config, error) {
 		QStashDestination:        os.Getenv("QSTASH_DESTINATION_URL"),
 		AdminDiscordWebhookURL:   adminWebhook,
 		ZeroResultAlertThreshold: threshold,
+		RunOnce:                  runOnce,
 	}, nil
 }

@@ -105,3 +105,35 @@ func TestAllQStashProductionWritesCaddyfile(t *testing.T) {
 		t.Error("Caddyfile missing reverse proxy config")
 	}
 }
+
+func TestAllTerraformProductionWritesTfvars(t *testing.T) {
+	dir := t.TempDir()
+	RootDir = dir
+
+	m := manifest.Manifest{
+		Version: manifest.CurrentVersion,
+		Tier:    manifest.TierProduction,
+		Database: manifest.DatabaseConfig{
+			Mode: manifest.DatabaseExternal,
+			URL:  "postgres://user:pass@db.example.com:5432/mangacdc",
+		},
+		Eventing:  manifest.EventingConfig{Backend: manifest.EventingNone},
+		Notifiers: []string{"discord"},
+		Deploy:    manifest.DeployConfig{Targets: []string{"terraform"}},
+	}
+
+	if err := All(m); err != nil {
+		t.Fatalf("All: %v", err)
+	}
+
+	for _, provider := range []string{"gcp", "aws", "azure", "digitalocean"} {
+		path := filepath.Join(dir, "terraform", provider, "terraform.tfvars.example")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("missing %s: %v", path, err)
+		}
+		if !strings.Contains(string(data), "deployment_target =") {
+			t.Errorf("%s: missing deployment_target", path)
+		}
+	}
+}

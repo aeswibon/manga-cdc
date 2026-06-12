@@ -1,0 +1,336 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [Test and Build]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      cloud_provider:
+        description: "Cloud Provider (gcp, aws, azure, digitalocean)"
+        required: true
+        default: "gcp"
+        type: choice
+        options:
+          - gcp
+          - aws
+          - azure
+          - digitalocean
+      deployment_target:
+        description: "Deployment Target (vm, kubernetes, serverless)"
+        required: true
+        default: "vm"
+        type: choice
+        options:
+          - vm
+          - kubernetes
+          - serverless
+      image_tag:
+        description: "Docker Image Tag to deploy"
+        required: true
+        default: "latest"
+
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
+  NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
+
+jobs:
+  resolve-release:
+    name: Resolve release tag
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_deploy: ${{ steps.tag.outputs.should_deploy }}
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 0
+
+      - name: Require version tag on commit
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "release_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "image_tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          head_branch='${{ github.event.workflow_run.head_branch }}'
+          if [ "$head_branch" = "master" ]; then
+            echo "Master push workflow (tests only); deploy runs on tag release workflows."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --tags origin
+          release_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
+          if [ -z "$release_tag" ]; then
+            echo "No release tag on ${{ github.event.workflow_run.head_sha }}; skipping deploy."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Release tag: $release_tag"
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${release_tag#v}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy Application
+    needs: resolve-release
+    if: ${{ needs.resolve-release.outputs.should_deploy == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
+      IMAGE_TAG: ${{ needs.resolve-release.outputs.image_tag }}
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      CLOUD_PROVIDER: ${{ github.event.inputs.cloud_provider || secrets.DEPLOY_CLOUD || 'gcp' }}
+      DEPLOYMENT_TARGET: ${{ github.event.inputs.deployment_target || secrets.DEPLOY_TARGET || 'vm' }}
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 0
+
+      - name: Deploy summary
+        run: |
+          echo "Deploying to Cloud: ${CLOUD_PROVIDER} (Target: ${DEPLOYMENT_TARGET})"
+          echo "Image tag: ${IMAGE_TAG}"
+          echo "Commit: ${DEPLOY_SHA}"
+
+      # -------------------------------------------------------------------------
+      # Authentication
+      # -------------------------------------------------------------------------
+      - name: Authenticate to Google Cloud
+        if: env.CLOUD_PROVIDER == 'gcp'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        if: env.CLOUD_PROVIDER == 'gcp'
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure AWS Credentials
+        if: env.CLOUD_PROVIDER == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Azure
+        if: env.CLOUD_PROVIDER == 'azure'
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Setup doctl
+        if: env.CLOUD_PROVIDER == 'digitalocean'
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      # -------------------------------------------------------------------------
+      # Setup configuration & Render Environment variables
+      # -------------------------------------------------------------------------
+      - name: Render production .env
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_TOPIC: mangacdc.public.chapters
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CDC_ENABLED: "true"
+          OBSERVABILITY_MODE: grafana-cloud
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
+        run: |
+          chmod +x scripts/render-prod-env.sh
+          ./scripts/render-prod-env.sh > "$RUNNER_TEMP/prod.env"
+          chmod 600 "$RUNNER_TEMP/prod.env"
+
+      - name: Parse DATABASE_URL for JDBC
+        id: db_parser
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python3 -c "
+          import urllib.parse, os
+          url = os.environ.get('DATABASE_URL', '')
+          if url:
+              u = urllib.parse.urlparse(url)
+              jdbc_query = f'?{u.query}' if u.query else ''
+              print(f'db_user={u.username or \"\"}')
+              print(f'db_pass={u.password or \"\"}')
+              print(f'jdbc_url=jdbc:postgresql://{u.hostname}:{u.port or 5432}{u.path}{jdbc_query}')
+              
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write(f'db_user={u.username or \"\"}\n')
+                  f.write(f'db_pass={u.password or \"\"}\n')
+                  f.write(f'jdbc_url=jdbc:postgresql://{u.hostname}:{u.port or 5432}{u.path}{jdbc_query}\n')
+          "
+
+      # -------------------------------------------------------------------------
+      # Path A: VM Deployment (Docker Compose)
+      # -------------------------------------------------------------------------
+      - name: Package deployment files
+        if: env.DEPLOYMENT_TARGET == 'vm'
+        run: |
+          files_to_pack=(
+            docker-compose.prod.yml
+            docker-compose.observability-cloud.yml
+            docker-compose.observability.yml
+            alloy
+            prometheus.prod.yml
+            grafana
+            scripts/deploy-prod-on-vm.sh
+            scripts/verify-prod-on-vm.sh
+          )
+          if [ -f Caddyfile ]; then
+            files_to_pack+=(Caddyfile)
+          fi
+          tar -czf "$RUNNER_TEMP/deploy.tar.gz" "${files_to_pack[@]}"
+
+      - name: Deploy to GCP VM
+        if: env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'vm'
+        env:
+          GCP_SSH_USER: ${{ secrets.GCP_SSH_USER }}
+          GCP_VM_NAME: ${{ secrets.GCP_VM_NAME }}
+          GCP_ZONE: ${{ secrets.GCP_ZONE }}
+          GCP_SSH_PRIVATE_KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+        run: |
+          chmod +x scripts/ci-prepare-gcp-ssh-key.sh scripts/ci-gcloud-scp.sh scripts/ci-gcloud-ssh.sh
+          ./scripts/ci-prepare-gcp-ssh-key.sh
+          timeout 120 ./scripts/ci-gcloud-scp.sh "$RUNNER_TEMP/deploy.tar.gz" "~/deploy.tar.gz"
+          timeout 120 ./scripts/ci-gcloud-scp.sh "$RUNNER_TEMP/prod.env" "~/prod.env"
+          timeout 120 ./scripts/ci-gcloud-ssh.sh "set -euo pipefail; mkdir -p ~/manga-cdc; tar -xzf ~/deploy.tar.gz -C ~/manga-cdc; mv ~/prod.env ~/manga-cdc/.env; chmod +x ~/manga-cdc/scripts/deploy-prod-on-vm.sh ~/manga-cdc/scripts/verify-prod-on-vm.sh"
+          timeout 1200 ./scripts/ci-gcloud-ssh.sh "bash ~/manga-cdc/scripts/deploy-prod-on-vm.sh"
+          timeout 180 ./scripts/ci-gcloud-ssh.sh "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
+
+      - name: Deploy to Generic VM (AWS/Azure/DO)
+        if: (env.CLOUD_PROVIDER == 'aws' || env.CLOUD_PROVIDER == 'azure' || env.CLOUD_PROVIDER == 'digitalocean') && env.DEPLOYMENT_TARGET == 'vm'
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          # SCP files
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "$RUNNER_TEMP/deploy.tar.gz" "${VM_USER}@${VM_HOST}:~/deploy.tar.gz"
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "$RUNNER_TEMP/prod.env" "${VM_USER}@${VM_HOST}:~/prod.env"
+          
+          # Unpack and Deploy
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "${VM_USER}@${VM_HOST}" \
+            "mkdir -p ~/manga-cdc; tar -xzf ~/deploy.tar.gz -C ~/manga-cdc; mv ~/prod.env ~/manga-cdc/.env; chmod +x ~/manga-cdc/scripts/deploy-prod-on-vm.sh ~/manga-cdc/scripts/verify-prod-on-vm.sh"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "${VM_USER}@${VM_HOST}" \
+            "bash ~/manga-cdc/scripts/deploy-prod-on-vm.sh"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa "${VM_USER}@${VM_HOST}" \
+            "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
+
+      # -------------------------------------------------------------------------
+      # Path B: Kubernetes Deployment (Helm)
+      # -------------------------------------------------------------------------
+      - name: Configure GKE Kubeconfig
+        if: env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: |
+          gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER_NAME }} --zone ${{ secrets.GCP_ZONE || 'us-central1-a' }}
+
+      - name: Configure EKS Kubeconfig
+        if: env.CLOUD_PROVIDER == 'aws' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Configure AKS Kubeconfig
+        if: env.CLOUD_PROVIDER == 'azure' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: |
+          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Configure DOKS Kubeconfig
+        if: env.CLOUD_PROVIDER == 'digitalocean' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: |
+          doctl kubernetes cluster kubeconfig save ${{ secrets.DOKS_CLUSTER_NAME }}
+
+      - name: Deploy to Kubernetes via Helm
+        if: env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: |
+          helm upgrade --install manga-cdc ./helm/manga-cdc \
+            --namespace default \
+            --set images.scraper=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} \
+            --set images.notification=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }} \
+            --set database.url=${{ secrets.DATABASE_URL }} \
+            --set database.jdbcUrl="${{ steps.db_parser.outputs.jdbc_url }}" \
+            --set database.username="${{ steps.db_parser.outputs.db_user }}" \
+            --set database.password="${{ steps.db_parser.outputs.db_pass }}" \
+            --set eventing.kafka.enabled=${{ secrets.KAFKA_BROKERS != '' && 'true' || 'false' }} \
+            --set eventing.kafka.brokers=${{ secrets.KAFKA_BROKERS }} \
+            --set eventing.kafka.username=${{ secrets.KAFKA_USERNAME }} \
+            --set eventing.kafka.password=${{ secrets.KAFKA_PASSWORD }} \
+            --set discord.webhookUrl=${{ secrets.DISCORD_WEBHOOK_URL }} \
+            --set slack.webhookUrl=${{ secrets.SLACK_WEBHOOK_URL }} \
+            --set telegram.botToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+            --set telegram.chatId=${{ secrets.TELEGRAM_CHAT_ID }} \
+            --set notifiers.discord=${{ secrets.DISCORD_WEBHOOK_URL != '' && 'true' || 'false' }} \
+            --set notifiers.slack=${{ secrets.SLACK_WEBHOOK_URL != '' && 'true' || 'false' }} \
+            --set notifiers.telegram=${{ secrets.TELEGRAM_BOT_TOKEN != '' && 'true' || 'false' }}
+
+      # -------------------------------------------------------------------------
+      # Path C: Serverless Deployment
+      # -------------------------------------------------------------------------
+      - name: Deploy to GCP Cloud Run
+        if: env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'serverless'
+        run: |
+          gcloud run services update manga-cdc-notifier-prod --image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }} --region=${{ secrets.GCP_REGION || 'us-central1' }}
+          gcloud run jobs update manga-cdc-scraper-job-prod --image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} --region=${{ secrets.GCP_REGION || 'us-central1' }}
+
+      - name: Deploy to AWS ECS Fargate
+        if: env.CLOUD_PROVIDER == 'aws' && env.DEPLOYMENT_TARGET == 'serverless'
+        run: |
+          # Update Notifier Fargate Service
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition manga-cdc-notifier)
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq --arg IMAGE "${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+          NEW_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster manga-cdc-ecs-prod --service manga-cdc-notifier --task-definition $NEW_ARN
+          
+          # Update Scraper Fargate Job
+          TASK_DEF_SCRAPER=$(aws ecs describe-task-definition --task-definition manga-cdc-scraper)
+          NEW_TASK_DEF_SCRAPER=$(echo $TASK_DEF_SCRAPER | jq --arg IMAGE "${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+          aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF_SCRAPER"
+
+      - name: Deploy to Azure Container Apps
+        if: env.CLOUD_PROVIDER == 'azure' && env.DEPLOYMENT_TARGET == 'serverless'
+        run: |
+          az containerapp update -n manga-cdc-notifier-prod -g rg-manga-cdc-prod --image ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
+          az containerapp job update -n manga-cdc-scraper-job-prod -g rg-manga-cdc-prod --image ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+
+      - name: Deploy to DigitalOcean App Platform
+        if: env.CLOUD_PROVIDER == 'digitalocean' && env.DEPLOYMENT_TARGET == 'serverless'
+        run: |
+          doctl apps create-deployment ${{ secrets.DO_APP_ID }}

@@ -44,7 +44,7 @@ func TestGuideProductionSections(t *testing.T) {
 	if !strings.Contains(output, "Helm") {
 		t.Error("expected helm section")
 	}
-	if !strings.Contains(output, "future release") {
-		t.Error("expected terraform deferred note")
+	if !strings.Contains(output, "available under the") {
+		t.Error("expected terraform note")
 	}
 }

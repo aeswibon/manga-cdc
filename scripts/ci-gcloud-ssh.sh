@@ -8,7 +8,7 @@ set -euo pipefail
 : "${GCP_SSH_KEY_FILE:?}"
 
 target="${GCP_SSH_USER}@${GCP_VM_NAME}"
-ssh_opts=(-o ServerAliveInterval=15 -o ServerAliveCountMax=40 -o ConnectTimeout=30 -o TCPKeepAlive=yes)
+ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=15 -o ServerAliveCountMax=40 -o ConnectTimeout=30 -o TCPKeepAlive=yes)
 
 USE_IAP="${USE_IAP:-true}"
 

@@ -19,6 +19,8 @@ args=(
   --ssh-key-file "$GCP_SSH_KEY_FILE"
   --force-key-file-overwrite
   --quiet
+  --scp-flag="-o StrictHostKeyChecking=no"
+  --scp-flag="-o UserKnownHostsFile=/dev/null"
   --scp-flag="-o ConnectTimeout=30"
   --scp-flag="-o ServerAliveInterval=15"
 )

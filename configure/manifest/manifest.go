@@ -68,7 +68,8 @@ type QStashConfig struct {
 }
 
 type DeployConfig struct {
-	Targets []string `yaml:"targets"`
+	Targets     []string `yaml:"targets"`
+	ComputeSize string   `yaml:"compute_size,omitempty"`
 }
 
 func DefaultLocal() Manifest {
@@ -176,7 +177,7 @@ func (m Manifest) validateProduction() error {
 	}
 	for _, t := range m.Deploy.Targets {
 		switch t {
-		case "docker-compose-prod", "helm":
+		case "docker-compose-prod", "helm", "terraform":
 		default:
 			return fmt.Errorf("deploy.targets: unsupported production target %q", t)
 		}

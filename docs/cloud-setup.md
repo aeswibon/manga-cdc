@@ -1,6 +1,6 @@
 # Multi-Cloud Production Deployment Guide (Terraform IaC)
 
-This directory contains production-ready, modular Terraform configurations to provision secure infrastructure and application runtimes across four major cloud providers:
+This guide details the production-ready, modular Terraform configurations and deployment pipelines to provision secure infrastructure and application runtimes across four major cloud providers:
 
 1. **[GCP (Google Cloud Platform)](file:///Volumes/Seagate/developer/personal/manga-cdc/terraform/gcp)**
 2. **[AWS (Amazon Web Services)](file:///Volumes/Seagate/developer/personal/manga-cdc/terraform/aws)**

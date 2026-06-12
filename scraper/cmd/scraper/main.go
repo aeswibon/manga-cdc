@@ -130,6 +130,11 @@ func main() {
 		scrapeSource(ctx, log, engine, zeroMonitor, source, kafkaProducer, qstashPublisher)
 	}
 
+	if cfg.RunOnce {
+		log.Info("run_once enabled, exiting scrape run")
+		return
+	}
+
 	for {
 		select {
 		case <-sigCh:

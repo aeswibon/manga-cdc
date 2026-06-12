@@ -64,8 +64,20 @@ func renderGuide(m manifest.Manifest) (string, error) {
 			b.WriteString("## Kubernetes (Helm)\n\n")
 			b.WriteString("```bash\nhelm upgrade --install manga-cdc ./helm/manga-cdc \\\n  --values ./helm/manga-cdc/values-override.yaml \\\n  --namespace manga-cdc --create-namespace\n```\n\n")
 		}
-		b.WriteString("## Cloud infrastructure (Terraform)\n\n")
-		b.WriteString("Cloud-specific Terraform modules (GCP, AWS, Azure) are planned for a future release.\n\n")
+		if m.HasDeployTarget("terraform") {
+			b.WriteString("## Cloud Infrastructure (Terraform)\n\n")
+			b.WriteString("Provision your cloud resources and automatically deploy the application (either to a VM or to Kubernetes):\n\n")
+			b.WriteString("1. Choose a cloud provider directory:\n")
+			b.WriteString("   ```bash\n   cd terraform/<gcp|aws|azure|digitalocean>\n   ```\n")
+			b.WriteString("2. Create a `terraform.tfvars` (copy from `terraform.tfvars.example` generated for you):\n")
+			b.WriteString("   ```bash\n   cp terraform.tfvars.example terraform.tfvars\n   ```\n")
+			b.WriteString("3. Customize `terraform.tfvars` with any missing secrets (e.g. API tokens or webhooks).\n")
+			b.WriteString("4. Deploy the infrastructure and application:\n")
+			b.WriteString("   ```bash\n   terraform init\n   terraform apply\n   ```\n\n")
+		} else {
+			b.WriteString("## Cloud Infrastructure (Terraform)\n\n")
+			b.WriteString("Production Terraform modules (GCP, AWS, Azure, DigitalOcean) are available under the `terraform/` directory. Re-run the configure wizard and select `Terraform` as a deployment target to generate customized `.tfvars.example` configuration files.\n\n")
+		}
 	}
 
 	b.WriteString("## Verification\n\n")
