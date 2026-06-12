@@ -100,13 +100,14 @@ func runProductionWizard() (manifest.Manifest, error) {
 	}
 	fmt.Println()
 
-	fmt.Println("4/5  Deployment targets (comma-separated, e.g. 1,2):")
+	fmt.Println("4/5  Deployment targets (comma-separated, e.g. 1,2,3):")
 	fmt.Println("     [1] Docker Compose (production)")
 	fmt.Println("     [2] Kubernetes / Helm")
+	fmt.Println("     [3] Cloud infrastructure (Terraform)")
 	raw, err := askOne("     Choose", "1", func(s string) bool {
 		for _, r := range strings.Split(s, ",") {
 			r = strings.TrimSpace(r)
-			if r < "1" || r > "2" {
+			if r < "1" || r > "3" {
 				return false
 			}
 		}
@@ -115,7 +116,7 @@ func runProductionWizard() (manifest.Manifest, error) {
 	if err != nil {
 		return m, err
 	}
-	deployMap := map[string]string{"1": "docker-compose-prod", "2": "helm"}
+	deployMap := map[string]string{"1": "docker-compose-prod", "2": "helm", "3": "terraform"}
 	for _, r := range strings.Split(raw, ",") {
 		r = strings.TrimSpace(r)
 		if v, ok := deployMap[r]; ok {
@@ -123,6 +124,30 @@ func runProductionWizard() (manifest.Manifest, error) {
 		}
 	}
 	fmt.Println()
+
+	hasTerraform := false
+	for _, t := range m.Deploy.Targets {
+		if t == "terraform" {
+			hasTerraform = true
+			break
+		}
+	}
+	if hasTerraform {
+		fmt.Println("     Compute size preset:")
+		fmt.Println("     [1] Micro  (1-2 vCPU, 1GB RAM - e.g. e2-micro, t3.micro, Standard_B1s, s-1vcpu-1gb) [Low Cost / Free Tier]")
+		fmt.Println("     [2] Small  (1-2 vCPU, 2GB RAM - e.g. e2-small, t3.small, Standard_B1ms, s-1vcpu-2gb)")
+		fmt.Println("     [3] Medium (2 vCPU, 4GB RAM   - e.g. e2-medium, t3.medium, Standard_B2s, s-2vcpu-2gb) [Recommended]")
+		fmt.Println("     [4] Large  (4 vCPU, 8GB RAM   - e.g. e2-standard-2, t3.large, Standard_B2ms, s-4vcpu-8gb)")
+		sizeChoice, err := askOne("     Choose [1-4]", "3", func(s string) bool {
+			return s >= "1" && s <= "4"
+		})
+		if err != nil {
+			return m, err
+		}
+		sizeMap := map[string]string{"1": "micro", "2": "small", "3": "medium", "4": "large"}
+		m.Deploy.ComputeSize = sizeMap[sizeChoice]
+		fmt.Println()
+	}
 
 	return m, nil
 }

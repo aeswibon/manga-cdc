@@ -68,6 +68,9 @@ timeout "${UP_TIMEOUT_SECONDS}" "${compose[@]}" up -d --remove-orphans
 echo "=== container status ==="
 "${compose[@]}" ps
 
+echo "=== prune old unused docker images ==="
+docker image prune -a -f --filter "until=24h"
+
 case "$OBSERVABILITY_MODE" in
   grafana-cloud)
     stack_url="$(grep -E '^GRAFANA_CLOUD_STACK_URL=' .env | cut -d= -f2- | tr -d '\r' || true)"

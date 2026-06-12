@@ -41,6 +41,12 @@ func All(m manifest.Manifest) error {
 			}
 			fmt.Println("  ✔ helm/manga-cdc/values-override.yaml")
 		}
+		if m.HasDeployTarget("terraform") {
+			if err := writeTerraformConfigs(m); err != nil {
+				return fmt.Errorf("terraform: %w", err)
+			}
+			fmt.Println("  ✔ terraform/<cloud>/terraform.tfvars.example")
+		}
 	}
 
 	if err := writeGuide(m); err != nil {

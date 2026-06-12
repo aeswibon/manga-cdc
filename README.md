@@ -94,7 +94,7 @@ For production, choose your own managed PostgreSQL and either Kafka or QStash vi
 | Notifications | Spring Boot 3.3, Java 21 |
 | Notifier targets | Discord, Slack, Telegram |
 | Metrics | Prometheus + Grafana (local); Grafana Cloud + Alloy (prod) |
-| Deployment | Docker Compose, Kubernetes/Helm, Terraform/GCP |
+| Deployment | Docker Compose, Kubernetes/Helm, Terraform (GCP, AWS, Azure, DigitalOcean) |
 | Orchestration | GitHub Actions CI/CD |
 
 ## Quick Start
@@ -141,7 +141,7 @@ manga-cdc/
 ├── connectors/                 # Debezium connector configs
 ├── db/migrations/              # SQL schema migrations (applied by scraper via goose)
 ├── helm/                       # Kubernetes Helm chart
-├── terraform/                  # GCP Terraform IaC
+├── terraform/                  # Multi-Cloud Terraform IaC (GCP, AWS, Azure, DigitalOcean)
 ├── docker-compose.yml          # Local dev compose (generated)
 ├── docker-compose.prod.yml     # Production compose (generated)
 ├── docker-compose.observability.yml        # Local self-hosted Prometheus + Grafana
@@ -203,41 +203,29 @@ Prod does **not** run Prometheus or Grafana on the VM. **Grafana Alloy** scrapes
 - Dashboard: `https://<stack>.grafana.net/d/manga-cdc-overview/manga-cdc`
 - Import `grafana/dashboards/manga-cdc.json` in the Grafana Cloud UI once (set the Prometheus datasource UID to your stack’s default Prometheus datasource)
 
-## Production (Aiven + GCP)
+## Production Deployments (Multi-Cloud)
 
-The production deployment uses [Aiven](https://aiven.io) for both PostgreSQL and Kafka:
+Manga-CDC supports production deployments across multiple major cloud providers (**GCP**, **AWS**, **Azure**, and **DigitalOcean**) using **VM (Docker Compose)**, **Kubernetes (Helm)**, or **Serverless (Containers + Cron)** targets.
 
-- **Aiven PostgreSQL** — scraper connects via `DATABASE_URL` (postgres:// with SSL); notification service connects via derived JDBC URL
-- **Aiven Kafka** — scraper publishes chapter events using SCRAM-SHA-256 over SASL_SSL; notification service consumes from the same topic
+For complete architectural details, variables settings, local CLI workflow, and GitHub Actions CI/CD setup, refer to the **[Multi-Cloud Production Setup Guide](file:///Volumes/Seagate/developer/personal/manga-cdc/docs/cloud-setup.md)**.
 
-**Release flow:** push to `master` runs tests only; push a `v*` tag runs the full build, E2E, GitHub release, and GCP deploy.
+### Release Flow
+
+* Pushes to `master` run tests and checks only.
+* Pushing a version tag (`v*`) runs tests, builds CI container snapshots, executes end-to-end tests, creates a GitHub release, and triggers the deployment pipeline.
 
 ### Observability
 
 Tag deploys start Alloy via `docker-compose.observability-cloud.yml` (`OBSERVABILITY_MODE=grafana-cloud` by default). Set `OBSERVABILITY_MODE=self-hosted` to use VM-hosted Prometheus + Grafana instead (`docker-compose.observability.yml`).
 
-### GitHub Actions secrets
+### Grafana Cloud (Alloy `remote_write`) Secrets
 
-**GCP deploy**
-
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`
-- `GCP_SERVICE_ACCOUNT`
-- `GCP_VM_NAME`, `GCP_ZONE`, `GCP_SSH_USER`, `GCP_SSH_PRIVATE_KEY`
-
-**Grafana Cloud** (Alloy `remote_write`)
-
-- `GRAFANA_CLOUD_PROMETHEUS_URL` — `…/api/prom/push` (Cloud Portal → Prometheus → Details)
-- `GRAFANA_CLOUD_PROMETHEUS_USER` — metrics instance ID from the same page
-- `GRAFANA_CLOUD_API_KEY` — Cloud Access Policy token with **`metrics:write`**
+If you are using Grafana Cloud for monitoring, set up these secrets in your GitHub repository:
+- `GRAFANA_CLOUD_PROMETHEUS_URL` — push URL (Cloud Portal → Prometheus → Details)
+- `GRAFANA_CLOUD_PROMETHEUS_USER` — metrics instance ID
+- `GRAFANA_CLOUD_API_KEY` — Access policy token with **`metrics:write`** scope
 - `GRAFANA_CLOUD_STACK_URL` — e.g. `https://yourstack.grafana.net`
-- `GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID` — optional; default Prometheus datasource UID when importing the dashboard
-
-Create the access policy under Cloud Portal → Security → Access Policies: realm = your stack, scope = **`metrics:write`**.
-
-**Data & notifications**
-
-- `DATABASE_URL`, `KAFKA_BROKERS`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`
-- `DISCORD_WEBHOOK_URL` and/or Slack/Telegram tokens
+- `GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID` — optional stack Prometheus datasource UID
 
 ## Local Development
 

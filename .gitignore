@@ -29,3 +29,12 @@ docs/superpowers/
 # User-specific configure output
 manga-cdc.config.yaml
 helm/manga-cdc/values-override.yaml
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+*.tfvars.json
+

@@ -41,7 +41,7 @@ const composeProdTemplate = `services:
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
       ZERO_RESULT_ALERT_THRESHOLD: ${ZERO_RESULT_ALERT_THRESHOLD:-3}
     ports:
-      - "2112:2112"
+      - "127.0.0.1:2112:2112"
 
   notification-service:
     image: ${NOTIFICATION_IMAGE:?err}
@@ -56,7 +56,7 @@ const composeProdTemplate = `services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
 
 {{ if .IncludeCaddy }}
 volumes:

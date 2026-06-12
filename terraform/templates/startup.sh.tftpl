@@ -1,0 +1,65 @@
+#!/bin/bash
+# Reusable startup script to provision Docker and run manga-cdc on VM instances.
+set -euo pipefail
+
+# 1. Install Docker & Docker Compose if not already installed
+if ! command -v docker &> /dev/null; then
+  echo "Installing Docker..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+  mkdir -p /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  apt-get update -y
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+fi
+
+# 2. Setup application directory
+mkdir -p /opt/manga-cdc
+cd /opt/manga-cdc
+
+# 3. Write environment variables (.env)
+cat << 'EOF' > .env
+${env_file_content}
+EOF
+chmod 600 .env
+
+# 4. Write docker-compose files
+cat << 'EOF' > docker-compose.prod.yml
+${compose_file_content}
+EOF
+
+# Write Caddyfile if present
+%{ if caddyfile_content != "" }
+cat << 'EOF' > Caddyfile
+${caddyfile_content}
+EOF
+%{ endif }
+
+# Write Observability files if Grafana Cloud is enabled
+%{ if observability_cloud_enabled }
+cat << 'EOF' > docker-compose.observability-cloud.yml
+${observability_cloud_content}
+EOF
+
+mkdir -p alloy
+cat << 'EOF' > alloy/config.prod.alloy
+${alloy_config_content}
+EOF
+%{ endif }
+
+# 5. Start the containers
+echo "Starting containers..."
+docker compose -f docker-compose.prod.yml ${observability_flags} up -d --remove-orphans
+
+# 6. Setup auto-cleanup cron (runs daily to prune old images)
+if [ ! -f /etc/cron.daily/docker-prune ]; then
+  cat << 'EOF' > /etc/cron.daily/docker-prune
+#!/bin/sh
+docker image prune -a -f --filter "until=24h"
+EOF
+  chmod +x /etc/cron.daily/docker-prune
+fi
+
+echo "Startup script finished successfully."

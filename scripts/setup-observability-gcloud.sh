@@ -61,8 +61,14 @@ gcloud_ssh --command "bash ~/manga-cdc/scripts/enable-observability-on-vm.sh"
 echo "=== verify ==="
 gcloud_ssh --command "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh" || true
 
-EXTERNAL_IP="$(gcloud compute instances describe "${INSTANCE}" --zone "${ZONE}" \
-  --format='get(networkInterfaces[0].accessConfigs[0].natIP)')"
 echo ""
-echo "Grafana dashboard: http://${EXTERNAL_IP}:3000/d/manga-cdc-overview/manga-cdc"
-echo "Prometheus:        http://${EXTERNAL_IP}:9090"
+echo "Security Note: Grafana and Prometheus ports are bound to 127.0.0.1 on ${INSTANCE}."
+echo "To access them securely from your local browser, establish an SSH tunnel or use GCP IAP TCP forwarding:"
+echo ""
+echo "For Grafana (port 3000):"
+echo "  gcloud compute start-iap-tunnel ${INSTANCE} 3000 --local-host-port=localhost:3000 --zone=${ZONE}"
+echo "  Then open: http://localhost:3000/d/manga-cdc-overview/manga-cdc"
+echo ""
+echo "For Prometheus (port 9090):"
+echo "  gcloud compute start-iap-tunnel ${INSTANCE} 9090 --local-host-port=localhost:9090 --zone=${ZONE}"
+echo "  Then open: http://localhost:9090"
