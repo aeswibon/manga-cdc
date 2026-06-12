@@ -263,7 +263,7 @@ locals {
   notifier_registry   = local.notifier_path_parts[1]
   notifier_repo       = join("/", slice(local.notifier_path_parts, 2, length(local.notifier_path_parts)))
 
-  do_app_env = {
+  do_app_env = tomap({
     for k, v in {
       DATABASE_URL                  = var.database_url
       SPRING_DATASOURCE_URL         = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
@@ -284,7 +284,7 @@ locals {
       GRAFANA_CLOUD_API_KEY         = var.grafana_cloud_api_key
       GRAFANA_CLOUD_STACK_URL       = var.grafana_cloud_stack_url
     } : k => v if v != ""
-  }
+  })
 }
 
 resource "digitalocean_app" "manga_cdc" {
