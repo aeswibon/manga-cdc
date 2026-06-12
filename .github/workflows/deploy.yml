@@ -184,7 +184,7 @@ jobs:
         if: env.DEPLOY_METHOD == 'terraform'
         uses: hashicorp/setup-terraform@v4.0.1
         with:
-          terraform_version: "1.8.0"
+          terraform_version: "1.15.6"
 
       - name: Terraform apply
         if: env.DEPLOY_METHOD == 'terraform'
@@ -325,7 +325,7 @@ jobs:
         if: env.DEPLOY_METHOD == 'terraform'
         uses: hashicorp/setup-terraform@v4.0.1
         with:
-          terraform_version: "1.8.0"
+          terraform_version: "1.15.6"
 
       - name: Terraform apply
         if: env.DEPLOY_METHOD == 'terraform'
@@ -459,7 +459,7 @@ jobs:
         if: env.DEPLOY_METHOD == 'terraform'
         uses: hashicorp/setup-terraform@v4.0.1
         with:
-          terraform_version: "1.8.0"
+          terraform_version: "1.15.6"
 
       - name: Terraform apply
         if: env.DEPLOY_METHOD == 'terraform'
@@ -585,7 +585,7 @@ jobs:
         if: env.DEPLOY_METHOD == 'terraform'
         uses: hashicorp/setup-terraform@v4.0.1
         with:
-          terraform_version: "1.8.0"
+          terraform_version: "1.15.6"
 
       - name: Terraform apply
         if: env.DEPLOY_METHOD == 'terraform'
