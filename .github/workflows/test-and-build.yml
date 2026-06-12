@@ -151,9 +151,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4.0.1
         with:
-          terraform_version: "1.8.0"
+          terraform_version: "1.15.6"
       - name: Check Terraform formatting
         run: terraform fmt -check -recursive terraform/
 
@@ -183,9 +183,9 @@ jobs:
       DIGITALOCEAN_TOKEN: ci-dummy-token
     steps:
       - uses: actions/checkout@v6
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4.0.1
         with:
-          terraform_version: "1.8.0"
+          terraform_version: "1.15.6"
           terraform_wrapper: false
       - name: Validate and plan
         run: bash ./scripts/ci/terraform-matrix-check.sh "${{ matrix.cloud }}" "${{ matrix.target }}"

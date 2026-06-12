@@ -78,17 +78,28 @@ if [ "$cloud" = "azure" ]; then
   exit 0
 fi
 
+plan_out=$(mktemp)
 set +e
 terraform plan -refresh=false -input=false -lock=false -detailed-exitcode \
-  "${plan_vars[@]}"
+  "${plan_vars[@]}" | tee "$plan_out"
 plan_exit=$?
 set -e
 
 # 0 = no changes, 2 = changes present — both mean the configuration planned successfully.
 if [ "$plan_exit" -eq 0 ] || [ "$plan_exit" -eq 2 ]; then
   echo "terraform plan succeeded for ${cloud}/${target} (exit ${plan_exit})"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    {
+      echo "### Terraform Plan: \`${cloud}/${target}\`"
+      echo '```'
+      cat "$plan_out"
+      echo '```'
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
+  rm -f "$plan_out"
   exit 0
 fi
 
 echo "terraform plan failed for ${cloud}/${target} (exit ${plan_exit})" >&2
+rm -f "$plan_out"
 exit "$plan_exit"
