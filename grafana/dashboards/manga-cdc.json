@@ -22,8 +22,8 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(scraper_chapters_detected_total[5m]) * 300",
-          "legendFormat": "chapters / 5m",
+          "expr": "increase(scraper_chapters_detected_total[$__rate_interval])",
+          "legendFormat": "chapters",
           "refId": "A"
         }
       ],
@@ -44,8 +44,8 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(scraper_chapters_published_total[5m]) * 300",
-          "legendFormat": "published / 5m",
+          "expr": "increase(scraper_chapters_published_total[$__rate_interval])",
+          "legendFormat": "published",
           "refId": "A"
         }
       ],
@@ -77,7 +77,7 @@
       },
       "targets": [
         {
-          "expr": "scraper_zero_result_cycles",
+          "expr": "sum by (source) (scraper_zero_result_cycles)",
           "legendFormat": "{{source}}",
           "refId": "A"
         }
@@ -99,7 +99,7 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(scraper_duration_seconds_bucket[5m])) by (le, source))",
+          "expr": "histogram_quantile(0.95, sum(rate(scraper_duration_seconds_bucket[$__rate_interval])) by (le, source))",
           "legendFormat": "{{source}} p95",
           "refId": "A"
         }
@@ -121,7 +121,7 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(scraper_errors_total[5m]) * 300",
+          "expr": "increase(scraper_errors_total[$__rate_interval])",
           "legendFormat": "{{source}} {{type}}",
           "refId": "A"
         }
@@ -143,7 +143,7 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(scraper_series_fetched_total[5m]) * 300",
+          "expr": "increase(scraper_series_fetched_total[$__rate_interval])",
           "legendFormat": "{{source}}",
           "refId": "A"
         }
@@ -165,7 +165,7 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(notification_deliveries_total[5m]) * 300",
+          "expr": "increase(notification_deliveries_total[$__rate_interval])",
           "legendFormat": "{{channel}} {{status}}",
           "refId": "A"
         }
