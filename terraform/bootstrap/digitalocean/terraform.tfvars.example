@@ -1,0 +1,4 @@
+spaces_region     = "nyc3"
+github_repository = "aeswibon/manga-cdc"
+deployment_target = "serverless"
+# do_token is passed via TF_VAR_do_token or -var="do_token=..."

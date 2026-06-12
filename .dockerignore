@@ -8,7 +8,6 @@ notification-service/
 configure/
 terraform/
 helm/
-k8s/
 
 # Exclude git metadata
 .git

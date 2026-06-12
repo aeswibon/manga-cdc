@@ -11,7 +11,7 @@
 
     <groupId>com.mangacdc</groupId>
     <artifactId>notification-service</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.3.6</version>
     <name>manga-cdc notification service</name>
 
     <properties>

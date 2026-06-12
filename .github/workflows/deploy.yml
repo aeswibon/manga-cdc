@@ -135,16 +135,31 @@ jobs:
         if: env.CLOUD_PROVIDER == 'gcp'
         uses: google-github-actions/setup-gcloud@v3
 
-      - name: Configure AWS Credentials
-        if: env.CLOUD_PROVIDER == 'aws'
+      - name: Configure AWS Credentials (OIDC)
+        if: env.CLOUD_PROVIDER == 'aws' && secrets.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS Credentials (access keys)
+        if: env.CLOUD_PROVIDER == 'aws' && secrets.AWS_ROLE_ARN == ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Log in to Azure
-        if: env.CLOUD_PROVIDER == 'azure'
+      - name: Log in to Azure (OIDC)
+        if: env.CLOUD_PROVIDER == 'azure' && secrets.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure (service principal JSON)
+        if: env.CLOUD_PROVIDER == 'azure' && secrets.AZURE_CLIENT_ID == ''
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -227,23 +242,7 @@ jobs:
           fi
           tar -czf "$RUNNER_TEMP/deploy.tar.gz" "${files_to_pack[@]}"
 
-      - name: Deploy to GCP VM
-        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'vm'
-        env:
-          GCP_SSH_USER: ${{ secrets.GCP_SSH_USER }}
-          GCP_VM_NAME: ${{ secrets.GCP_VM_NAME }}
-          GCP_ZONE: ${{ secrets.GCP_ZONE }}
-          GCP_SSH_PRIVATE_KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
-        run: |
-          chmod +x scripts/ci-prepare-gcp-ssh-key.sh scripts/ci-gcloud-scp.sh scripts/ci-gcloud-ssh.sh
-          ./scripts/ci-prepare-gcp-ssh-key.sh
-          timeout 120 ./scripts/ci-gcloud-scp.sh "$RUNNER_TEMP/deploy.tar.gz" "~/deploy.tar.gz"
-          timeout 120 ./scripts/ci-gcloud-scp.sh "$RUNNER_TEMP/prod.env" "~/prod.env"
-          timeout 120 ./scripts/ci-gcloud-ssh.sh "set -euo pipefail; mkdir -p ~/manga-cdc; tar -xzf ~/deploy.tar.gz -C ~/manga-cdc; mv ~/prod.env ~/manga-cdc/.env; chmod +x ~/manga-cdc/scripts/deploy-prod-on-vm.sh ~/manga-cdc/scripts/verify-prod-on-vm.sh"
-          timeout 1200 ./scripts/ci-gcloud-ssh.sh "bash ~/manga-cdc/scripts/deploy-prod-on-vm.sh"
-          timeout 180 ./scripts/ci-gcloud-ssh.sh "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
-
-      - name: Deploy to Generic VM (AWS/Azure/DO)
+      - name: Deploy to VM (AWS/Azure/DO)
         if: env.DEPLOY_METHOD == 'direct' && (env.CLOUD_PROVIDER == 'aws' || env.CLOUD_PROVIDER == 'azure' || env.CLOUD_PROVIDER == 'digitalocean') && env.DEPLOYMENT_TARGET == 'vm'
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -349,6 +348,12 @@ jobs:
       # -------------------------------------------------------------------------
       # Path D: Terraform Apply (Infrastructure + App)
       # -------------------------------------------------------------------------
+      - name: Export DigitalOcean Spaces credentials for Terraform backend
+        if: env.DEPLOY_METHOD == 'terraform' && env.CLOUD_PROVIDER == 'digitalocean'
+        run: |
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.DO_SPACES_ACCESS_KEY }}" >> "$GITHUB_ENV"
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.DO_SPACES_SECRET_KEY }}" >> "$GITHUB_ENV"
+
       - name: Setup Terraform
         if: env.DEPLOY_METHOD == 'terraform'
         uses: hashicorp/setup-terraform@v3
@@ -404,6 +409,7 @@ jobs:
             provider_vars="$provider_vars -var=\"do_token=${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}\""
           elif [ "${{ env.CLOUD_PROVIDER }}" = "gcp" ]; then
             provider_vars="$provider_vars -var=\"project_id=${{ secrets.GCP_PROJECT_ID }}\""
+            provider_vars="$provider_vars -var=\"region=${{ secrets.GCP_REGION || 'us-central1' }}\""
           fi
 
           terraform init
@@ -419,4 +425,9 @@ jobs:
             -var=\"discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL || '' }}\" \
             -var=\"slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL || '' }}\" \
             -var=\"telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN || '' }}\" \
-            -var=\"telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID || '' }}\""
+            -var=\"telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID || '' }}\" \
+            -var=\"observability_mode=grafana-cloud\" \
+            -var=\"grafana_cloud_prometheus_url=${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL || '' }}\" \
+            -var=\"grafana_cloud_prometheus_user=${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER || '' }}\" \
+            -var=\"grafana_cloud_api_key=${{ secrets.GRAFANA_CLOUD_API_KEY || '' }}\" \
+            -var=\"grafana_cloud_stack_url=${{ secrets.GRAFANA_CLOUD_STACK_URL || '' }}\""

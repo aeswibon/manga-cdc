@@ -7,10 +7,12 @@ RUN mvn package -DskipTests -B
 
 FROM eclipse-temurin:21-jre
 
+ARG APP_VERSION=0.3.6
 LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.description="Consumes chapter CDC events from Kafka and sends Discord, Slack, and Telegram notifications" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
       org.opencontainers.image.vendor="aeswibon" \
+      org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.base.name="docker.io/library/eclipse-temurin:21-jre"
 
 WORKDIR /app

@@ -138,10 +138,10 @@ manga-cdc/
 │       ├── controller/         # Webhook endpoint for QStash
 │       ├── service/            # Kafka consumer + notifiers
 │       └── repository/         # JDBC data access
-├── connectors/                 # Debezium connector configs
 ├── db/migrations/              # SQL schema migrations (applied by scraper via goose)
 ├── helm/                       # Kubernetes Helm chart
-├── terraform/                  # Multi-Cloud Terraform IaC (GCP, AWS, Azure, DigitalOcean)
+├── terraform/                  # Multi-Cloud Terraform IaC + bootstrap/
+│   └── bootstrap/              # One-time CI/CD prerequisites per cloud
 ├── docker-compose.yml          # Local dev compose (generated)
 ├── docker-compose.prod.yml     # Production compose (generated)
 ├── docker-compose.observability.yml        # Local self-hosted Prometheus + Grafana

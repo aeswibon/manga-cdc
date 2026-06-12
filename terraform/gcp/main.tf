@@ -275,24 +275,24 @@ resource "helm_release" "manga_cdc" {
 locals {
   cloud_run_env = {
     for k, v in {
-      DATABASE_URL                 = var.database_url
-      SPRING_DATASOURCE_URL        = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
-      SPRING_DATASOURCE_USERNAME   = local.db_user
-      SPRING_DATASOURCE_PASSWORD   = local.db_pass
-      KAFKA_BROKERS                = var.kafka_brokers
-      KAFKA_TOPIC                  = "mangacdc.public.chapters"
-      KAFKA_USERNAME               = var.kafka_username
-      KAFKA_PASSWORD               = var.kafka_password
-      CDC_ENABLED                  = "true"
-      DISCORD_WEBHOOK_URL          = var.discord_webhook_url
-      SLACK_WEBHOOK_URL            = var.slack_webhook_url
-      TELEGRAM_BOT_TOKEN           = var.telegram_bot_token
-      TELEGRAM_CHAT_ID             = var.telegram_chat_id
-      OBSERVABILITY_MODE           = var.observability_mode
-      GRAFANA_CLOUD_PROMETHEUS_URL = var.grafana_cloud_prometheus_url
-      GRAFANA_CLOUD_PROMETHEUS_USER= var.grafana_cloud_prometheus_user
-      GRAFANA_CLOUD_API_KEY        = var.grafana_cloud_api_key
-      GRAFANA_CLOUD_STACK_URL      = var.grafana_cloud_stack_url
+      DATABASE_URL                  = var.database_url
+      SPRING_DATASOURCE_URL         = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
+      SPRING_DATASOURCE_USERNAME    = local.db_user
+      SPRING_DATASOURCE_PASSWORD    = local.db_pass
+      KAFKA_BROKERS                 = var.kafka_brokers
+      KAFKA_TOPIC                   = "mangacdc.public.chapters"
+      KAFKA_USERNAME                = var.kafka_username
+      KAFKA_PASSWORD                = var.kafka_password
+      CDC_ENABLED                   = "true"
+      DISCORD_WEBHOOK_URL           = var.discord_webhook_url
+      SLACK_WEBHOOK_URL             = var.slack_webhook_url
+      TELEGRAM_BOT_TOKEN            = var.telegram_bot_token
+      TELEGRAM_CHAT_ID              = var.telegram_chat_id
+      OBSERVABILITY_MODE            = var.observability_mode
+      GRAFANA_CLOUD_PROMETHEUS_URL  = var.grafana_cloud_prometheus_url
+      GRAFANA_CLOUD_PROMETHEUS_USER = var.grafana_cloud_prometheus_user
+      GRAFANA_CLOUD_API_KEY         = var.grafana_cloud_api_key
+      GRAFANA_CLOUD_STACK_URL       = var.grafana_cloud_stack_url
     } : k => v if v != ""
   }
 }
@@ -380,7 +380,7 @@ resource "google_cloud_scheduler_job" "scraper_trigger" {
   http_target {
     http_method = "POST"
     uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${google_cloud_run_v2_job.scraper_job[0].name}:run"
-    
+
     oauth_token {
       service_account_email = google_service_account.scheduler_sa[0].email
     }

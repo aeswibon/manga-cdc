@@ -18,6 +18,7 @@ import (
 	"github.com/aeswibon/manga-cdc/scraper/internal/kafka"
 	"github.com/aeswibon/manga-cdc/scraper/internal/migrate"
 	"github.com/aeswibon/manga-cdc/scraper/internal/qstash"
+	"github.com/aeswibon/manga-cdc/scraper/internal/version"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -121,7 +122,7 @@ func main() {
 		adapter.NewMangaPillAdapter(),
 	}
 
-	log.Info("scraper started", "sources", len(sources), "interval", cfg.ScrapeInterval)
+	log.Info("scraper started", "version", version.Version, "sources", len(sources), "interval", cfg.ScrapeInterval)
 
 	ticker := time.NewTicker(cfg.ScrapeInterval)
 	defer ticker.Stop()

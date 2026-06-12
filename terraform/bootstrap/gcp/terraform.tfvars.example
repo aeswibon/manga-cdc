@@ -1,0 +1,5 @@
+project_id          = "your-gcp-project-id"
+region              = "us-central1"
+github_repository   = "aeswibon/manga-cdc"
+deployment_target   = "serverless"
+# state_bucket_name = "your-unique-tfstate-bucket-name"

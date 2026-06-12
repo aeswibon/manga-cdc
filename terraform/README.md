@@ -71,11 +71,44 @@ Your compute size selection is mapped to cloud-native instance sizes:
 Prior to running Terraform, ensure you have credentials configured locally:
 
 ### Google Cloud (GCP)
-Run the following commands to authenticate:
+
+### One-time bootstrap (all clouds)
+
+Run once from your machine to enable APIs (where applicable), create remote Terraform state storage, and configure GitHub Actions authentication:
+
 ```bash
-gcloud auth login
+chmod +x scripts/bootstrap.sh
+
+# GCP serverless (your current path)
 gcloud auth application-default login
-gcloud config set project <your-project-id>
+./scripts/bootstrap.sh --cloud gcp --target serverless
+
+# AWS serverless
+aws configure   # or export AWS credentials
+./scripts/bootstrap.sh --cloud aws --target serverless --region us-east-1
+
+# Azure serverless
+az login
+./scripts/bootstrap.sh --cloud azure --target serverless --location eastus
+
+# DigitalOcean serverless
+export DIGITALOCEAN_ACCESS_TOKEN=...
+./scripts/bootstrap.sh --cloud digitalocean --target serverless --spaces-region nyc3
+```
+
+Modules live under `terraform/bootstrap/<cloud>/`. Each uses **local Terraform state** (bootstrap cannot store its own state in the bucket it creates).
+
+When `gh` is authenticated, the script sets routing secrets (`DEPLOY_CLOUD`, `DEPLOY_TARGET`, `DEPLOY_METHOD=terraform`) plus cloud-specific CI credentials and any app secrets found in `.env`.
+
+After the first successful `DEPLOY_METHOD=terraform` release deploy, set `DEPLOY_METHOD=direct` for image-only tag updates.
+
+#### Manual auth (local terraform apply only)
+
+```bash
+gcloud auth login && gcloud auth application-default login   # GCP
+aws configure                                                # AWS
+az login                                                     # Azure
+export DIGITALOCEAN_ACCESS_TOKEN=...                         # DigitalOcean
 ```
 
 ### Amazon Web Services (AWS)
@@ -137,9 +170,10 @@ The workflow supports two deployment methods, configured via the `DEPLOY_METHOD`
 ### GitHub Repository Secrets
 To enable automated deployments, configure the following secrets in your GitHub repository:
 
-#### Terraform State Secrets (Optional / For `deploy_method: terraform`)
-If you use the `terraform` deploy method, the pipeline can dynamically provision and manage your remote state storage bucket. Set up these secrets to let the pipeline handle the configuration automatically:
-* `TF_STATE_BUCKET`: The name of the storage bucket (GCS for GCP, S3 for AWS, Space for DigitalOcean).
+#### Terraform State Secrets (For `deploy_method: terraform`)
+The deploy workflow writes a remote `backend.tf` when these secrets are set. Create the bucket first via `./scripts/bootstrap.sh --cloud <provider>` or manually for other clouds:
+
+* `TF_STATE_BUCKET`: GCS bucket name (GCP), S3 bucket (AWS), or Space name (DigitalOcean).
 * `DO_SPACE_ENDPOINT`: The Space API endpoint (e.g. `sfo3.digitaloceanspaces.com`, required for DigitalOcean).
 * `AZURE_STORAGE_ACCOUNT`: The Azure Storage Account name (required for Azure).
 
@@ -152,8 +186,9 @@ If you use the `terraform` deploy method, the pipeline can dynamically provision
 * `GCP_WORKLOAD_IDENTITY_PROVIDER`: Workload Identity Provider string (e.g., `projects/12345/locations/global/workloadIdentityPools/my-pool/providers/my-provider`).
 * `GCP_SERVICE_ACCOUNT`: Service Account Email.
 * `GCP_ZONE` / `GCP_REGION`: Target GCP Zone/Region.
-* `GCP_SSH_USER` / `GCP_SSH_PRIVATE_KEY` / `GCP_VM_NAME`: Credentials for VM mode.
 * `GKE_CLUSTER_NAME`: Target cluster for Kubernetes mode.
+
+GCP VM direct SSH deploy is not supported in CI; use `deployment_target=vm` with `deploy_method=terraform`, or choose `serverless` / `kubernetes`.
 
 #### AWS Target Secrets
 * `AWS_ACCESS_KEY_ID`: AWS Access Key.

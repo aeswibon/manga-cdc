@@ -348,24 +348,24 @@ resource "azurerm_container_app_environment" "env" {
 
 locals {
   azure_env_all = {
-    DATABASE_URL                 = var.database_url
-    SPRING_DATASOURCE_URL        = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
-    SPRING_DATASOURCE_USERNAME   = local.db_user
-    SPRING_DATASOURCE_PASSWORD   = local.db_pass
-    KAFKA_BROKERS                = var.kafka_brokers
-    KAFKA_TOPIC                  = "mangacdc.public.chapters"
-    KAFKA_USERNAME               = var.kafka_username
-    KAFKA_PASSWORD               = var.kafka_password
-    CDC_ENABLED                  = "true"
-    DISCORD_WEBHOOK_URL          = var.discord_webhook_url
-    SLACK_WEBHOOK_URL            = var.slack_webhook_url
-    TELEGRAM_BOT_TOKEN           = var.telegram_bot_token
-    TELEGRAM_CHAT_ID             = var.telegram_chat_id
-    OBSERVABILITY_MODE           = var.observability_mode
-    GRAFANA_CLOUD_PROMETHEUS_URL = var.grafana_cloud_prometheus_url
-    GRAFANA_CLOUD_PROMETHEUS_USER= var.grafana_cloud_prometheus_user
-    GRAFANA_CLOUD_API_KEY        = var.grafana_cloud_api_key
-    GRAFANA_CLOUD_STACK_URL      = var.grafana_cloud_stack_url
+    DATABASE_URL                  = var.database_url
+    SPRING_DATASOURCE_URL         = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
+    SPRING_DATASOURCE_USERNAME    = local.db_user
+    SPRING_DATASOURCE_PASSWORD    = local.db_pass
+    KAFKA_BROKERS                 = var.kafka_brokers
+    KAFKA_TOPIC                   = "mangacdc.public.chapters"
+    KAFKA_USERNAME                = var.kafka_username
+    KAFKA_PASSWORD                = var.kafka_password
+    CDC_ENABLED                   = "true"
+    DISCORD_WEBHOOK_URL           = var.discord_webhook_url
+    SLACK_WEBHOOK_URL             = var.slack_webhook_url
+    TELEGRAM_BOT_TOKEN            = var.telegram_bot_token
+    TELEGRAM_CHAT_ID              = var.telegram_chat_id
+    OBSERVABILITY_MODE            = var.observability_mode
+    GRAFANA_CLOUD_PROMETHEUS_URL  = var.grafana_cloud_prometheus_url
+    GRAFANA_CLOUD_PROMETHEUS_USER = var.grafana_cloud_prometheus_user
+    GRAFANA_CLOUD_API_KEY         = var.grafana_cloud_api_key
+    GRAFANA_CLOUD_STACK_URL       = var.grafana_cloud_stack_url
   }
 
   sensitive_keys = [
