@@ -80,7 +80,7 @@ fi
 
 plan_out=$(mktemp)
 set +e
-terraform plan -refresh=false -input=false -lock=false -detailed-exitcode \
+terraform plan -no-color -refresh=false -input=false -lock=false -detailed-exitcode \
   "${plan_vars[@]}" | tee "$plan_out"
 plan_exit=$?
 set -e
