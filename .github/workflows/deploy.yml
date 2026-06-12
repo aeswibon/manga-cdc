@@ -25,6 +25,14 @@ on:
           - vm
           - kubernetes
           - serverless
+      deploy_method:
+        description: "Deployment Method (direct, terraform)"
+        required: true
+        default: "direct"
+        type: choice
+        options:
+          - direct
+          - terraform
       image_tag:
         description: "Docker Image Tag to deploy"
         required: true
@@ -98,6 +106,7 @@ jobs:
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       CLOUD_PROVIDER: ${{ github.event.inputs.cloud_provider || secrets.DEPLOY_CLOUD || 'gcp' }}
       DEPLOYMENT_TARGET: ${{ github.event.inputs.deployment_target || secrets.DEPLOY_TARGET || 'vm' }}
+      DEPLOY_METHOD: ${{ github.event.inputs.deploy_method || secrets.DEPLOY_METHOD || 'direct' }}
       AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
     steps:
       - uses: actions/checkout@v6
@@ -107,7 +116,7 @@ jobs:
 
       - name: Deploy summary
         run: |
-          echo "Deploying to Cloud: ${CLOUD_PROVIDER} (Target: ${DEPLOYMENT_TARGET})"
+          echo "Deploying to Cloud: ${CLOUD_PROVIDER} (Target: ${DEPLOYMENT_TARGET}, Method: ${DEPLOY_METHOD})"
           echo "Image tag: ${IMAGE_TAG}"
           echo "Commit: ${DEPLOY_SHA}"
 
@@ -150,6 +159,7 @@ jobs:
       # Setup configuration & Render Environment variables
       # -------------------------------------------------------------------------
       - name: Render production .env
+        if: env.DEPLOY_METHOD == 'direct'
         env:
           SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
           NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
@@ -175,6 +185,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/prod.env"
 
       - name: Parse DATABASE_URL for JDBC
+        if: env.DEPLOY_METHOD == 'direct'
         id: db_parser
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -199,7 +210,7 @@ jobs:
       # Path A: VM Deployment (Docker Compose)
       # -------------------------------------------------------------------------
       - name: Package deployment files
-        if: env.DEPLOYMENT_TARGET == 'vm'
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
         run: |
           files_to_pack=(
             docker-compose.prod.yml
@@ -217,7 +228,7 @@ jobs:
           tar -czf "$RUNNER_TEMP/deploy.tar.gz" "${files_to_pack[@]}"
 
       - name: Deploy to GCP VM
-        if: env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'vm'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'vm'
         env:
           GCP_SSH_USER: ${{ secrets.GCP_SSH_USER }}
           GCP_VM_NAME: ${{ secrets.GCP_VM_NAME }}
@@ -233,7 +244,7 @@ jobs:
           timeout 180 ./scripts/ci-gcloud-ssh.sh "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
 
       - name: Deploy to Generic VM (AWS/Azure/DO)
-        if: (env.CLOUD_PROVIDER == 'aws' || env.CLOUD_PROVIDER == 'azure' || env.CLOUD_PROVIDER == 'digitalocean') && env.DEPLOYMENT_TARGET == 'vm'
+        if: env.DEPLOY_METHOD == 'direct' && (env.CLOUD_PROVIDER == 'aws' || env.CLOUD_PROVIDER == 'azure' || env.CLOUD_PROVIDER == 'digitalocean') && env.DEPLOYMENT_TARGET == 'vm'
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           VM_USER: ${{ secrets.VM_USER }}
@@ -259,27 +270,27 @@ jobs:
       # Path B: Kubernetes Deployment (Helm)
       # -------------------------------------------------------------------------
       - name: Configure GKE Kubeconfig
-        if: env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'kubernetes'
         run: |
           gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER_NAME }} --zone ${{ secrets.GCP_ZONE || 'us-central1-a' }}
 
       - name: Configure EKS Kubeconfig
-        if: env.CLOUD_PROVIDER == 'aws' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'aws' && env.DEPLOYMENT_TARGET == 'kubernetes'
         run: |
           aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
 
       - name: Configure AKS Kubeconfig
-        if: env.CLOUD_PROVIDER == 'azure' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'azure' && env.DEPLOYMENT_TARGET == 'kubernetes'
         run: |
           az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
 
       - name: Configure DOKS Kubeconfig
-        if: env.CLOUD_PROVIDER == 'digitalocean' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'digitalocean' && env.DEPLOYMENT_TARGET == 'kubernetes'
         run: |
           doctl kubernetes cluster kubeconfig save ${{ secrets.DOKS_CLUSTER_NAME }}
 
       - name: Deploy to Kubernetes via Helm
-        if: env.DEPLOYMENT_TARGET == 'kubernetes'
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
         run: |
           helm upgrade --install manga-cdc ./helm/manga-cdc \
             --namespace default \
@@ -302,16 +313,16 @@ jobs:
             --set notifiers.telegram=${{ secrets.TELEGRAM_BOT_TOKEN != '' && 'true' || 'false' }}
 
       # -------------------------------------------------------------------------
-      # Path C: Serverless Deployment
+      # Path C: Serverless Deployment (Direct CLI)
       # -------------------------------------------------------------------------
       - name: Deploy to GCP Cloud Run
-        if: env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'serverless'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'gcp' && env.DEPLOYMENT_TARGET == 'serverless'
         run: |
           gcloud run services update manga-cdc-notifier-prod --image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }} --region=${{ secrets.GCP_REGION || 'us-central1' }}
           gcloud run jobs update manga-cdc-scraper-job-prod --image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} --region=${{ secrets.GCP_REGION || 'us-central1' }}
 
       - name: Deploy to AWS ECS Fargate
-        if: env.CLOUD_PROVIDER == 'aws' && env.DEPLOYMENT_TARGET == 'serverless'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'aws' && env.DEPLOYMENT_TARGET == 'serverless'
         run: |
           # Update Notifier Fargate Service
           TASK_DEF=$(aws ecs describe-task-definition --task-definition manga-cdc-notifier)
@@ -325,12 +336,42 @@ jobs:
           aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF_SCRAPER"
 
       - name: Deploy to Azure Container Apps
-        if: env.CLOUD_PROVIDER == 'azure' && env.DEPLOYMENT_TARGET == 'serverless'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'azure' && env.DEPLOYMENT_TARGET == 'serverless'
         run: |
           az containerapp update -n manga-cdc-notifier-prod -g rg-manga-cdc-prod --image ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
           az containerapp job update -n manga-cdc-scraper-job-prod -g rg-manga-cdc-prod --image ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
 
       - name: Deploy to DigitalOcean App Platform
-        if: env.CLOUD_PROVIDER == 'digitalocean' && env.DEPLOYMENT_TARGET == 'serverless'
+        if: env.DEPLOY_METHOD == 'direct' && env.CLOUD_PROVIDER == 'digitalocean' && env.DEPLOYMENT_TARGET == 'serverless'
         run: |
           doctl apps create-deployment ${{ secrets.DO_APP_ID }}
+
+      # -------------------------------------------------------------------------
+      # Path D: Terraform Apply (Infrastructure + App)
+      # -------------------------------------------------------------------------
+      - name: Setup Terraform
+        if: env.DEPLOY_METHOD == 'terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.8.0"
+
+      - name: Terraform Apply
+        if: env.DEPLOY_METHOD == 'terraform'
+        working-directory: terraform/${{ env.CLOUD_PROVIDER }}
+        env:
+          TF_VAR_do_token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var="deployment_target=${{ env.DEPLOYMENT_TARGET }}" \
+            -var="scraper_image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}" \
+            -var="notification_image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}" \
+            -var="database_url=${{ secrets.DATABASE_URL }}" \
+            -var="kafka_brokers=${{ secrets.KAFKA_BROKERS || '' }}" \
+            -var="kafka_username=${{ secrets.KAFKA_USERNAME || '' }}" \
+            -var="kafka_password=${{ secrets.KAFKA_PASSWORD || '' }}" \
+            -var="discord_webhook_url=${{ secrets.DISCORD_WEBHOOK_URL || '' }}" \
+            -var="slack_webhook_url=${{ secrets.SLACK_WEBHOOK_URL || '' }}" \
+            -var="telegram_bot_token=${{ secrets.TELEGRAM_BOT_TOKEN || '' }}" \
+            -var="telegram_chat_id=${{ secrets.TELEGRAM_CHAT_ID || '' }}"
