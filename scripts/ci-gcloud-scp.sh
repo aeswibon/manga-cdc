@@ -11,10 +11,20 @@ set -euo pipefail
 
 target="${GCP_SSH_USER}@${GCP_VM_NAME}"
 
-gcloud compute scp "$1" "${target}:$2" \
-  --zone "$GCP_ZONE" \
-  --ssh-key-file "$GCP_SSH_KEY_FILE" \
-  --force-key-file-overwrite \
-  --quiet \
-  --scp-flag="-o ConnectTimeout=30" \
+USE_IAP="${USE_IAP:-true}"
+
+args=(
+  gcloud compute scp "$1" "${target}:$2"
+  --zone "$GCP_ZONE"
+  --ssh-key-file "$GCP_SSH_KEY_FILE"
+  --force-key-file-overwrite
+  --quiet
+  --scp-flag="-o ConnectTimeout=30"
   --scp-flag="-o ServerAliveInterval=15"
+)
+
+if [ "$USE_IAP" = "true" ] || [ "$USE_IAP" = "1" ] || [ "$USE_IAP" = "yes" ]; then
+  args+=(--tunnel-through-iap)
+fi
+
+"${args[@]}"

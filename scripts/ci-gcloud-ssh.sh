@@ -10,6 +10,8 @@ set -euo pipefail
 target="${GCP_SSH_USER}@${GCP_VM_NAME}"
 ssh_opts=(-o ServerAliveInterval=15 -o ServerAliveCountMax=40 -o ConnectTimeout=30 -o TCPKeepAlive=yes)
 
+USE_IAP="${USE_IAP:-true}"
+
 args=(
   gcloud compute ssh "$target"
   --zone "$GCP_ZONE"
@@ -17,6 +19,10 @@ args=(
   --force-key-file-overwrite
   --quiet
 )
+
+if [ "$USE_IAP" = "true" ] || [ "$USE_IAP" = "1" ] || [ "$USE_IAP" = "yes" ]; then
+  args+=(--tunnel-through-iap)
+fi
 
 if [ -n "${1:-}" ]; then
   args+=(--command "$1")
