@@ -64,6 +64,9 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
       IMAGE_TAG: ${{ needs.resolve-release.outputs.image_tag }}
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      GCP_SSH_USER: ${{ secrets.GCP_SSH_USER }}
+      GCP_VM_NAME: ${{ secrets.GCP_VM_NAME }}
+      GCP_ZONE: ${{ secrets.GCP_ZONE }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -81,12 +84,14 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
+      - uses: google-github-actions/setup-gcloud@v2
+
       - name: Prepare SSH key
+        env:
+          GCP_SSH_PRIVATE_KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
         run: |
-          install -m 600 -D /dev/null "$RUNNER_TEMP/gcp_ssh_key"
-          printf '%s\n' "${{ secrets.GCP_SSH_PRIVATE_KEY }}" > "$RUNNER_TEMP/gcp_ssh_key"
-          ssh-keygen -y -f "$RUNNER_TEMP/gcp_ssh_key" > "$RUNNER_TEMP/gcp_ssh_key.pub"
-          chmod 644 "$RUNNER_TEMP/gcp_ssh_key.pub"
+          chmod +x scripts/ci-prepare-gcp-ssh-key.sh
+          ./scripts/ci-prepare-gcp-ssh-key.sh
 
       - name: Render production .env
         env:
@@ -115,51 +120,21 @@ jobs:
 
       - name: Sync repo on VM
         run: |
-          timeout 180 gcloud compute ssh "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_VM_NAME }}" \
-            --zone "${{ secrets.GCP_ZONE }}" \
-            --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
-            --quiet \
-            --ssh-flag="-o ServerAliveInterval=15" \
-            --ssh-flag="-o ServerAliveCountMax=40" \
-            --ssh-flag="-o ConnectTimeout=30" \
-            --ssh-flag="-o TCPKeepAlive=yes" \
-            --command "set -euo pipefail; mkdir -p ~/manga-cdc; cd ~/manga-cdc; if [ ! -d .git ]; then git clone https://github.com/aeswibon/manga-cdc.git .; fi; git fetch origin --force --tags; git reset --hard '${{ env.DEPLOY_SHA }}'; chmod +x scripts/deploy-prod-on-vm.sh scripts/verify-prod-on-vm.sh"
+          chmod +x scripts/ci-gcloud-ssh.sh
+          timeout 180 ./scripts/ci-gcloud-ssh.sh "set -euo pipefail; mkdir -p ~/manga-cdc; cd ~/manga-cdc; if [ ! -d .git ]; then git clone https://github.com/aeswibon/manga-cdc.git .; fi; git fetch origin --force --tags; git reset --hard '${{ env.DEPLOY_SHA }}'; chmod +x scripts/deploy-prod-on-vm.sh scripts/verify-prod-on-vm.sh"
 
       - name: Copy .env to VM
         run: |
-          timeout 120 gcloud compute scp "$RUNNER_TEMP/prod.env" \
-            "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_VM_NAME }}:~/manga-cdc/.env" \
-            --zone "${{ secrets.GCP_ZONE }}" \
-            --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
-            --quiet \
-            --ssh-flag="-o ServerAliveInterval=15" \
-            --ssh-flag="-o ServerAliveCountMax=40" \
-            --ssh-flag="-o ConnectTimeout=30" \
-            --ssh-flag="-o TCPKeepAlive=yes"
+          chmod +x scripts/ci-gcloud-scp.sh
+          timeout 120 ./scripts/ci-gcloud-scp.sh "$RUNNER_TEMP/prod.env" "~/manga-cdc/.env"
 
       - name: Deploy on VM
         run: |
-          timeout 1200 gcloud compute ssh "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_VM_NAME }}" \
-            --zone "${{ secrets.GCP_ZONE }}" \
-            --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
-            --quiet \
-            --ssh-flag="-o ServerAliveInterval=15" \
-            --ssh-flag="-o ServerAliveCountMax=40" \
-            --ssh-flag="-o ConnectTimeout=30" \
-            --ssh-flag="-o TCPKeepAlive=yes" \
-            --command "bash ~/manga-cdc/scripts/deploy-prod-on-vm.sh"
+          timeout 1200 ./scripts/ci-gcloud-ssh.sh "bash ~/manga-cdc/scripts/deploy-prod-on-vm.sh"
 
       - name: Verify production
         run: |
-          timeout 180 gcloud compute ssh "${{ secrets.GCP_SSH_USER }}@${{ secrets.GCP_VM_NAME }}" \
-            --zone "${{ secrets.GCP_ZONE }}" \
-            --ssh-key-file "$RUNNER_TEMP/gcp_ssh_key" \
-            --quiet \
-            --ssh-flag="-o ServerAliveInterval=15" \
-            --ssh-flag="-o ServerAliveCountMax=40" \
-            --ssh-flag="-o ConnectTimeout=30" \
-            --ssh-flag="-o TCPKeepAlive=yes" \
-            --command "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
+          timeout 180 ./scripts/ci-gcloud-ssh.sh "OBSERVABILITY_REQUIRED=true bash ~/manga-cdc/scripts/verify-prod-on-vm.sh"
 
       - name: Observability URLs
         run: |
