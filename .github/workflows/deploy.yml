@@ -361,49 +361,41 @@ jobs:
         run: |
           # Dynamically write backend.tf if state storage secrets are available (bypasses manual config)
           if [ "${{ env.CLOUD_PROVIDER }}" = "gcp" ] && [ -n "${{ secrets.TF_STATE_BUCKET }}" ]; then
-            cat <<EOT > backend.tf
-terraform {
-  backend "gcs" {
-    bucket = "${{ secrets.TF_STATE_BUCKET }}"
-    prefix = "terraform/state"
-  }
-}
-EOT
+            echo 'terraform {' > backend.tf
+            echo '  backend "gcs" {' >> backend.tf
+            echo '    bucket = "${{ secrets.TF_STATE_BUCKET }}"' >> backend.tf
+            echo '    prefix = "terraform/state"' >> backend.tf
+            echo '  }' >> backend.tf
+            echo '}' >> backend.tf
           elif [ "${{ env.CLOUD_PROVIDER }}" = "aws" ] && [ -n "${{ secrets.TF_STATE_BUCKET }}" ]; then
-            cat <<EOT > backend.tf
-terraform {
-  backend "s3" {
-    bucket = "${{ secrets.TF_STATE_BUCKET }}"
-    key    = "terraform/state/terraform.tfstate"
-    region = "${{ env.AWS_REGION }}"
-  }
-}
-EOT
+            echo 'terraform {' > backend.tf
+            echo '  backend "s3" {' >> backend.tf
+            echo '    bucket = "${{ secrets.TF_STATE_BUCKET }}"' >> backend.tf
+            echo '    key    = "terraform/state/terraform.tfstate"' >> backend.tf
+            echo '    region = "${{ env.AWS_REGION }}"' >> backend.tf
+            echo '  }' >> backend.tf
+            echo '}' >> backend.tf
           elif [ "${{ env.CLOUD_PROVIDER }}" = "azure" ] && [ -n "${{ secrets.AZURE_STORAGE_ACCOUNT }}" ]; then
-            cat <<EOT > backend.tf
-terraform {
-  backend "azurerm" {
-    resource_group_name  = "${{ secrets.AZURE_RESOURCE_GROUP }}"
-    storage_account_name = "${{ secrets.AZURE_STORAGE_ACCOUNT }}"
-    container_name       = "tfstate"
-    key                  = "terraform.tfstate"
-  }
-}
-EOT
+            echo 'terraform {' > backend.tf
+            echo '  backend "azurerm" {' >> backend.tf
+            echo '    resource_group_name  = "${{ secrets.AZURE_RESOURCE_GROUP }}"' >> backend.tf
+            echo '    storage_account_name = "${{ secrets.AZURE_STORAGE_ACCOUNT }}"' >> backend.tf
+            echo '    container_name       = "tfstate"' >> backend.tf
+            echo '    key                  = "terraform.tfstate"' >> backend.tf
+            echo '  }' >> backend.tf
+            echo '}' >> backend.tf
           elif [ "${{ env.CLOUD_PROVIDER }}" = "digitalocean" ] && [ -n "${{ secrets.TF_STATE_BUCKET }}" ] && [ -n "${{ secrets.DO_SPACE_ENDPOINT }}" ]; then
-            cat <<EOT > backend.tf
-terraform {
-  backend "s3" {
-    endpoint                    = "${{ secrets.DO_SPACE_ENDPOINT }}"
-    region                      = "us-east-1"
-    bucket                      = "${{ secrets.TF_STATE_BUCKET }}"
-    key                         = "terraform.tfstate"
-    skip_credentials_validation = true
-    skip_metadata_api_check     = true
-    skip_region_validation      = true
-  }
-}
-EOT
+            echo 'terraform {' > backend.tf
+            echo '  backend "s3" {' >> backend.tf
+            echo '    endpoint                    = "${{ secrets.DO_SPACE_ENDPOINT }}"' >> backend.tf
+            echo '    region                      = "us-east-1"' >> backend.tf
+            echo '    bucket                      = "${{ secrets.TF_STATE_BUCKET }}"' >> backend.tf
+            echo '    key                         = "terraform.tfstate"' >> backend.tf
+            echo '    skip_credentials_validation = true' >> backend.tf
+            echo '    skip_metadata_api_check     = true' >> backend.tf
+            echo '    skip_region_validation      = true' >> backend.tf
+            echo '  }' >> backend.tf
+            echo '}' >> backend.tf
           fi
 
           # Dynamically inject cloud-specific variables to maintain cloud-agnostic YAML
