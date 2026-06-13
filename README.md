@@ -1,198 +1,254 @@
 # manga-cdc
 
-Track manga releases from multiple scan sites and get notified when new chapters drop — via Discord, Slack, or Telegram.
+**Change Data Capture for manga releases** — scrape six sources, detect new chapters, stream events through Kafka, and notify Discord, Slack, or Telegram.
 
-## The Problem
+<p align="center">
+  <a href="https://github.com/aeswibon/manga-cdc/actions/workflows/test-and-build.yml?query=branch%3Amaster">
+    <img src="https://github.com/aeswibon/manga-cdc/actions/workflows/test-and-build.yml/badge.svg?branch=master" alt="Test and Build" />
+  </a>
+  <a href="https://github.com/aeswibon/manga-cdc/actions/workflows/deploy.yml?query=branch%3Amaster">
+    <img src="https://github.com/aeswibon/manga-cdc/actions/workflows/deploy.yml/badge.svg?branch=master" alt="Deploy" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/aeswibon/manga-cdc?style=flat" alt="License" />
+  </a>
+  <a href="https://manga-cdc-status.vercel.app">
+    <img src="https://img.shields.io/badge/dynamic/json?url=https://manga-cdc-status.vercel.app/api/status&label=pipeline&query=$.label&style=flat" alt="Pipeline status" />
+  </a>
+  <a href="https://manga-cdc.vercel.app">
+    <img src="https://img.shields.io/website?url=https://manga-cdc.vercel.app&label=dashboard&style=flat" alt="Dashboard" />
+  </a>
+  <a href="https://manga-cdc-status.vercel.app">
+    <img src="https://img.shields.io/website?url=https://manga-cdc-status.vercel.app&label=status%20page&style=flat" alt="Status page" />
+  </a>
+  <a href="https://manga-cdc-status.vercel.app">
+    <img src="https://img.shields.io/badge/openstatus-manga--cdc-18181b?style=flat" alt="OpenStatus" />
+  </a>
+</p>
 
-Manga chapters are scattered across half a dozen scanlation sites (MangaDex, MangaFire, MangaPlus, Asura Scans, MangaPill, MangaTown). Each site has different update schedules, different APIs (or no API at all), and no unified way to track what's new. Manually checking each site daily is tedious and error-prone.
+<p align="center">
+  <a href="https://manga-cdc.vercel.app"><strong>Dashboard</strong></a> ·
+  <a href="https://manga-cdc-status.vercel.app"><strong>Status</strong></a> ·
+  <a href="https://manga-cdc.openstatus.dev"><strong>OpenStatus</strong></a> ·
+  <a href="CONTRIBUTING.md"><strong>Watchlist</strong></a> ·
+  <a href="docs/security-model.md"><strong>Security</strong></a>
+</p>
 
-Manga-CDC solves this by acting as a **Change Data Capture pipeline for manga releases**: it scrapes all sources on a cron schedule, detects new chapters via a diff engine, and pushes notifications through your preferred channels — all in real-time via Kafka streaming.
+---
 
-## How It Works
+## Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Roadmap](#roadmap)
+- [Quick start](#quick-start)
+- [Project layout](#project-layout)
+- [Development](#development)
+- [Production](#production)
+- [Documentation](#documentation)
+- [License](#license)
+
+---
+
+## Overview
+
+Manga chapters are scattered across MangaDex, MangaPlus, MangaFire, Asura Scans, MangaPill, and MangaTown — each with different APIs, schedules, and anti-bot behavior. manga-cdc runs a scheduled scrape → diff → notify pipeline so you stop checking sites by hand.
+
+| Layer | Role |
+|-------|------|
+| **Scraper (Go)** | Source adapters, diff engine, DB writes, optional Kafka/QStash publish |
+| **PostgreSQL** | Series, chapters, notification log |
+| **Kafka / QStash** | Durable chapter events to the notifier |
+| **Notifier (Spring Boot)** | Webhook consumer, channel routing, read API |
+| **Dashboard & status page** | Operator UI (Svelte) + public health (Vercel) |
 
 ```mermaid
 sequenceDiagram
-    participant Cron as Cron (every 30m)
-    participant Adapters as Source Adapters (6 sites)
-    participant Diff as Diff Engine
+    participant Cron as Scheduler (every 15–30m)
+    participant Adapters as Source adapters (6 sites)
+    participant Diff as Diff engine
     participant DB as PostgreSQL
-    participant Kafka as Kafka (Aiven)
-    participant Notifier as Notification Service
+    participant Bus as Kafka or QStash
+    participant Notifier as Notification service
     participant Channels as Discord / Slack / Telegram
 
-    Cron->>Adapters: trigger scrape
-    Adapters->>Adapters: fetch latest series + chapters
-    Adapters->>Diff: raw series/chapter data
-    Diff->>DB: query known state
-    DB-->>Diff: existing series/chapters
-    Diff->>Diff: compare → find new chapters
-    alt new chapter found
+    Cron->>Adapters: scrape
+    Adapters->>Diff: series + chapters
+    Diff->>DB: compare known state
+    alt new chapter
         Diff->>DB: upsert series, insert chapter
-        Diff->>Kafka: publish chapter event (Debezium format)
-        Kafka-->>Notifier: deliver event
-        Notifier->>Channels: send notification
-        Notifier->>DB: mark chapter notified
-    else no changes
-        Diff->>Diff: skip
+        Diff->>Bus: publish event
+        Bus-->>Notifier: deliver
+        Notifier->>Channels: notify
+        Notifier->>DB: log delivery
     end
 ```
+
+---
 
 ## Architecture
 
 ```mermaid
 flowchart TB
     subgraph Scraping["Scraper (Go)"]
-        A1[MangaDex] --> E[Diff Engine]
+        A1[MangaDex] --> E[Diff engine]
         A2[MangaFire] --> E
         A3[MangaPlus] --> E
         A4[Asura Scans] --> E
         A5[MangaPill] --> E
         A6[MangaTown] --> E
-        E --> DB[(Aiven PostgreSQL)]
+        E --> DB[(PostgreSQL)]
     end
 
-    subgraph Eventing["Eventing Layer"]
-        DB --> K[Aiven Kafka]
+    subgraph Eventing["Eventing"]
+        DB --> K[Kafka / QStash]
     end
 
-    subgraph Notifications["Notification Service (Spring Boot / Java)"]
-        K --> NC[Kafka Consumer]
-        NC --> NS[Notifier Router]
+    subgraph Notifications["Notification service (Java)"]
+        K --> NC[Consumer / webhook]
+        NC --> NS[Notifier router]
         NS --> DC[Discord]
         NS --> SL[Slack]
         NS --> TG[Telegram]
     end
 
-    style Scraping fill:#1a73e8,color:#fff
-    style Eventing fill:#ea4335,color:#fff
-    style Notifications fill:#34a853,color:#fff
+    subgraph Frontend["Operator surfaces"]
+        D[Dashboard · Svelte]
+        S[Status page · Vercel]
+        D -.->|read API proxy| NC
+        S -.->|pipeline health| NC
+    end
 ```
 
-**Production** uses managed PostgreSQL and Kafka (e.g. [Aiven](https://aiven.io)) plus cloud-hosted containers. The scraper publishes Debezium-compatible JSON directly to Kafka.
+**Production** targets managed Postgres + Kafka (e.g. [Aiven](https://aiven.io)) with Cloud Run, ECS, Container Apps, or Helm on Kubernetes. **Local dev** uses Docker Compose (Postgres + Redpanda) via the [configure wizard](#quick-start).
 
-For local development, the [setup wizard](#quick-start) provisions Postgres and Redpanda in Docker Compose.
+| Choice | Rationale |
+|--------|-----------|
+| Go scraper | Fast cold start, low memory, strong concurrency for parallel fetches |
+| Spring Boot notifier | Mature Kafka/JDBC integrations and notification SDKs |
+| Kafka | At-least-once delivery, consumer groups, Debezium-compatible payloads |
+| Svelte dashboard | Lightweight operator UI with server-side API proxy for secrets |
 
-## Why This Stack
+---
 
-| Question | Answer |
-|----------|--------|
-| **Why Go for the scraper?** | Fast startup, low memory, excellent concurrency for parallel scraping, single binary deploy |
-| **Why Spring Boot / Java for notifications?** | Rich ecosystem for notification integrations, JDBC/R2DBC, battle-tested Kafka client |
-| **Why Kafka?** | Reliable at-least-once delivery, persistent event log, consumer group rebalancing, Debezium-compatible schema |
-| **Why Aiven?** | Managed Kafka + Postgres under one provider, SCRAM-SHA-256 auth, no operational overhead |
+## Roadmap
 
-## Tech Stack
+Based on [`docs/superpowers/plans/2026-06-13-future-roadmap.md`](docs/superpowers/plans/2026-06-13-future-roadmap.md) and the [original pipeline spec](docs/superpowers/specs/2026-06-10-mangastream-cdc-pipeline-design.md).
 
-| Component | Technology |
-|-----------|-----------|
-| Scraper | Go 1.26, pgx, Colly, segmentio/kafka-go |
-| Database | Aiven PostgreSQL 16 |
-| Eventing | Aiven Kafka (SASL_SSL / SCRAM-SHA-256) |
-| Notifications | Spring Boot 3.3, Java 21 |
-| Notifier targets | Discord, Slack, Telegram |
-| Metrics | Prometheus + Grafana (local); Grafana Cloud + Alloy (prod) |
-| Deployment | Docker Compose (local), Terraform (GCP/AWS/Azure/DO), Helm (Kubernetes), GitHub Actions CI/CD |
-| Orchestration | GitHub Actions CI/CD |
+### Shipped
 
-## Quick Start
+| Area | Status |
+|------|--------|
+| Six source adapters | MangaDex, MangaPlus, MangaFire, Asura, MangaPill, MangaTown |
+| Auto-migrations | `goose` on scraper startup |
+| Scraper health & zero-result alerts | `/healthz`, `/readyz`, Prometheus metrics |
+| Mock HTML adapter tests | Offline fixture parsing in CI |
+| Serverless scraper | GCP Cloud Run Jobs, AWS Fargate, Azure Container Apps, DO App Platform |
+| Multi-cloud Terraform + Helm | GCP, AWS, Azure, DigitalOcean |
+| Configure CLI wizard | Manifest-driven local/prod compose generation |
+| Operator dashboard | Svelte + Tailwind — watchlist, logs, stats, themes, PWA |
+| Public status page | Pipeline health via Vercel, cron-polled `/api/status` |
+| Community watchlist | PR-driven [`data/watchlist.yaml`](data/watchlist.yaml) |
+| Production security | API keys, webhook auth, rate limits, CORS — see [security model](docs/security-model.md) |
+| Observability | Prometheus + Grafana locally; Grafana Cloud + Alloy in prod |
+
+### Pending
+
+| Priority | Item | Notes |
+|----------|------|-------|
+| **Ops** | **Release v0.4.0** | Tag + deploy hardened notifier; verify `/api/stats` rejects unauthenticated reads |
+| **Dashboard** | In-app series editor | Today: edit watchlist via PR only |
+| **Dashboard** | Rich telemetry views | Basic stats exist; deeper scraper/run history still light |
+| **Platform** | Multi-user subscriptions | `users` / `user_subscriptions` tables + per-user routing |
+| **Scraper** | Anti-bot bypass | FlareSolverr, proxy/UA rotation, `chromedp` fallback |
+| **Bots** | Discord / Telegram commands | `/track`, `/latest`, `/my-subscriptions` |
+| **Media** | CBZ archiver | Download pages → `.cbz` for Kavita/Komga |
+| **Data** | Metadata resolver | AniList/MAL synonym merge |
+| **Security** | Encrypted webhook URLs | `pgcrypto` at rest |
+| **Architecture** | True Debezium WAL CDC | Replace scraper dual-write with Postgres logical replication |
+| **Architecture** | Avro + schema registry | Binary events via Confluent/Aiven registry |
+
+---
+
+## Quick start
 
 ```bash
-# Clone the repo
 git clone https://github.com/aeswibon/manga-cdc.git
 cd manga-cdc
 
-# Run the setup wizard (local or production tier)
+# Interactive setup (local or production tier)
 go run ./configure
 
-# Re-generate artifacts from a saved manifest
+# Or regenerate from a saved manifest
 cp config/manga-cdc.example.yaml config/manga-cdc.yaml
 go run ./configure generate
 
-# Follow the generated local guide
-cat SETUP.md
+# Local stack
+docker compose up -d --build
 ```
 
-## Project Structure
+| Service | URL (local) |
+|---------|-------------|
+| Dashboard | http://localhost |
+| Status page | http://localhost:3001 |
+| Notifier API | http://localhost:8080/api/logs?limit=50 |
+| Pipeline health | http://localhost:8080/api/pipeline/health |
+| Scraper metrics | http://localhost:2112/metrics |
+| Grafana | http://localhost:3000/d/manga-cdc-overview/manga-cdc |
+
+To track new series, open a PR against [`data/watchlist.yaml`](data/watchlist.yaml) — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Project layout
 
 ```
 manga-cdc/
-├── configure/                  # Setup wizard (Go CLI, manifest + generators)
-│   ├── manifest/               # config/manga-cdc.yaml schema + validation
-│   └── presets/                # Provider hint presets (Aiven, Neon, Upstash, etc.)
-├── config/                     # Setup manifest + Prometheus scrape config
-│   ├── manga-cdc.example.yaml  # Example manifest (copy to manga-cdc.yaml)
-│   └── prometheus.yml          # Metrics scraping config (local + VM observability)
-├── scraper/                    # Go scraper module
-│   ├── cmd/scraper/            # Scraper entrypoint
-│   ├── internal/
-│   │   ├── adapter/            # Source adapters (6 sources)
-│   │   ├── model/              # Domain types
-│   │   ├── db/                 # PostgreSQL client (pgx)
-│   │   ├── migrate/            # goose SQL migrations on startup
-│   │   ├── diff/               # Change detection engine
-│   │   ├── kafka/              # Kafka producer (optional)
-│   │   ├── qstash/             # QStash publisher (optional)
-│   │   └── config/             # Env-based config
-├── notification-service/       # Spring Boot notification service
-│   └── src/main/java/com/mangacdc/
-│       ├── controller/         # Webhook endpoint for QStash
-│       ├── service/            # Kafka consumer + notifiers
-│       └── repository/         # JDBC data access
-├── dashboard/                  # Svelte operator dashboard (read-only watchlist UI)
-├── status-page/                # Public status page (Vercel + local Node server)
-├── data/watchlist.yaml         # Community-curated tracked series list
-├── scripts/validate-watchlist.py
-├── helm/                       # Kubernetes Helm chart
-├── terraform/                  # Multi-Cloud Terraform IaC + bootstrap/
-│   └── bootstrap/              # One-time CI/CD prerequisites per cloud
-├── docker-compose.yml          # Local dev compose (generated)
-├── docker-compose.prod.yml     # Production compose (generated)
-├── docker-compose.observability.yml        # Local self-hosted Prometheus + Grafana
-├── docker-compose.observability-cloud.yml  # Prod Alloy → Grafana Cloud remote_write
-├── alloy/config.prod.alloy     # Alloy scrape + remote_write config
-├── grafana/dashboards/         # manga-cdc dashboard JSON
+├── configure/           # Setup wizard (manifest + generators)
+├── config/              # Example manifest, Prometheus scrape config
+├── scraper/             # Go scraper, adapters, diff, migrate
+├── notification-service/# Spring Boot notifier + security layer
+├── dashboard/           # Svelte operator UI (+ Vercel API proxy)
+├── status-page/         # Public health page (Vercel)
+├── data/watchlist.yaml  # Community-curated series list
+├── db/migrations/       # SQL schema (goose)
+├── terraform/           # GCP · AWS · Azure · DigitalOcean
+├── helm/manga-cdc/      # Kubernetes chart
+├── grafana/dashboards/  # manga-cdc overview JSON
+└── docs/                # cloud-setup, security-model, design specs
 ```
+
+---
 
 ## Development
 
-### Local (Docker Compose)
+### Docker Compose (recommended)
 
 ```bash
 docker compose up -d --build
 ```
 
-| Service | URL |
-|---------|-----|
-| Dashboard | http://localhost |
-| Status page | http://localhost:3001 |
-| Notification API | http://localhost:8080/api/logs?limit=50 |
-| Pipeline health | http://localhost:8080/api/pipeline/health |
-| Scraper health | http://localhost:2112/healthz, `/readyz`, `/metrics` |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000/d/manga-cdc-overview/manga-cdc |
-
-The dashboard links to the status page via `VITE_STATUS_PAGE_URL` (defaults to `http://localhost:3001` in Compose). Edit [`data/watchlist.yaml`](data/watchlist.yaml) locally or follow [CONTRIBUTING.md](CONTRIBUTING.md) to propose watchlist changes via PR.
-
-### Local (manual processes)
+### Manual processes
 
 ```bash
-# Start PostgreSQL
 docker compose up -d postgres
-
-# Run scraper (Go) — applies db/migrations on startup; exposes :2112/metrics, /healthz, /readyz
 cd scraper && go run ./cmd/scraper
-
-# Run notification service (Java)
 cd notification-service && ./mvnw spring-boot:run
 ```
 
-### Environment Variables
+### Tests
 
-See `.env.example` (generated by the setup wizard) for all available options.
+```bash
+cd scraper && go test ./...
+cd notification-service && ./mvnw test
+cd dashboard && bun test && bun run build
+cd status-page && npm ci && npm run typecheck
+python scripts/validate-watchlist.py
+```
 
-### Adding a New Source
+### New source adapter
 
-Implement the `SourceAdapter` interface in `scraper/internal/adapter/`:
+Implement `SourceAdapter` in `scraper/internal/adapter/`:
 
 ```go
 type SourceAdapter interface {
@@ -202,230 +258,91 @@ type SourceAdapter interface {
 }
 ```
 
-## Dashboards & Metrics
+Environment variables are documented in `.env.example` (generated by the configure wizard).
 
-Local URLs are listed under [Development → Local (Docker Compose)](#local-docker-compose). Local Compose auto-provisions the **manga-cdc** dashboard from `grafana/dashboards/manga-cdc.json`.
+---
 
-### Production (Grafana Cloud)
+## Production
 
-On **GCP serverless**, metrics are exposed on each Cloud Run service (`/metrics`, `/actuator/prometheus`). If Grafana Cloud secrets are set, they are injected as environment variables at deploy time — import the dashboard once in Grafana Cloud:
-
-- Dashboard JSON: `grafana/dashboards/manga-cdc.json`
-- URL pattern: `https://<stack>.grafana.net/d/manga-cdc-overview/manga-cdc`
-
-On **VM** deployments, Grafana Alloy can `remote_write` to Grafana Cloud via `docker-compose.observability-cloud.yml`.
-
-## Production Setup
-
-Production runs the **scraper** and **notification service** as containers against your managed Postgres + Kafka, deployed via **Terraform** and **GitHub Actions**. The recommended path is **GCP serverless** (Cloud Run + Cloud Scheduler) — no VMs to maintain.
-
-For VM, Kubernetes, or other clouds, see [docs/cloud-setup.md](docs/cloud-setup.md) and [terraform/README.md](terraform/README.md).
+Recommended path: **GCP serverless** (Cloud Run notifier + Cloud Run Job scraper + Cloud Scheduler). Full bootstrap, secrets, and provider-specific notes live in [docs/cloud-setup.md](docs/cloud-setup.md) and [terraform/README.md](terraform/README.md).
 
 ### Prerequisites
 
-Before bootstrapping, provision these **outside** the repo (keep credentials handy):
-
 | Service | Purpose |
 |---------|---------|
-| **PostgreSQL** | Series/chapter state (e.g. Aiven Postgres 16) |
-| **Kafka** | Chapter events, SASL_SSL + SCRAM-SHA-256 (e.g. Aiven Kafka) |
-| **Discord / Slack / Telegram** | At least one notification channel |
-| **Grafana Cloud** (optional) | Metrics via env vars injected into Cloud Run |
-| **GitHub repo** | Fork or use `aeswibon/manga-cdc` with Actions enabled |
+| PostgreSQL 16 | Series/chapter state |
+| Kafka (SASL_SSL) | Chapter events |
+| Discord / Slack / Telegram | At least one notifier channel |
+| GitHub Actions | CI/CD |
 
-### Step 1 — One-time cloud bootstrap
+### Secrets checklist
 
-Bootstrap creates the Terraform **remote state bucket**, enables required **GCP APIs**, and wires **GitHub Actions → GCP** via Workload Identity Federation. It also pushes CI secrets when `gh` is logged in.
+Set in **GitHub → Settings → Secrets and variables** before tagging a release:
 
-```bash
-# Authenticate
-gcloud auth login
-gcloud auth application-default login
-gcloud config set project YOUR_PROJECT_ID
+| Required | Name |
+|----------|------|
+| Cloud routing | `DEPLOY_CLOUD`, `DEPLOY_TARGET`, `DEPLOY_METHOD` |
+| GCP auth | `GCP_PROJECT_ID`, `GCP_REGION`, `TF_STATE_BUCKET`, WIF provider + SA |
+| App | `DATABASE_URL`, `KAFKA_*`, notifier webhooks |
+| Security | `API_READ_KEY`, `WEBHOOK_SECRET`, QStash signing keys |
+| Variable | `ALLOWED_ORIGINS`, `VITE_STATUS_PAGE_URL`, `VITE_DASHBOARD_URL` |
 
-# Optional: app secrets for gh secret sync (otherwise set in GitHub UI)
-cp .env.example .env   # edit DATABASE_URL, KAFKA_*, webhooks, Grafana Cloud
+Vercel projects need `NOTIFIER_URL`, `NOTIFIER_API_KEY`, and `PIPELINE_HEALTH_URL`. Details: [docs/security-model.md](docs/security-model.md).
 
-# Bootstrap GCP serverless
-chmod +x scripts/bootstrap.sh
-./scripts/bootstrap.sh --cloud gcp --target serverless
-```
+### Release flow
 
-Other clouds use the same script: `--cloud aws|azure|digitalocean` (see [terraform/README.md](terraform/README.md)).
-
-Use `--skip-gh-secrets` if you prefer setting secrets manually in GitHub. Use `--dry-run` to preview the Terraform plan.
-
-### Step 2 — GitHub repository secrets
-
-If bootstrap ran with `gh auth login`, routing and cloud auth secrets are set automatically. Otherwise configure these in **Settings → Secrets and variables → Actions**:
-
-**Routing (required)**
-
-| Secret | Example / notes |
-|--------|-----------------|
-| `DEPLOY_CLOUD` | `gcp` |
-| `DEPLOY_TARGET` | `serverless` |
-| `DEPLOY_METHOD` | `terraform` for first deploy; `direct` afterward |
-
-**GCP auth + state (required for GCP)**
-
-| Secret | Description |
-|--------|-------------|
-| `GCP_PROJECT_ID` | Your GCP project ID |
-| `GCP_REGION` | e.g. `us-central1` |
-| `TF_STATE_BUCKET` | GCS bucket from bootstrap |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Full WIF provider resource name |
-| `GCP_SERVICE_ACCOUNT` | Deploy service account email |
-
-**Application (required)**
-
-| Secret | Description |
-|--------|-------------|
-| `DATABASE_URL` | `postgres://...` connection string |
-| `KAFKA_BROKERS` | Comma-separated broker list |
-| `KAFKA_USERNAME` | Kafka SASL username |
-| `KAFKA_PASSWORD` | Kafka SASL password |
-| `DISCORD_WEBHOOK_URL` | Or Slack/Telegram secrets |
-| `API_READ_KEY` | Shared read key for notifier `/api/*` and metrics (see [docs/security-model.md](docs/security-model.md)) |
-| `WEBHOOK_SECRET` | Fallback shared secret for `POST /api/webhook` |
-| `QSTASH_CURRENT_SIGNING_KEY` | Upstash QStash signing key (current) |
-| `QSTASH_NEXT_SIGNING_KEY` | Upstash QStash signing key (rotation) |
-
-**Security (repository variable)**
-
-| Variable | Description |
-|----------|-------------|
-| `ALLOWED_ORIGINS` | Comma-separated browser origins (e.g. `https://your-dashboard.vercel.app,https://your-status.vercel.app`) |
-
-See [docs/security-model.md](docs/security-model.md) for the full trust model and operator checklist.
-
-**Observability (optional)**
-
-| Secret | Description |
-|--------|-------------|
-| `GRAFANA_CLOUD_PROMETHEUS_URL` | Push URL from Grafana Cloud |
-| `GRAFANA_CLOUD_PROMETHEUS_USER` | Metrics instance ID |
-| `GRAFANA_CLOUD_API_KEY` | Token with `metrics:write` |
-| `GRAFANA_CLOUD_STACK_URL` | e.g. `https://yourstack.grafana.net` |
-| `GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID` | For dashboard import |
-
-**Dashboard & status page (recommended)**
-
-| Secret / variable | Description |
-|-------------------|-------------|
-| `VITE_STATUS_PAGE_URL` (repository **variable**) | Public status page URL (`https://manga-cdc-status.vercel.app`) — dashboard polls `/api/status` here for the health indicator |
-| `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | Optional — enables automated status page deploy via the **Deploy** workflow |
-| `VERCEL_DASHBOARD_PROJECT_ID` | Optional — Vercel project id for dashboard deploy (reuse `VERCEL_TOKEN` + `VERCEL_ORG_ID`) |
-| `VITE_DASHBOARD_URL` (repository **variable**) | Public dashboard URL (`https://manga-cdc.vercel.app`) |
-| `PIPELINE_HEALTH_URL` | Set in the **Vercel project** (not GitHub) — production notifier `/api/pipeline/health` URL polled by the status page |
-
-GCP VM SSH secrets (`GCP_SSH_*`, `GCP_VM_NAME`, `GCP_ZONE`) are **not** used — GCP VM direct deploy is not supported in CI; use `serverless`, `kubernetes`, or Terraform `deployment_target=vm`.
-
-**CI runtime notes:** GitHub Actions frontend jobs use **Node 24** (`setup-node@v6`). The dashboard Docker image builds with **Bun** (not Node); only the status-page checks and Vercel deploy steps require Node 24 locally/in CI.
-
-### Step 3 — CI pipeline (every change)
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| **Test and Build** | PRs, pushes to `master`, tags `v*` | Go/Java tests, dashboard build + tests, status-page checks (Node **24**), watchlist validation, Terraform matrix, E2E, release images on tags |
-| **Watchlist validation** | PRs touching `data/watchlist.yaml` | Fast path-only watchlist checks (also runs in Test and Build) |
-| **Deploy** | After successful tag build | Cloud deploy (scraper + notifier); dashboard + status page on Vercel (optional) |
-
-Pushes to `master` run **tests only** (no release images, no cloud deploy). Production deploys happen on **version tags**:
+Pushes to `master` run **tests only**. Production deploys happen on **version tags**:
 
 ```bash
-# After changes are merged to master
-git tag -s v0.3.7 -m "v0.3.7"
-git push origin v0.3.7
+git tag -s v0.4.0 -m "v0.4.0"
+git push origin v0.4.0
 ```
 
-The **Test and Build** workflow on the tag will:
+```mermaid
+flowchart LR
+    Tag["Push tag v*"] --> CI["Test and Build"]
+    CI --> GHCR["Push container images"]
+    CI --> Rel["GitHub Release"]
+    Rel --> Deploy["Deploy workflow"]
+    Deploy --> Cloud["Cloud Run / ECS / …"]
+    Deploy --> Vercel["Dashboard + status page"]
+```
 
-1. Run Go/Java/dashboard tests, watchlist validation, status-page checks, and E2E (including `/api/pipeline/health`)
-2. Build and push images to `ghcr.io/aeswibon/manga-cdc/{scraper,notification-service,dashboard}:<semver>`
-3. Create a GitHub Release
-4. Trigger the **Deploy** workflow (Cloud Run / ECS / etc.)
-5. Trigger **Deploy status page** when Vercel secrets are set
+1. **Test and Build** — Go/Java/dashboard tests, Terraform matrix, E2E, image build on tags  
+2. **Deploy** — Terraform or direct image update (GCP serverless by default)  
+3. **Verify** — Notifier health, authenticated `/api/pipeline/health`, public status page  
 
-Set the repository variable `VITE_STATUS_PAGE_URL` to your public status page URL **before** tagging so the dashboard image links correctly.
-
-First deploy uses `DEPLOY_METHOD=terraform`, which runs `terraform apply` in `terraform/gcp` with `deployment_target=serverless`. That creates:
-
-| Resource | Name (prod) |
-|----------|-------------|
-| Cloud Run Service | `manga-cdc-notifier-prod` |
-| Cloud Run Job | `manga-cdc-scraper-job-prod` |
-| Cloud Scheduler | Triggers scraper on cron (`*/15 * * * *` UTC) |
-
-You can also trigger deploy manually: **Actions → Deploy → Run workflow** (`cloud_provider=gcp`, `deployment_target=serverless`, `deploy_method=terraform`).
-
-### Step 4 — Deploy the public status page (Vercel)
-
-The status page is hosted **separately** from Cloud Run so it stays reachable when production is down. See [`status-page/README.md`](status-page/README.md).
-
-1. Import `status-page/` as a Vercel project (or `vercel --cwd status-page`).
-2. In Vercel project settings, set `PIPELINE_HEALTH_URL` to your notifier URL, e.g. `https://<notifier-url>/api/pipeline/health`.
-3. Deploy and note the public URL (e.g. `https://status.yourdomain.com`).
-4. Set GitHub repository variable `VITE_STATUS_PAGE_URL` to that URL (used when building the dashboard image on the next tag).
-5. Optional: add `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` GitHub secrets so the **Deploy** workflow publishes the status page automatically after each release.
-
-### Step 5 — After the first successful deploy
-
-Switch to image-only updates on future tag releases:
+After the first Terraform deploy, switch to faster image-only updates:
 
 ```bash
 gh secret set DEPLOY_METHOD --body "direct"
 ```
 
-With `direct`, CI runs `gcloud run services update` / `gcloud run jobs update` — faster, no full Terraform apply.
+### CI workflows
 
-### Step 6 — Verify
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| **Test and Build** | PR, `master`, tags `v*` | Tests, snapshots, release images |
+| **Deploy** | Successful tag pipeline | Backend + optional Vercel |
+| **Watchlist validation** | PRs touching `data/watchlist.yaml` | Fast YAML checks |
 
-```bash
-# Cloud Run notifier URL (from GCP console or terraform output)
-curl -s "https://<notifier-host>/actuator/health"
-curl -s -H "X-Api-Key: <API_READ_KEY>" "https://<notifier-host>/api/pipeline/health"
+---
 
-# Public status page (Vercel)
-curl -s "https://<status-page-host>/api/status"
+## Documentation
 
-# Trigger a scraper run manually (optional)
-gcloud run jobs execute manga-cdc-scraper-job-prod --region=$GCP_REGION
+| Document | Description |
+|----------|-------------|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Community watchlist PR guide |
+| [docs/security-model.md](docs/security-model.md) | Trust boundaries, secrets, operator checklist |
+| [docs/cloud-setup.md](docs/cloud-setup.md) | Multi-cloud deploy guide |
+| [terraform/README.md](terraform/README.md) | Bootstrap, variables, outputs |
+| [status-page/README.md](status-page/README.md) | Vercel status page setup |
+| [dashboard/README.md](dashboard/README.md) | Dashboard dev notes |
 
-# Check notification delivery log (requires read API key)
-curl -s -H "X-Api-Key: <API_READ_KEY>" "https://<notifier-host>/api/logs?limit=10"
-```
+Design specs and the full future roadmap live under `docs/superpowers/` (local agent docs; not committed to CI).
 
-Import `grafana/dashboards/manga-cdc.json` into Grafana Cloud once (set the Prometheus datasource UID to match your stack).
-
-### Release flow summary
-
-```mermaid
-flowchart LR
-    Tag["Push tag v*"] --> CI["Test and Build"]
-    CI --> GHCR["Push GHCR images\n+ dashboard"]
-    CI --> Release["GitHub Release"]
-    Release --> Deploy["Deploy workflow"]
-    Deploy --> TF{"DEPLOY_METHOD?"}
-    TF -->|terraform| Apply["terraform apply\nCloud Run + Scheduler"]
-    TF -->|direct| Update["gcloud run update\nimages only"]
-    Deploy --> Status["Deploy frontend\n(Vercel + Cloud Run, optional)"]
-```
-
-### Other deployment targets
-
-| Target | Cloud | Notes |
-|--------|-------|-------|
-| **serverless** | GCP, AWS, Azure, DO | Recommended; pay per use |
-| **kubernetes** | All four | Helm chart in `helm/manga-cdc/` |
-| **vm** | AWS, Azure, DO | Docker Compose over SSH in CI; GCP VM via Terraform only |
-
-Full variable reference and provider auth: [docs/cloud-setup.md](docs/cloud-setup.md).
-
-## Local Development
-
-Use [Development → Local (Docker Compose)](#local-docker-compose) above, or run `go run ./configure` for the setup wizard.
+---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
