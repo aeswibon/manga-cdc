@@ -55,4 +55,22 @@ public class MangaApiController {
         stats.put("failed_deliveries", failedDeliveries != null ? failedDeliveries : 0);
         return stats;
     }
+
+    @PostMapping("/series")
+    public Map<String, Object> addSeries(@RequestBody MangaSeries series) {
+        seriesRepository.save(series);
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "CREATED");
+        response.put("title", series.title());
+        return response;
+    }
+
+    @DeleteMapping("/series/{id}")
+    public Map<String, Object> deleteSeries(@PathVariable String id) {
+        seriesRepository.deleteById(id);
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "DELETED");
+        response.put("id", id);
+        return response;
+    }
 }
