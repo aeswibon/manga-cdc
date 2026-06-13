@@ -6,7 +6,6 @@ import com.mangacdc.repository.ChapterRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -18,17 +17,14 @@ public class ChapterEventService {
 
     private final NotifierRegistry notifierRegistry;
     private final ChapterRepository chapterRepo;
-    private final JdbcTemplate jdbc;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper mapper;
 
     public ChapterEventService(NotifierRegistry notifierRegistry,
                                 ChapterRepository chapterRepo,
-                                JdbcTemplate jdbc,
                                 MeterRegistry meterRegistry) {
         this.notifierRegistry = notifierRegistry;
         this.chapterRepo = chapterRepo;
-        this.jdbc = jdbc;
         this.meterRegistry = meterRegistry;
         this.mapper = new ObjectMapper();
     }
@@ -51,6 +47,7 @@ public class ChapterEventService {
             String seriesId = after.path("series_id").asText();
             String chapterNum = after.path("chapter_num").asText();
             String title = after.path("title").asText("");
+            String seriesTitle = after.path("series_title").asText("");
             String url = after.path("url").asText();
             boolean isNew = after.path("is_new").asBoolean(false);
 
@@ -58,11 +55,7 @@ public class ChapterEventService {
                 return;
             }
 
-            String seriesTitle = jdbc.queryForObject(
-                "SELECT title FROM manga_series WHERE id = ?::uuid",
-                String.class, seriesId);
-
-            String resolvedTitle = seriesTitle != null ? seriesTitle : "Unknown";
+            String resolvedTitle = seriesTitle.isEmpty() ? "Unknown" : seriesTitle;
 
             Map<String, Boolean> results = notifierRegistry.sendAll(resolvedTitle, chapterNum, title, url);
 

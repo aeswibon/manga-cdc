@@ -23,7 +23,8 @@ type Series struct {
 type Chapter struct {
 	ID          string    `json:"id"`
 	SeriesID    string    `json:"series_id"`
-	Number  float64   `json:"chapter_num"`
+	SeriesTitle string    `json:"series_title,omitempty"`
+	Number      float64   `json:"chapter_num"`
 	Title       string    `json:"title,omitempty"`
 	URL         string    `json:"url"`
 	ReleaseDate time.Time `json:"release_date,omitempty"`

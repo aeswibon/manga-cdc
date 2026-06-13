@@ -11,6 +11,7 @@ type Config struct {
 	DatabaseURL              string
 	DBMaxConns               int
 	ScrapeInterval           time.Duration
+	ScrapeDelay              time.Duration
 	LogLevel                 string
 	KafkaBrokers             string
 	KafkaTopic               string
@@ -72,6 +73,14 @@ func Load() (*Config, error) {
 		threshold = parsed
 	}
 
+	scrapeDelay := 500 * time.Millisecond
+	if v := os.Getenv("SCRAPE_DELAY_MS"); v != "" {
+		ms, err := strconv.Atoi(v)
+		if err == nil && ms >= 0 {
+			scrapeDelay = time.Duration(ms) * time.Millisecond
+		}
+	}
+
 	runOnce := false
 	if v := os.Getenv("RUN_ONCE"); v != "" {
 		parsed, err := strconv.ParseBool(v)
@@ -84,6 +93,7 @@ func Load() (*Config, error) {
 		DatabaseURL:              dbURL,
 		DBMaxConns:               dbMaxConns,
 		ScrapeInterval:           interval,
+		ScrapeDelay:              scrapeDelay,
 		LogLevel:                 logLevel,
 		KafkaBrokers:             os.Getenv("KAFKA_BROKERS"),
 		KafkaTopic:               getEnv("KAFKA_TOPIC", "mangacdc.public.chapters"),
