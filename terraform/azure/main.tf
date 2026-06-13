@@ -357,6 +357,7 @@ locals {
     SPRING_DATASOURCE_USERNAME    = local.db_user
     SPRING_DATASOURCE_PASSWORD    = local.db_pass
     KAFKA_BROKERS                 = var.kafka_brokers
+    SPRING_KAFKA_BOOTSTRAP_SERVERS = var.kafka_brokers
     KAFKA_TOPIC                   = "mangacdc.public.chapters"
     KAFKA_USERNAME                = var.kafka_username
     KAFKA_PASSWORD                = var.kafka_password
