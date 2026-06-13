@@ -330,7 +330,7 @@ locals {
     KAFKA_TOPIC                    = "mangacdc.public.chapters"
     KAFKA_USERNAME                 = var.kafka_username
     KAFKA_PASSWORD                 = var.kafka_password
-  } : {
+    } : {
     SPRING_AUTOCONFIGURE_EXCLUDE = "org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration"
   }
 
@@ -338,31 +338,31 @@ locals {
   # but dynamic for_each only accepts map/set.
   cloud_run_env = tomap({
     for k, v in merge({
-      DATABASE_URL                   = var.database_url
-      SPRING_DATASOURCE_URL          = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
-      SPRING_DATASOURCE_USERNAME     = local.db_user
-      SPRING_DATASOURCE_PASSWORD     = local.db_pass
-      CDC_ENABLED                    = var.cdc_enabled ? "true" : "false"
-      DB_MAX_POOL_SIZE               = "3"
-      DB_MIN_IDLE                    = "0"
-      ADMIN_MUTATIONS_ENABLED        = "false"
-      SECURITY_REQUIRE_API_KEY       = "true"
-      SECURITY_REQUIRE_WEBHOOK_AUTH  = "true"
-      API_READ_KEY                   = var.api_read_key
-      WEBHOOK_SECRET                 = var.webhook_secret
-      QSTASH_CURRENT_SIGNING_KEY     = var.qstash_current_signing_key
-      QSTASH_NEXT_SIGNING_KEY        = var.qstash_next_signing_key
-      ALLOWED_ORIGINS                = var.allowed_origins
-      DISCORD_WEBHOOK_URL            = var.discord_webhook_url
-      SLACK_WEBHOOK_URL              = var.slack_webhook_url
-      TELEGRAM_BOT_TOKEN             = var.telegram_bot_token
-      TELEGRAM_CHAT_ID               = var.telegram_chat_id
-      OBSERVABILITY_MODE             = var.observability_mode
-      GRAFANA_CLOUD_PROMETHEUS_URL   = var.grafana_cloud_prometheus_url
-      GRAFANA_CLOUD_PROMETHEUS_USER  = var.grafana_cloud_prometheus_user
-      GRAFANA_CLOUD_API_KEY          = var.grafana_cloud_api_key
-      GRAFANA_CLOUD_STACK_URL        = var.grafana_cloud_stack_url
-      QSTASH_TOKEN                   = var.qstash_token
+      DATABASE_URL                  = var.database_url
+      SPRING_DATASOURCE_URL         = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
+      SPRING_DATASOURCE_USERNAME    = local.db_user
+      SPRING_DATASOURCE_PASSWORD    = local.db_pass
+      CDC_ENABLED                   = var.cdc_enabled ? "true" : "false"
+      DB_MAX_POOL_SIZE              = "3"
+      DB_MIN_IDLE                   = "0"
+      ADMIN_MUTATIONS_ENABLED       = "false"
+      SECURITY_REQUIRE_API_KEY      = "true"
+      SECURITY_REQUIRE_WEBHOOK_AUTH = "true"
+      API_READ_KEY                  = var.api_read_key
+      WEBHOOK_SECRET                = var.webhook_secret
+      QSTASH_CURRENT_SIGNING_KEY    = var.qstash_current_signing_key
+      QSTASH_NEXT_SIGNING_KEY       = var.qstash_next_signing_key
+      ALLOWED_ORIGINS               = var.allowed_origins
+      DISCORD_WEBHOOK_URL           = var.discord_webhook_url
+      SLACK_WEBHOOK_URL             = var.slack_webhook_url
+      TELEGRAM_BOT_TOKEN            = var.telegram_bot_token
+      TELEGRAM_CHAT_ID              = var.telegram_chat_id
+      OBSERVABILITY_MODE            = var.observability_mode
+      GRAFANA_CLOUD_PROMETHEUS_URL  = var.grafana_cloud_prometheus_url
+      GRAFANA_CLOUD_PROMETHEUS_USER = var.grafana_cloud_prometheus_user
+      GRAFANA_CLOUD_API_KEY         = var.grafana_cloud_api_key
+      GRAFANA_CLOUD_STACK_URL       = var.grafana_cloud_stack_url
+      QSTASH_TOKEN                  = var.qstash_token
     }, local.kafka_env) : k => v if v != ""
   })
 }
