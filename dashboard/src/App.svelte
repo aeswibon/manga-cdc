@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { 
-    type Series, 
+  import {
+    type Series,
     type LogEntry,
     type Chapter,
     filterSeries, 
@@ -23,6 +23,7 @@
     type PipelineHealth,
     notifierApiUrl,
   } from './utils';
+  import { watchServiceWorkerUpdates, type ServiceWorkerUpdateHandle } from './serviceWorker';
 
   const API_BASE = import.meta.env.VITE_API_URL?.trim()
     || (import.meta.env.PROD ? '/api/notifier' : '');
@@ -83,6 +84,13 @@
   let pipelineHealth = $state<PipelineHealth | null>(null);
   let pipelineHealthState = $state<'idle' | 'loading' | 'ok' | 'error'>('idle');
   let pipelineHealthPolledAt = $state('');
+
+  let updateAvailable = $state(false);
+  let swUpdateHandle = $state<ServiceWorkerUpdateHandle | null>(null);
+
+  function applyAppUpdate() {
+    swUpdateHandle?.applyUpdate();
+  }
 
   let duplicateTitles = $derived(duplicateTitleKeys(seriesList));
   let pipelineOverallVariant = $derived(healthVariant(pipelineHealth?.status ?? 'unknown'));
@@ -357,6 +365,12 @@
     });
     scheduleStatusPageHealth();
 
+    void watchServiceWorkerUpdates(() => {
+      updateAvailable = true;
+    }).then((handle) => {
+      swUpdateHandle = handle;
+    });
+
     let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
     function startRefreshLoop() {
@@ -427,6 +441,7 @@
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(statusPageInterval);
       eventSource?.close();
+      swUpdateHandle?.dispose();
     };
   });</script>
 
@@ -471,6 +486,15 @@
       </button>
     </div>
   </header>
+
+  {#if updateAvailable}
+    <div class="update-banner" role="status" aria-live="polite">
+      <p class="update-banner__text">Update available — refresh to get the latest version.</p>
+      <button type="button" class="update-banner__action" onclick={applyAppUpdate}>
+        Refresh
+      </button>
+    </div>
+  {/if}
 
   <!-- Main Content -->
   <main class="app-main flex-grow p-5 md:p-10 pb-[calc(6.75rem+env(safe-area-inset-bottom))] overflow-y-auto">

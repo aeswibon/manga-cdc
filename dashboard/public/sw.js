@@ -1,12 +1,17 @@
-const CACHE = 'manga-cdc-dashboard-v2';
+const CACHE = 'manga-cdc-dashboard-v3';
 const STATIC_PRECACHE = ['/manifest.webmanifest', '/logo.svg', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE)
-      .then((cache) => cache.addAll(STATIC_PRECACHE))
-      .then(() => self.skipWaiting()),
+      .then((cache) => cache.addAll(STATIC_PRECACHE)),
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {

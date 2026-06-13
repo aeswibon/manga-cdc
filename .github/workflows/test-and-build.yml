@@ -224,8 +224,8 @@ jobs:
 
   terraform-validate-plan:
     name: Terraform (${{ matrix.cloud }} / ${{ matrix.target }})
-    needs: gate
-    if: needs.gate.outputs.proceed == 'true'
+    needs: [gate, terraform-fmt]
+    if: ${{ needs.gate.outputs.proceed == 'true' && needs.terraform-fmt.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
