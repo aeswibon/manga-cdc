@@ -10,6 +10,13 @@ RUN jlink --add-modules java.base,java.desktop,java.logging,java.sql,java.xml,ja
           --strip-debug --no-man-pages --no-header-files --compress=2 \
           --output /jre
 
+FROM eclipse-temurin:21 AS libs
+COPY --from=jlink /usr/lib /usr/lib
+RUN mkdir -p /out/lib && \
+    for lib in libdl.so.2 libz.so.1 librt.so.1 libnsl.so.1 libthread_db.so.1 libstdc++.so.6; do \
+        find /usr/lib -name "$lib" \( -type f -o -type l \) -exec cp -L {} /out/lib/ \; ; \
+    done
+
 FROM busybox:glibc
 
 ARG APP_VERSION=0.3.7
@@ -21,12 +28,7 @@ LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.base.name="docker.io/library/busybox:glibc"
 
 COPY --from=jlink /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=jlink /usr/lib/x86_64-linux-gnu/libdl.so.2 /lib/
-COPY --from=jlink /usr/lib/x86_64-linux-gnu/libz.so.1.3.1 /lib/libz.so.1
-COPY --from=jlink /usr/lib/x86_64-linux-gnu/librt.so.1 /lib/
-COPY --from=jlink /usr/lib/x86_64-linux-gnu/libnsl.so.1 /lib/
-COPY --from=jlink /usr/lib/x86_64-linux-gnu/libthread_db.so.1 /lib/
-COPY --from=jlink /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /lib/
+COPY --from=libs /out/lib /lib
 COPY --from=jlink /jre /jre
 COPY --from=builder /app/target/*.jar /app.jar
 WORKDIR /app
