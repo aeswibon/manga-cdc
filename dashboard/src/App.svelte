@@ -105,9 +105,22 @@
   let retryingLogs = $state<Record<string, boolean>>({});
 
   // Computed state (Svelte 5 runes)
+  let currentPage = $state(1);
+  const itemsPerPage = 12;
+
   let filteredSeries = $derived(filterSeries(seriesList, searchQuery, statusFilter));
+  let totalPages = $derived(Math.max(1, Math.ceil(filteredSeries.length / itemsPerPage)));
+  let paginatedSeries = $derived(filteredSeries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage));
+
   let filteredLogs = $derived(filterLogs(logList, logSearchQuery, logChannelFilter, logStatusFilter));
   let successRate = $derived(calculateSuccessRate(stats.successful_deliveries, stats.total_logs));
+
+  $effect(() => {
+    // Reset to page 1 on search or filter change
+    searchQuery;
+    statusFilter;
+    currentPage = 1;
+  });
 
   // Mock data definitions
   const MOCK_SERIES: Series[] = [
@@ -618,7 +631,7 @@
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {#each filteredSeries as series}
+        {#each paginatedSeries as series}
           <div class="bg-bg-secondary border border-border-color rounded-xl overflow-hidden flex flex-col transition-all duration-300" class:opacity-50={!series.isActive} class:border-transparent={!series.isActive}>
             <div class="h-44 bg-bg-tertiary relative overflow-hidden">
               {#if series.coverUrl}
@@ -660,6 +673,34 @@
           </div>
         {/each}
       </div>
+
+      <!-- Pagination Controls -->
+      {#if totalPages > 1}
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-border-color/60">
+          <span class="text-xs text-gray-400">
+            Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredSeries.length)} of {filteredSeries.length} series
+          </span>
+          <div class="flex items-center gap-2">
+            <button 
+              onclick={() => currentPage = Math.max(1, currentPage - 1)} 
+              disabled={currentPage === 1}
+              class="px-3.5 py-2 bg-bg-secondary border border-border-color rounded-lg text-xs font-semibold text-gray-300 hover:text-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              Previous
+            </button>
+            <span class="text-xs font-semibold text-gray-300 px-3">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button 
+              onclick={() => currentPage = Math.min(totalPages, currentPage + 1)} 
+              disabled={currentPage === totalPages}
+              class="px-3.5 py-2 bg-bg-secondary border border-border-color rounded-lg text-xs font-semibold text-gray-300 hover:text-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      {/if}
     {/if}
 
     <!-- LOGS TAB -->
