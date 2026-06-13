@@ -71,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	database, err := db.New(ctx, cfg.DatabaseURL)
+	database, err := db.New(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		log.Error("failed to connect to database", "error", err)
 		os.Exit(1)
