@@ -645,6 +645,32 @@ body {
   color: var(--color-success);
 }
 
+.stat-grid--loading .stat-card__value {
+  position: relative;
+  color: transparent;
+  user-select: none;
+}
+
+.stat-grid--loading .stat-card__value::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 0.35rem;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--color-gray-600) 35%, transparent) 0%,
+    color-mix(in oklab, var(--color-gray-500) 55%, transparent) 50%,
+    color-mix(in oklab, var(--color-gray-600) 35%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: stat-skeleton 1.2s ease-in-out infinite;
+}
+
+@keyframes stat-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .alert-row {
   display: flex;
   flex-direction: column;

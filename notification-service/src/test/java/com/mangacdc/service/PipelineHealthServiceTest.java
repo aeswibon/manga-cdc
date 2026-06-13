@@ -53,4 +53,14 @@ class PipelineHealthServiceTest {
 
         assertThat(health.get("status")).isEqualTo("down");
     }
+
+    @Test
+    void buildHealth_reusesCachedResultWithinTtl() {
+        when(jdbc.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+
+        service.buildHealth();
+        service.buildHealth();
+
+        org.mockito.Mockito.verify(jdbc, org.mockito.Mockito.times(1)).queryForObject(anyString(), eq(Integer.class));
+    }
 }

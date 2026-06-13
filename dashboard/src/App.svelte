@@ -27,8 +27,13 @@
   const API_BASE = import.meta.env.VITE_API_URL?.trim()
     || (import.meta.env.PROD ? '/api/notifier' : '');
 
-  const DATA_REFRESH_MS = 60_000;
+  const DATA_REFRESH_MS = 120_000;
   const USE_SSE = import.meta.env.DEV;
+  const LOGS_TAB_LIMIT = 20;
+
+  let overviewLoaded = $state(false);
+  let seriesLoaded = $state(false);
+  let logsTabLoaded = $state(false);
 
   // State Management (Svelte 5 runes)
   let activeTab = $state('overview');
@@ -202,61 +207,117 @@
     }
   }
 
-  async function fetchBackendData() {
-    try {
+  async function fetchOverviewData(markConnecting = false) {
+    if (markConnecting && !overviewLoaded) {
       apiStatus = 'connecting';
+    }
 
-      const useBootstrap = import.meta.env.PROD || API_BASE.startsWith('/api/notifier');
-      if (useBootstrap) {
-        const bootstrapRes = await fetch(notifierApiUrl('/api/bootstrap', API_BASE), { cache: 'no-store' });
-        if (bootstrapRes.ok) {
-          const payload = await bootstrapRes.json() as {
-            stats: typeof stats;
-            series: Series[];
-            logs: LogEntry[];
-          };
-          stats = payload.stats;
-          seriesList = payload.series;
-          logList = payload.logs;
-          apiOffline = false;
-          apiErrorModal = null;
-          apiStatus = 'online';
-          return;
-        }
+    const useBootstrap = import.meta.env.PROD || API_BASE.startsWith('/api/notifier');
+    if (useBootstrap) {
+      const bootstrapRes = await fetch(
+        notifierApiUrl('/api/bootstrap?scope=overview', API_BASE),
+        { cache: 'no-store' },
+      );
+      if (!bootstrapRes.ok) {
+        throw new Error(`Overview bootstrap returned HTTP ${bootstrapRes.status}`);
       }
-
-      const [statsRes, seriesRes, logsRes] = await Promise.all([
-        fetch(notifierApiUrl('/api/stats', API_BASE)),
-        fetch(notifierApiUrl('/api/series', API_BASE)),
-        fetch(notifierApiUrl('/api/logs?limit=20', API_BASE)),
-      ]);
-
-      if (!statsRes.ok) throw new Error(`Stats API returned HTTP ${statsRes.status}`);
-      if (!seriesRes.ok) throw new Error(`Series API returned HTTP ${seriesRes.status}`);
-      if (!logsRes.ok) throw new Error(`Logs API returned HTTP ${logsRes.status}`);
-
-      const [statsPayload, seriesPayload, logsPayload] = await Promise.all([
-        statsRes.json(),
-        seriesRes.json(),
-        logsRes.json(),
-      ]);
-
-      stats = statsPayload;
-      seriesList = seriesPayload;
-      logList = logsPayload;
-
+      const payload = await bootstrapRes.json() as {
+        stats: typeof stats;
+        logs: LogEntry[];
+      };
+      stats = payload.stats;
+      logList = payload.logs;
+      overviewLoaded = true;
       apiOffline = false;
       apiErrorModal = null;
       apiStatus = 'online';
+      return;
+    }
+
+    const [statsRes, logsRes] = await Promise.all([
+      fetch(notifierApiUrl('/api/stats', API_BASE)),
+      fetch(notifierApiUrl('/api/logs?limit=5', API_BASE)),
+    ]);
+    if (!statsRes.ok) throw new Error(`Stats API returned HTTP ${statsRes.status}`);
+    if (!logsRes.ok) throw new Error(`Logs API returned HTTP ${logsRes.status}`);
+
+    stats = await statsRes.json();
+    logList = await logsRes.json();
+    overviewLoaded = true;
+    apiOffline = false;
+    apiErrorModal = null;
+    apiStatus = 'online';
+  }
+
+  async function fetchWatchlistData(markConnecting = false) {
+    if (markConnecting && !seriesLoaded) {
+      apiStatus = 'connecting';
+    }
+
+    const useBootstrap = import.meta.env.PROD || API_BASE.startsWith('/api/notifier');
+    if (useBootstrap) {
+      const bootstrapRes = await fetch(
+        notifierApiUrl('/api/bootstrap?scope=watchlist', API_BASE),
+        { cache: 'no-store' },
+      );
+      if (!bootstrapRes.ok) {
+        throw new Error(`Watchlist bootstrap returned HTTP ${bootstrapRes.status}`);
+      }
+      const payload = await bootstrapRes.json() as { series: Series[] };
+      seriesList = payload.series;
+      seriesLoaded = true;
+      apiOffline = false;
+      apiErrorModal = null;
+      apiStatus = 'online';
+      return;
+    }
+
+    const seriesRes = await fetch(notifierApiUrl('/api/series', API_BASE));
+    if (!seriesRes.ok) throw new Error(`Series API returned HTTP ${seriesRes.status}`);
+    seriesList = await seriesRes.json();
+    seriesLoaded = true;
+    apiOffline = false;
+    apiErrorModal = null;
+    apiStatus = 'online';
+  }
+
+  async function fetchLogsTabData(markConnecting = false) {
+    if (markConnecting && logList.length === 0) {
+      apiStatus = 'connecting';
+    }
+
+    const logsRes = await fetch(notifierApiUrl(`/api/logs?limit=${LOGS_TAB_LIMIT}`, API_BASE));
+    if (!logsRes.ok) throw new Error(`Logs API returned HTTP ${logsRes.status}`);
+    logList = await logsRes.json();
+    apiOffline = false;
+    apiErrorModal = null;
+    apiStatus = 'online';
+  }
+
+  async function refreshActiveTab(markConnecting = false) {
+    try {
+      if (activeTab === 'watchlist') {
+        await fetchWatchlistData(markConnecting);
+        return;
+      }
+      if (activeTab === 'logs') {
+        await fetchLogsTabData(markConnecting);
+        return;
+      }
+      await fetchOverviewData(markConnecting);
     } catch (err) {
       console.warn('Backend API offline.', err);
       apiOffline = true;
       apiStatus = 'offline';
-      stats = { ...EMPTY_STATS };
-      seriesList = [];
-      logList = [];
+      if (!overviewLoaded) stats = { ...EMPTY_STATS };
+      if (!seriesLoaded) seriesList = [];
+      if (logList.length === 0) logList = [];
       showApiError(describeApiError(err));
     }
+  }
+
+  async function fetchBackendData() {
+    await refreshActiveTab(!overviewLoaded && activeTab === 'overview');
   }
 
   function scheduleStatusPageHealth() {
@@ -267,6 +328,16 @@
       setTimeout(run, 250);
     }
   }
+
+  $effect(() => {
+    if (activeTab === 'watchlist' && !seriesLoaded && !apiOffline) {
+      void fetchWatchlistData(true);
+    } else if (activeTab === 'logs' && !logsTabLoaded && document.visibilityState === 'visible') {
+      void fetchLogsTabData(true).then(() => {
+        logsTabLoaded = true;
+      });
+    }
+  });
 
   onMount(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -279,14 +350,43 @@
       document.documentElement.classList.remove('light');
     }
 
-    void fetchBackendData().then(() => {
+    void fetchOverviewData(true).then(() => {
       if (!apiOffline && USE_SSE) {
         connectSSE();
       }
     });
     scheduleStatusPageHealth();
-    const interval = setInterval(fetchBackendData, DATA_REFRESH_MS);
-    const statusPageInterval = setInterval(fetchStatusPageHealth, 60000);
+
+    let refreshInterval: ReturnType<typeof setInterval> | null = null;
+
+    function startRefreshLoop() {
+      if (refreshInterval) clearInterval(refreshInterval);
+      refreshInterval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          void refreshActiveTab();
+        }
+      }, DATA_REFRESH_MS);
+    }
+
+    function stopRefreshLoop() {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void refreshActiveTab();
+        startRefreshLoop();
+      } else {
+        stopRefreshLoop();
+      }
+    }
+
+    startRefreshLoop();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const statusPageInterval = setInterval(fetchStatusPageHealth, 120_000);
 
     let eventSource: EventSource | null = null;
 
@@ -323,7 +423,8 @@
     }
 
     return () => {
-      clearInterval(interval);
+      stopRefreshLoop();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(statusPageInterval);
       eventSource?.close();
     };
@@ -398,7 +499,7 @@
 
       <!-- OVERVIEW TAB -->
       {#if activeTab === 'overview'}
-        <div class="stat-grid">
+        <div class="stat-grid" class:stat-grid--loading={!overviewLoaded && apiStatus === 'connecting'}>
           <div class="stat-card">
             <span class="stat-card__label">Tracked Series</span>
             <span class="stat-card__value">{stats.total_series}</span>

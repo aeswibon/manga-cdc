@@ -26,6 +26,11 @@ public class PipelineHealthService {
     private final String scraperHealthUrl;
     private final String scraperReadyUrl;
     private final boolean cdcEnabled;
+    private static final long HEALTH_CACHE_TTL_MS = 45_000;
+
+    private volatile CachedHealth cachedHealth;
+
+    private record CachedHealth(Map<String, Object> payload, long expiresAtMs) {}
 
     public PipelineHealthService(
             JdbcTemplate jdbc,
@@ -43,6 +48,25 @@ public class PipelineHealthService {
     }
 
     public Map<String, Object> buildHealth() {
+        CachedHealth snapshot = cachedHealth;
+        long now = System.currentTimeMillis();
+        if (snapshot != null && snapshot.expiresAtMs() > now) {
+            return snapshot.payload();
+        }
+
+        synchronized (this) {
+            snapshot = cachedHealth;
+            now = System.currentTimeMillis();
+            if (snapshot != null && snapshot.expiresAtMs() > now) {
+                return snapshot.payload();
+            }
+            Map<String, Object> payload = buildHealthUncached();
+            cachedHealth = new CachedHealth(payload, now + HEALTH_CACHE_TTL_MS);
+            return payload;
+        }
+    }
+
+    private Map<String, Object> buildHealthUncached() {
         List<Map<String, Object>> components = new ArrayList<>();
         components.add(notifierComponent());
         components.add(checkDatabase());

@@ -32,9 +32,9 @@ variable "deployment_target" {
 }
 
 variable "cloud_run_scheduler_schedule" {
-  description = "Cron schedule for the Cloud Scheduler to trigger the scraper (e.g. every 30 mins)"
+  description = "Cron schedule for the Cloud Scheduler to trigger the scraper (every 2 hours)"
   type        = string
-  default     = "*/30 * * * *"
+  default     = "0 */2 * * *"
 }
 
 variable "cdc_enabled" {
