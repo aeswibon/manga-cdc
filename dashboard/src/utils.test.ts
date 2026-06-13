@@ -16,6 +16,9 @@ import {
   healthShortLabel,
   healthVariant,
   notifierApiUrl,
+  coverImageUrl,
+  fetchWithRetry,
+  usesNotifierProxy,
   type Series,
 } from "./utils";
 
@@ -32,6 +35,18 @@ describe("calculateSuccessRate", () => {
   });
 });
 
+describe("coverImageUrl", () => {
+  test("returns empty string for blank input", () => {
+    expect(coverImageUrl("")).toBe("");
+    expect(coverImageUrl("   ")).toBe("");
+  });
+
+  test("proxies cover URLs outside dev builds", () => {
+    const url = "https://uploads.mangadex.org/covers/abc/cover.jpg";
+    expect(coverImageUrl(url)).toBe(`/api/cover?url=${encodeURIComponent(url)}`);
+  });
+});
+
 describe("notifierApiUrl", () => {
   test("uses direct /api paths in development", () => {
     expect(notifierApiUrl("/api/stats")).toBe("/api/stats");
@@ -39,10 +54,17 @@ describe("notifierApiUrl", () => {
   });
 
   test("strips /api prefix for the Vercel proxy base", () => {
-    expect(notifierApiUrl("/api/stats", "/api/notifier")).toBe("/api/notifier/stats");
-    expect(notifierApiUrl("/api/series/abc/chapters", "/api/notifier")).toBe(
-      "/api/notifier/series/abc/chapters",
+    expect(notifierApiUrl("/api/stats", "/api/data")).toBe("/api/data/stats");
+    expect(notifierApiUrl("/api/series/abc/chapters", "/api/data")).toBe(
+      "/api/data/series/abc/chapters",
     );
+    expect(notifierApiUrl("/api/stats", "/api/notifier")).toBe("/api/notifier/stats");
+  });
+
+  test("usesNotifierProxy detects dashboard proxy bases", () => {
+    expect(usesNotifierProxy("/api/data")).toBe(true);
+    expect(usesNotifierProxy("/api/notifier")).toBe(true);
+    expect(usesNotifierProxy("https://notifier.example.run.app")).toBe(false);
   });
 
   test("keeps /api prefix for absolute backend URLs", () => {

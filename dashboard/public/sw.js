@@ -1,4 +1,4 @@
-const CACHE = 'manga-cdc-dashboard-v3';
+const CACHE = 'manga-cdc-dashboard-v4';
 const STATIC_PRECACHE = ['/manifest.webmanifest', '/logo.svg', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {

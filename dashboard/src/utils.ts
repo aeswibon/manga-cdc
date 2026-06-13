@@ -29,6 +29,43 @@ export const WATCHLIST_GITHUB_URL =
 export const STATUS_PAGE_URL =
   import.meta.env.VITE_STATUS_PAGE_URL ?? 'http://localhost:3001';
 
+/** Fetch with short retries for flaky mobile networks and cold serverless starts. */
+export async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  attempts = 3,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const response = await fetch(input, init);
+      if (response.ok || response.status < 500) {
+        return response;
+      }
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (err) {
+      lastError = err;
+    }
+    if (attempt < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+export function usesNotifierProxy(apiBase: string): boolean {
+  const base = apiBase.replace(/\/$/, '');
+  return base === '/api/data' || base === '/api/notifier' || base.endsWith('/api/data') || base.endsWith('/api/notifier');
+}
+
+/** Same-origin proxy avoids hotlink blocks and ad-blockers on external CDNs in production. */
+export function coverImageUrl(coverUrl: string): string {
+  const trimmed = coverUrl?.trim() ?? '';
+  if (!trimmed) return '';
+  if (import.meta.env.DEV) return trimmed;
+  return `/api/cover?url=${encodeURIComponent(trimmed)}`;
+}
+
 export interface PipelineComponent {
   name: string;
   status: string;
@@ -266,7 +303,7 @@ export function filterLogs(
   });
 }
 
-/** Build a notifier API URL for direct backend or the Vercel /api/notifier proxy. */
+/** Build a notifier API URL for direct backend or the Vercel /api/data proxy. */
 export function notifierApiUrl(path: string, apiBase = ''): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;
   const apiPath = normalized.startsWith('/api/') ? normalized : `/api${normalized}`;

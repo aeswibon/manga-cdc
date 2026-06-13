@@ -425,7 +425,7 @@ resource "google_cloud_run_v2_service" "notification_service" {
           cpu    = var.cloud_run_notifier_cpu
         }
         cpu_idle          = true
-        startup_cpu_boost = true
+        startup_cpu_boost = false
       }
       ports {
         container_port = 8080

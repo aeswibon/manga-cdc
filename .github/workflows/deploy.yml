@@ -244,9 +244,10 @@ jobs:
           gcloud run services update manga-cdc-notifier-prod \
             --image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }} \
             --region=${{ env.GCP_REGION }} \
-            --memory=512Mi \
+            --memory=256Mi \
             --cpu=1 \
             --cpu-throttling \
+            --no-cpu-boost \
             --concurrency=80 \
             --min-instances=0 \
             --max-instances=2 \
@@ -806,6 +807,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_STATUS_PAGE_PROJECT_ID: ${{ secrets.VERCEL_STATUS_PAGE_PROJECT_ID }}
         run: bash ./scripts/ci/deploy-status-page.sh
 
   deploy-dashboard:

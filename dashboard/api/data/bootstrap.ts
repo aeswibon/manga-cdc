@@ -1,4 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import {
+  getCached,
+  setCached,
+  UPSTREAM_CACHE_CONTROL,
+  UPSTREAM_CACHE_TTL_MS,
+} from './_upstream-cache.js';
 
 const OVERVIEW_LOG_LIMIT = 5;
 const FULL_LOG_LIMIT = 20;
@@ -11,7 +17,10 @@ async function upstreamGet(baseUrl: string, apiKey: string | undefined, path: st
     headers.set('X-Api-Key', apiKey);
   }
 
-  const response = await fetch(`${baseUrl}${path}`, { headers });
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers,
+    signal: AbortSignal.timeout(20_000),
+  });
   if (!response.ok) {
     throw new Error(`${path} returned HTTP ${response.status}`);
   }
@@ -43,21 +52,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const scope = parseScope(req);
 
+  const cacheKey = `bootstrap:${scope}`;
+
   try {
+    const cached = getCached(cacheKey);
+    if (cached) {
+      res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
+      res.status(cached.status).json(cached.body);
+      return;
+    }
+
     if (scope === 'overview') {
       const [stats, logs] = await Promise.all([
         upstreamGet(baseUrl, apiKey, '/api/stats'),
         upstreamGet(baseUrl, apiKey, `/api/logs?limit=${OVERVIEW_LOG_LIMIT}`),
       ]);
-      res.setHeader('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
-      res.status(200).json({ stats, logs });
+      const body = { stats, logs };
+      setCached(cacheKey, body, 200, UPSTREAM_CACHE_TTL_MS);
+      res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
+      res.status(200).json(body);
       return;
     }
 
     if (scope === 'watchlist') {
       const series = await upstreamGet(baseUrl, apiKey, '/api/series');
-      res.setHeader('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
-      res.status(200).json({ series });
+      const body = { series };
+      setCached(cacheKey, body, 200, UPSTREAM_CACHE_TTL_MS);
+      res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
+      res.status(200).json(body);
       return;
     }
 
@@ -67,8 +89,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       upstreamGet(baseUrl, apiKey, `/api/logs?limit=${FULL_LOG_LIMIT}`),
     ]);
 
-    res.setHeader('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
-    res.status(200).json({ stats, series, logs });
+    const body = { stats, series, logs };
+    setCached(cacheKey, body, 200, UPSTREAM_CACHE_TTL_MS);
+    res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
+    res.status(200).json(body);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Upstream request failed';
     res.status(502).json({ error: message });

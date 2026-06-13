@@ -26,7 +26,7 @@ public class PipelineHealthService {
     private final String scraperHealthUrl;
     private final String scraperReadyUrl;
     private final boolean cdcEnabled;
-    private static final long HEALTH_CACHE_TTL_MS = 45_000;
+    private static final long HEALTH_CACHE_TTL_MS = 300_000;
 
     private volatile CachedHealth cachedHealth;
 

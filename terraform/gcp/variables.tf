@@ -32,9 +32,9 @@ variable "deployment_target" {
 }
 
 variable "cloud_run_scheduler_schedule" {
-  description = "Cron schedule for the Cloud Scheduler to trigger the scraper (every 2 hours)"
+  description = "Cron schedule for the Cloud Scheduler to trigger the scraper (every 6 hours)"
   type        = string
-  default     = "0 */2 * * *"
+  default     = "0 */6 * * *"
 }
 
 variable "cdc_enabled" {
@@ -144,9 +144,9 @@ variable "telegram_chat_id" {
 
 # Observability
 variable "observability_mode" {
-  description = "Observability mode: grafana-cloud, self-hosted, or off"
+  description = "Observability mode: grafana-cloud, self-hosted, or off (off reduces metrics export cost on serverless)"
   type        = string
-  default     = "grafana-cloud"
+  default     = "off"
 }
 
 variable "grafana_cloud_prometheus_url" {

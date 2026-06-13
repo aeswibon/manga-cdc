@@ -212,6 +212,14 @@ func (d *DB) BulkInsertChapters(ctx context.Context, seriesID string, chapters [
 	return newChapters, nil
 }
 
+func (d *DB) DeleteChaptersForSeries(ctx context.Context, seriesID string) error {
+	_, err := d.pool.Exec(ctx, `DELETE FROM chapters WHERE series_id = $1`, seriesID)
+	if err != nil {
+		return fmt.Errorf("delete chapters for series: %w", err)
+	}
+	return nil
+}
+
 func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {
 	rows, err := d.pool.Query(ctx, `
 		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), author, artist,

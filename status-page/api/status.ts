@@ -23,6 +23,15 @@ type StatusPayload = {
 };
 
 const TIMEOUT_MS = 8000;
+const HEALTH_CACHE_TTL_MS = 2 * 60 * 1000;
+const STATUS_CACHE_CONTROL = 's-maxage=120, stale-while-revalidate=300';
+
+type CachedHealth = {
+  payload: StatusPayload;
+  expiresAt: number;
+};
+
+let cachedHealth: CachedHealth | null = null;
 
 function normalizeStatus(status: string | undefined): StatusPayload['status'] {
   const value = (status ?? '').trim().toLowerCase();
@@ -73,7 +82,6 @@ async function fetchPipelineHealth(url: string): Promise<{ health: PipelineHealt
       method: 'GET',
       headers,
       signal: controller.signal,
-      cache: 'no-store',
     });
     const latencyMs = Date.now() - started;
 
@@ -99,12 +107,18 @@ async function fetchPipelineHealth(url: string): Promise<{ health: PipelineHealt
 }
 
 function sendStatus(res: VercelResponse, payload: StatusPayload) {
-  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
+  res.setHeader('Cache-Control', STATUS_CACHE_CONTROL);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.status(200).json(payload);
 }
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
+  const now = Date.now();
+  if (cachedHealth && cachedHealth.expiresAt > now) {
+    sendStatus(res, cachedHealth.payload);
+    return;
+  }
+
   const pipelineUrl = process.env.PIPELINE_HEALTH_URL?.trim();
   if (!pipelineUrl) {
     sendStatus(res, offlinePayload('PIPELINE_HEALTH_URL is not set'));
@@ -113,13 +127,15 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
 
   const { health, latencyMs, error } = await fetchPipelineHealth(pipelineUrl);
   if (!health) {
-    sendStatus(res, offlinePayload(error ?? 'Production health endpoint unreachable', latencyMs));
+    const payload = offlinePayload(error ?? 'Production health endpoint unreachable', latencyMs);
+    cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
+    sendStatus(res, payload);
     return;
   }
 
   const status = normalizeStatus(health.status);
   if (status === 'down' || status === 'unknown') {
-    sendStatus(res, {
+    const payload: StatusPayload = {
       status: 'offline',
       label: 'Pipeline Offline',
       checkedAt: new Date().toISOString(),
@@ -127,16 +143,20 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       sourceUpdatedAt: health.updatedAt,
       components: health.components ?? [],
       error: error ?? `Pipeline reported ${health.status}`,
-    });
+    };
+    cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
+    sendStatus(res, payload);
     return;
   }
 
-  sendStatus(res, {
+  const payload: StatusPayload = {
     status,
     label: statusLabel(status),
     checkedAt: new Date().toISOString(),
     latencyMs,
     sourceUpdatedAt: health.updatedAt,
     components: health.components ?? [],
-  });
+  };
+  cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
+  sendStatus(res, payload);
 }

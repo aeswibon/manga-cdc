@@ -1,4 +1,5 @@
 {
+  "outputDirectory": "public",
   "cleanUrls": true,
   "crons": [
     {
@@ -7,6 +8,12 @@
     }
   ],
   "headers": [
+    {
+      "source": "/(index.html|sw.js)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [

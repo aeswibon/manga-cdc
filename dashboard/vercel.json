@@ -6,8 +6,12 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/data/:path*",
+      "destination": "/api/data/:path*"
+    },
+    {
       "source": "/api/notifier/:path*",
-      "destination": "/api/notifier/:path*"
+      "destination": "/api/data/:path*"
     },
     {
       "source": "/((?!assets/|api/).*)",

@@ -22,13 +22,18 @@
     healthVariant,
     type PipelineHealth,
     notifierApiUrl,
+    coverImageUrl,
+    fetchWithRetry,
+    usesNotifierProxy,
   } from './utils';
   import { watchServiceWorkerUpdates, type ServiceWorkerUpdateHandle } from './serviceWorker';
 
-  const API_BASE = import.meta.env.VITE_API_URL?.trim()
-    || (import.meta.env.PROD ? '/api/notifier' : '');
+  const API_BASE = import.meta.env.PROD
+    ? '/api/data'
+    : (import.meta.env.VITE_API_URL?.trim() || '');
 
-  const DATA_REFRESH_MS = 120_000;
+  const DATA_REFRESH_MS = 600_000;
+  const STATUS_PAGE_POLL_MS = 600_000;
   const USE_SSE = import.meta.env.DEV;
   const LOGS_TAB_LIMIT = 20;
 
@@ -84,6 +89,8 @@
   let pipelineHealth = $state<PipelineHealth | null>(null);
   let pipelineHealthState = $state<'idle' | 'loading' | 'ok' | 'error'>('idle');
   let pipelineHealthPolledAt = $state('');
+  let lastDataRefreshAt = 0;
+  let lastStatusPagePollAt = 0;
 
   let updateAvailable = $state(false);
   let swUpdateHandle = $state<ServiceWorkerUpdateHandle | null>(null);
@@ -165,15 +172,17 @@
   };
 
   function describeApiError(err: unknown): string {
-    if (err instanceof TypeError && /fetch/i.test(err.message)) {
-      return 'Could not reach the notification API. Check your network connection or API URL configuration.';
+    if (err instanceof TypeError && /fetch|load failed|network/i.test(err.message)) {
+      return 'Could not reach the notification API. Check your network connection, disable content blockers for this site, or try again in a moment.';
     }
     if (err instanceof Error) return err.message;
     return 'API unreachable';
   }
 
-  function showApiError(message: string) {
-    apiErrorModal = message;
+  function showApiError(message: string, force = false) {
+    if (force || !overviewLoaded) {
+      apiErrorModal = message;
+    }
   }
 
   async function toggleChapterHistory(series: Series) {
@@ -186,7 +195,7 @@
 
     chaptersLoadingId = series.id;
     try {
-      const res = await fetch(notifierApiUrl(`/api/series/${series.id}/chapters?limit=15`, API_BASE));
+      const res = await fetchWithRetry(notifierApiUrl(`/api/series/${series.id}/chapters?limit=15`, API_BASE));
       if (!res.ok) throw new Error(`chapters fetch failed: ${res.status}`);
       const chapters = await res.json() as Chapter[];
       chaptersBySeries = { ...chaptersBySeries, [series.id]: chapters };
@@ -198,16 +207,20 @@
     }
   }
 
-  async function fetchStatusPageHealth() {
+  async function fetchStatusPageHealth(force = false) {
+    if (!force && lastStatusPagePollAt > 0 && Date.now() - lastStatusPagePollAt < STATUS_PAGE_POLL_MS) {
+      return;
+    }
     try {
       pipelineHealthState = 'loading';
-      const res = await fetch(`${STATUS_PAGE_URL}/api/status`, { cache: 'no-store' });
+      const res = await fetch(`${STATUS_PAGE_URL}/api/status`);
       if (!res.ok) throw new Error(`Status page returned HTTP ${res.status}`);
       const parsed = parseStatusPagePayload(await res.json());
       if (!parsed) throw new Error('Invalid status page payload');
       pipelineHealth = pipelineHealthFromStatusPage(parsed);
       pipelineHealthPolledAt = parsed.checkedAt;
       pipelineHealthState = 'ok';
+      lastStatusPagePollAt = Date.now();
     } catch (err) {
       console.warn('Status page unavailable.', err);
       pipelineHealth = null;
@@ -215,16 +228,17 @@
     }
   }
 
-  async function fetchOverviewData(markConnecting = false) {
+  async function fetchOverviewData(markConnecting = false, retries = 3) {
     if (markConnecting && !overviewLoaded) {
       apiStatus = 'connecting';
     }
 
-    const useBootstrap = import.meta.env.PROD || API_BASE.startsWith('/api/notifier');
+    const useBootstrap = import.meta.env.PROD || usesNotifierProxy(API_BASE);
     if (useBootstrap) {
-      const bootstrapRes = await fetch(
+      const bootstrapRes = await fetchWithRetry(
         notifierApiUrl('/api/bootstrap?scope=overview', API_BASE),
-        { cache: 'no-store' },
+        undefined,
+        retries,
       );
       if (!bootstrapRes.ok) {
         throw new Error(`Overview bootstrap returned HTTP ${bootstrapRes.status}`);
@@ -243,8 +257,8 @@
     }
 
     const [statsRes, logsRes] = await Promise.all([
-      fetch(notifierApiUrl('/api/stats', API_BASE)),
-      fetch(notifierApiUrl('/api/logs?limit=5', API_BASE)),
+      fetchWithRetry(notifierApiUrl('/api/stats', API_BASE), undefined, retries),
+      fetchWithRetry(notifierApiUrl('/api/logs?limit=5', API_BASE), undefined, retries),
     ]);
     if (!statsRes.ok) throw new Error(`Stats API returned HTTP ${statsRes.status}`);
     if (!logsRes.ok) throw new Error(`Logs API returned HTTP ${logsRes.status}`);
@@ -257,16 +271,17 @@
     apiStatus = 'online';
   }
 
-  async function fetchWatchlistData(markConnecting = false) {
+  async function fetchWatchlistData(markConnecting = false, retries = 3) {
     if (markConnecting && !seriesLoaded) {
       apiStatus = 'connecting';
     }
 
-    const useBootstrap = import.meta.env.PROD || API_BASE.startsWith('/api/notifier');
+    const useBootstrap = import.meta.env.PROD || usesNotifierProxy(API_BASE);
     if (useBootstrap) {
-      const bootstrapRes = await fetch(
+      const bootstrapRes = await fetchWithRetry(
         notifierApiUrl('/api/bootstrap?scope=watchlist', API_BASE),
-        { cache: 'no-store' },
+        undefined,
+        retries,
       );
       if (!bootstrapRes.ok) {
         throw new Error(`Watchlist bootstrap returned HTTP ${bootstrapRes.status}`);
@@ -280,7 +295,7 @@
       return;
     }
 
-    const seriesRes = await fetch(notifierApiUrl('/api/series', API_BASE));
+    const seriesRes = await fetchWithRetry(notifierApiUrl('/api/series', API_BASE), undefined, retries);
     if (!seriesRes.ok) throw new Error(`Series API returned HTTP ${seriesRes.status}`);
     seriesList = await seriesRes.json();
     seriesLoaded = true;
@@ -289,12 +304,16 @@
     apiStatus = 'online';
   }
 
-  async function fetchLogsTabData(markConnecting = false) {
+  async function fetchLogsTabData(markConnecting = false, retries = 3) {
     if (markConnecting && logList.length === 0) {
       apiStatus = 'connecting';
     }
 
-    const logsRes = await fetch(notifierApiUrl(`/api/logs?limit=${LOGS_TAB_LIMIT}`, API_BASE));
+    const logsRes = await fetchWithRetry(
+      notifierApiUrl(`/api/logs?limit=${LOGS_TAB_LIMIT}`, API_BASE),
+      undefined,
+      retries,
+    );
     if (!logsRes.ok) throw new Error(`Logs API returned HTTP ${logsRes.status}`);
     logList = await logsRes.json();
     apiOffline = false;
@@ -302,17 +321,26 @@
     apiStatus = 'online';
   }
 
-  async function refreshActiveTab(markConnecting = false) {
+  async function refreshActiveTab(markConnecting = false, force = false) {
+    if (!force && lastDataRefreshAt > 0 && Date.now() - lastDataRefreshAt < DATA_REFRESH_MS) {
+      return;
+    }
+
+    const retries = markConnecting || force ? 3 : 1;
+
     try {
       if (activeTab === 'watchlist') {
-        await fetchWatchlistData(markConnecting);
+        await fetchWatchlistData(markConnecting, retries);
+        lastDataRefreshAt = Date.now();
         return;
       }
       if (activeTab === 'logs') {
-        await fetchLogsTabData(markConnecting);
+        await fetchLogsTabData(markConnecting, retries);
+        lastDataRefreshAt = Date.now();
         return;
       }
-      await fetchOverviewData(markConnecting);
+      await fetchOverviewData(markConnecting, retries);
+      lastDataRefreshAt = Date.now();
     } catch (err) {
       console.warn('Backend API offline.', err);
       apiOffline = true;
@@ -320,7 +348,7 @@
       if (!overviewLoaded) stats = { ...EMPTY_STATS };
       if (!seriesLoaded) seriesList = [];
       if (logList.length === 0) logList = [];
-      showApiError(describeApiError(err));
+      showApiError(describeApiError(err), markConnecting || !overviewLoaded);
     }
   }
 
@@ -329,7 +357,7 @@
   }
 
   function scheduleStatusPageHealth() {
-    const run = () => { void fetchStatusPageHealth(); };
+    const run = () => { void fetchStatusPageHealth(true); };
     if ('requestIdleCallback' in window) {
       window.requestIdleCallback(run, { timeout: 3000 });
     } else {
@@ -358,7 +386,7 @@
       document.documentElement.classList.remove('light');
     }
 
-    void fetchOverviewData(true).then(() => {
+    void refreshActiveTab(true, true).then(() => {
       if (!apiOffline && USE_SSE) {
         connectSSE();
       }
@@ -377,7 +405,7 @@
       if (refreshInterval) clearInterval(refreshInterval);
       refreshInterval = setInterval(() => {
         if (document.visibilityState === 'visible') {
-          void refreshActiveTab();
+          void refreshActiveTab(false, false);
         }
       }, DATA_REFRESH_MS);
     }
@@ -391,7 +419,7 @@
 
     function handleVisibilityChange() {
       if (document.visibilityState === 'visible') {
-        void refreshActiveTab();
+        void refreshActiveTab(false, false);
         startRefreshLoop();
       } else {
         stopRefreshLoop();
@@ -400,7 +428,9 @@
 
     startRefreshLoop();
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    const statusPageInterval = setInterval(fetchStatusPageHealth, 120_000);
+    const statusPageInterval = setInterval(() => {
+      void fetchStatusPageHealth(false);
+    }, STATUS_PAGE_POLL_MS);
 
     let eventSource: EventSource | null = null;
 
@@ -674,7 +704,14 @@
           >
             <div class="h-44 bg-bg-tertiary relative overflow-hidden">
               {#if series.coverUrl}
-                <img src={series.coverUrl} alt="{series.title} cover" loading="lazy" decoding="async" class="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
+                <img
+                  src={coverImageUrl(series.coverUrl)}
+                  alt="{series.title} cover"
+                  loading="lazy"
+                  decoding="async"
+                  referrerpolicy="no-referrer"
+                  class="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                />
               {:else}
                 <div class="w-full h-full flex items-center justify-center text-xs text-gray-500 font-semibold">No Cover</div>
               {/if}
