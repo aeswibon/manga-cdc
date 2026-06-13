@@ -287,6 +287,7 @@ locals {
       GRAFANA_CLOUD_PROMETHEUS_USER  = var.grafana_cloud_prometheus_user
       GRAFANA_CLOUD_API_KEY          = var.grafana_cloud_api_key
       GRAFANA_CLOUD_STACK_URL        = var.grafana_cloud_stack_url
+      QSTASH_TOKEN                   = var.qstash_token
     } : k => v if v != ""
   })
 }
@@ -301,7 +302,7 @@ resource "digitalocean_app" "manga_cdc" {
     service {
       name               = "notifier"
       instance_count     = 1
-      instance_size_slug = "apps-s-1vcpu-0.5gb"
+      instance_size_slug = "apps-s-1vcpu-1gb"
       http_port          = 8080
 
       image {
@@ -316,7 +317,7 @@ resource "digitalocean_app" "manga_cdc" {
         content {
           key   = env.key
           value = env.value
-          type  = contains(["DATABASE_URL", "KAFKA_PASSWORD", "GRAFANA_CLOUD_API_KEY", "TELEGRAM_BOT_TOKEN", "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL"], env.key) ? "SECRET" : "GENERAL"
+          type  = contains(["DATABASE_URL", "KAFKA_PASSWORD", "GRAFANA_CLOUD_API_KEY", "TELEGRAM_BOT_TOKEN", "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL", "QSTASH_TOKEN"], env.key) ? "SECRET" : "GENERAL"
         }
       }
     }
@@ -339,8 +340,14 @@ resource "digitalocean_app" "manga_cdc" {
         content {
           key   = env.key
           value = env.value
-          type  = contains(["DATABASE_URL", "KAFKA_PASSWORD", "GRAFANA_CLOUD_API_KEY", "TELEGRAM_BOT_TOKEN", "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL"], env.key) ? "SECRET" : "GENERAL"
+          type  = contains(["DATABASE_URL", "KAFKA_PASSWORD", "GRAFANA_CLOUD_API_KEY", "TELEGRAM_BOT_TOKEN", "DISCORD_WEBHOOK_URL", "SLACK_WEBHOOK_URL", "QSTASH_TOKEN"], env.key) ? "SECRET" : "GENERAL"
         }
+      }
+
+      env {
+        key   = "QSTASH_DESTINATION_URL"
+        value = var.qstash_destination_url != "" ? var.qstash_destination_url : "${digitalocean_app.manga_cdc[0].live_url}/api/webhook"
+        type  = "GENERAL"
       }
     }
   }

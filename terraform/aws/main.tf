@@ -399,6 +399,7 @@ locals {
       GRAFANA_CLOUD_PROMETHEUS_USER  = var.grafana_cloud_prometheus_user
       GRAFANA_CLOUD_API_KEY          = var.grafana_cloud_api_key
       GRAFANA_CLOUD_STACK_URL        = var.grafana_cloud_stack_url
+      QSTASH_TOKEN                   = var.qstash_token
     } : { name = k, value = v } if v != ""
   ]
 }
@@ -441,10 +442,16 @@ resource "aws_ecs_task_definition" "scraper" {
     name      = "scraper"
     image     = var.scraper_image
     essential = true
-    environment = concat(local.aws_fargate_env, [{
-      name  = "RUN_ONCE"
-      value = "true"
-    }])
+    environment = concat(local.aws_fargate_env, [
+      {
+        name  = "RUN_ONCE"
+        value = "true"
+      },
+      {
+        name  = "QSTASH_DESTINATION_URL"
+        value = var.qstash_destination_url
+      }
+    ])
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -462,8 +469,8 @@ resource "aws_ecs_task_definition" "notifier" {
   family                   = "manga-cdc-notifier"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = aws_iam_role.ecs_execution_role[0].arn
 
   container_definitions = jsonencode([{

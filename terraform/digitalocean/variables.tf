@@ -132,3 +132,15 @@ variable "grafana_cloud_stack_url" {
   type        = string
   default     = ""
 }
+
+variable "qstash_token" {
+  description = "Upstash QStash Token for serverless event delivery"
+  type        = string
+  default     = ""
+}
+
+variable "qstash_destination_url" {
+  description = "Target URL for QStash webhooks (notification service endpoint)"
+  type        = string
+  default     = ""
+}

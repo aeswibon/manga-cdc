@@ -46,6 +46,7 @@ env:
   REGISTRY: ghcr.io
   SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
+  DASHBOARD_IMAGE: ghcr.io/aeswibon/manga-cdc/dashboard
 
 jobs:
   resolve-release:

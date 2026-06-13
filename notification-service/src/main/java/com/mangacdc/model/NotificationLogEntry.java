@@ -14,5 +14,6 @@ public record NotificationLogEntry(
         OffsetDateTime createdAt,
         String seriesTitle,
         BigDecimal chapterNum,
-        String chapterTitle
+        String chapterTitle,
+        String chapterUrl
 ) {}
