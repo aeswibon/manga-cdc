@@ -151,12 +151,12 @@ Based on [`docs/superpowers/plans/2026-06-13-future-roadmap.md`](docs/superpower
 | Community watchlist | PR-driven [`data/watchlist.yaml`](data/watchlist.yaml) |
 | Production security | API keys, webhook auth, rate limits, CORS — see [security model](docs/security-model.md) |
 | Observability | Prometheus + Grafana locally; Grafana Cloud + Alloy in prod |
+| **v0.4.0 production ops** | Vercel dashboard proxy/bootstrap, PWA update banner, Cloud Run cost profile (2h scraper, CDC off serverless), pipeline health cache |
 
 ### Pending
 
 | Priority | Item | Notes |
 |----------|------|-------|
-| **Ops** | **Release v0.4.0** | Tag + deploy hardened notifier; verify `/api/stats` rejects unauthenticated reads |
 | **Dashboard** | In-app series editor | Today: edit watchlist via PR only |
 | **Dashboard** | Rich telemetry views | Basic stats exist; deeper scraper/run history still light |
 | **Platform** | Multi-user subscriptions | `users` / `user_subscriptions` tables + per-user routing |

@@ -9,7 +9,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /scraper ./c
 
 FROM alpine:3.20
 
-ARG APP_VERSION=0.3.7
+ARG APP_VERSION=0.4.0
 LABEL org.opencontainers.image.title="manga-cdc scraper" \
       org.opencontainers.image.description="Scrapes manga sources and publishes new chapter events to Kafka" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \

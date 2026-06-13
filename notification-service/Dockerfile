@@ -19,7 +19,7 @@ RUN mkdir -p /out/lib && \
 
 FROM busybox:glibc
 
-ARG APP_VERSION=0.3.10
+ARG APP_VERSION=0.4.0
 LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.description="Consumes chapter CDC events from Kafka and sends Discord, Slack, and Telegram notifications" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
