@@ -13,18 +13,22 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ChapterEventServiceTest {
-
+ 
     private ObjectMapper mapper;
     private SimpleMeterRegistry meterRegistry;
-
+    private com.mangacdc.repository.NotificationLogRepository notificationLogRepo;
+    private SseEmitterService sseEmitterService;
+ 
     @BeforeEach
     void setUp() {
         mapper = new ObjectMapper();
         meterRegistry = new SimpleMeterRegistry();
+        notificationLogRepo = mock(com.mangacdc.repository.NotificationLogRepository.class);
+        sseEmitterService = mock(SseEmitterService.class);
     }
-
+ 
     private ChapterEventService newService(NotifierRegistry registry, ChapterRepository repo) {
-        return new ChapterEventService(registry, repo, meterRegistry);
+        return new ChapterEventService(registry, repo, notificationLogRepo, sseEmitterService, meterRegistry);
     }
 
     private String cdcEvent(String op, String id, String seriesId, String seriesTitle, String chapterNum, String title, String url, boolean isNew) {

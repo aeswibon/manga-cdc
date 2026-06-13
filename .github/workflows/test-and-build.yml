@@ -13,6 +13,7 @@ env:
   REGISTRY: ghcr.io
   SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
+  DASHBOARD_IMAGE: ghcr.io/aeswibon/manga-cdc/dashboard
   SNAPSHOT_TAG: ci-${{ github.sha }}
 
 # Tag and branch pushes for the same commit use different concurrency groups so a
@@ -143,6 +144,24 @@ jobs:
       - run: go vet ./...
       - run: go test ./... -v -count=1
 
+  dashboard-test:
+    name: Dashboard tests
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun run check
+      - run: bun test
+
   terraform-fmt:
     name: Terraform fmt
     needs: gate
@@ -230,6 +249,7 @@ jobs:
     outputs:
       scraper_image: ${{ steps.snapshot-tags.outputs.scraper }}
       notification_image: ${{ steps.snapshot-tags.outputs.notification }}
+      dashboard_image: ${{ steps.snapshot-tags.outputs.dashboard }}
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-qemu-action@v4
@@ -245,6 +265,7 @@ jobs:
         run: |
           echo "scraper=${{ env.SCRAPER_IMAGE }}:${{ env.SNAPSHOT_TAG }}" >> "$GITHUB_OUTPUT"
           echo "notification=${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "dashboard=${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push scraper snapshot
         uses: docker/build-push-action@v7
@@ -267,15 +288,26 @@ jobs:
           cache-from: type=gha,scope=manga-cdc-notification
           cache-to: type=gha,mode=max,scope=manga-cdc-notification
 
+      - name: Build and push dashboard snapshot
+        uses: docker/build-push-action@v7
+        with:
+          context: dashboard
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          cache-from: type=gha,scope=manga-cdc-dashboard
+          cache-to: type=gha,mode=max,scope=manga-cdc-dashboard
+
   e2e-test:
     name: End-to-end tests
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
-    needs: [gate, terraform, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test]
+    needs: [gate, terraform, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test, dashboard-test]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       SCRAPER_IMAGE: ${{ needs.docker-snapshot.outputs.scraper_image }}
       NOTIFICATION_IMAGE: ${{ needs.docker-snapshot.outputs.notification_image }}
+      DASHBOARD_IMAGE: ${{ needs.docker-snapshot.outputs.dashboard_image }}
     steps:
       - uses: actions/checkout@v6
       - uses: docker/login-action@v4
@@ -342,6 +374,19 @@ jobs:
             type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
             type=ref,event=pr
 
+      - name: Docker meta (dashboard)
+        id: meta-dashboard
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.DASHBOARD_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+            type=ref,event=pr
+
       - name: Push release tags (scraper)
         run: |
           tags=""
@@ -357,6 +402,14 @@ jobs:
             tags="$tags --tag $tag"
           done
           docker buildx imagetools create $tags ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+
+      - name: Push release tags (dashboard)
+        run: |
+          tags=""
+          for tag in $(echo "${{ steps.meta-dashboard.outputs.tags }}"); do
+            tags="$tags --tag $tag"
+          done
+          docker buildx imagetools create $tags ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
 
       - uses: docker/login-action@v4
         with:
@@ -376,6 +429,13 @@ jobs:
             --tag docker.io/${{ secrets.DOCKER_USERNAME }}/notification-service:${{ steps.release-tag.outputs.tag }} \
             --tag docker.io/${{ secrets.DOCKER_USERNAME }}/notification-service:latest \
             ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+
+      - name: Push to Docker Hub (dashboard)
+        run: |
+          docker buildx imagetools create \
+            --tag docker.io/${{ secrets.DOCKER_USERNAME }}/dashboard:${{ steps.release-tag.outputs.tag }} \
+            --tag docker.io/${{ secrets.DOCKER_USERNAME }}/dashboard:latest \
+            ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
 
   release:
     name: Publish release notes

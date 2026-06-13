@@ -6,7 +6,7 @@ COPY src src
 RUN mvn package -DskipTests -B
 
 FROM eclipse-temurin:21 AS jlink
-RUN jlink --add-modules java.base,java.desktop,java.logging,java.sql,java.xml,java.naming,java.management,jdk.management,jdk.unsupported,java.security.jgss,java.instrument,jdk.crypto.ec \
+RUN jlink --add-modules java.base,java.desktop,java.logging,java.sql,java.xml,java.naming,java.management,jdk.management,jdk.unsupported,java.security.jgss,java.instrument,jdk.crypto.ec,jdk.crypto.cryptoki,java.security.sasl \
           --strip-debug --no-man-pages --no-header-files --compress=2 \
           --output /jre
 

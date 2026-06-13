@@ -90,6 +90,17 @@ services:
     ports:
       - "8080:8080"
 
+  dashboard:
+    image: ${DASHBOARD_IMAGE:-manga-cdc-dashboard:local}
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - notification-service
+    ports:
+      - "80:80"
+
   prometheus:
     image: prom/prometheus:v2.53.0
     restart: unless-stopped

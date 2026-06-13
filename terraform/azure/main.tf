@@ -374,6 +374,7 @@ locals {
     GRAFANA_CLOUD_PROMETHEUS_USER  = var.grafana_cloud_prometheus_user
     GRAFANA_CLOUD_API_KEY          = var.grafana_cloud_api_key
     GRAFANA_CLOUD_STACK_URL        = var.grafana_cloud_stack_url
+    QSTASH_TOKEN                   = var.qstash_token
   }
 
   sensitive_keys = [
@@ -383,7 +384,8 @@ locals {
     "GRAFANA_CLOUD_API_KEY",
     "TELEGRAM_BOT_TOKEN",
     "DISCORD_WEBHOOK_URL",
-    "SLACK_WEBHOOK_URL"
+    "SLACK_WEBHOOK_URL",
+    "QSTASH_TOKEN"
   ]
 
   # Filter non-empty env vars
@@ -421,7 +423,7 @@ resource "azurerm_container_app" "notification_service" {
       name   = "notifier"
       image  = var.notification_image
       cpu    = "0.25"
-      memory = "0.5Gi"
+      memory = "1.0Gi"
 
       dynamic "env" {
         for_each = local.azure_general
@@ -497,6 +499,11 @@ resource "azurerm_container_app_job" "scraper_job" {
           name        = env.key
           secret_name = lower(replace(env.key, "_", "-"))
         }
+      }
+
+      env {
+        name  = "QSTASH_DESTINATION_URL"
+        value = var.qstash_destination_url != "" ? var.qstash_destination_url : "https://${azurerm_container_app.notification_service[0].ingress[0].fqdn}/api/webhook"
       }
 
       env {

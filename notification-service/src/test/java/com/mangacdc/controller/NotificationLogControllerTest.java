@@ -29,6 +29,12 @@ class NotificationLogControllerTest {
     @MockBean
     private NotificationLogRepository notificationLogRepository;
 
+    @MockBean
+    private com.mangacdc.service.SseEmitterService sseEmitterService;
+
+    @MockBean
+    private java.util.List<com.mangacdc.service.Notifier> notifiers;
+
     @Test
     void listLogs_returnsRecentEntries() throws Exception {
         UUID logId = UUID.fromString("00000000-0000-0000-0000-000000000101");
@@ -43,7 +49,8 @@ class NotificationLogControllerTest {
                 OffsetDateTime.parse("2026-06-11T18:00:00Z"),
                 "One Piece",
                 new BigDecimal("1100"),
-                "The Final Chapter"
+                "The Final Chapter",
+                "https://mangadex.org/chapter/1"
         );
         when(notificationLogRepository.findRecent(50)).thenReturn(List.of(entry));
 

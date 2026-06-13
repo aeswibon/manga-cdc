@@ -300,7 +300,6 @@ locals {
       GRAFANA_CLOUD_API_KEY          = var.grafana_cloud_api_key
       GRAFANA_CLOUD_STACK_URL        = var.grafana_cloud_stack_url
       QSTASH_TOKEN                   = var.qstash_token
-      QSTASH_DESTINATION_URL         = var.qstash_destination_url
     } : k => v if v != ""
   })
 }
@@ -328,6 +327,10 @@ resource "google_cloud_run_v2_job" "scraper_job" {
           }
         }
         env {
+          name  = "QSTASH_DESTINATION_URL"
+          value = var.qstash_destination_url != "" ? var.qstash_destination_url : "${google_cloud_run_v2_service.notification_service[0].uri}/api/webhook"
+        }
+        env {
           name  = "RUN_ONCE"
           value = "true"
         }
@@ -344,6 +347,12 @@ resource "google_cloud_run_v2_service" "notification_service" {
   template {
     containers {
       image = var.notification_image
+      resources {
+        limits = {
+          memory = "1Gi"
+          cpu    = "1000m"
+        }
+      }
       ports {
         container_port = 8080
       }

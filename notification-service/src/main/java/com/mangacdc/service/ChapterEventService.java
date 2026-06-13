@@ -1,30 +1,39 @@
 package com.mangacdc.service;
-
+ 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mangacdc.repository.ChapterRepository;
+import com.mangacdc.repository.NotificationLogRepository;
+import com.mangacdc.model.NotificationLogEntry;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
+ 
 import java.util.Map;
-
+import java.util.UUID;
+ 
 @Service
 public class ChapterEventService {
-
+ 
     private static final Logger log = LoggerFactory.getLogger(ChapterEventService.class);
-
+ 
     private final NotifierRegistry notifierRegistry;
     private final ChapterRepository chapterRepo;
+    private final NotificationLogRepository notificationLogRepo;
+    private final SseEmitterService sseEmitterService;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper mapper;
-
+ 
     public ChapterEventService(NotifierRegistry notifierRegistry,
                                 ChapterRepository chapterRepo,
+                                NotificationLogRepository notificationLogRepo,
+                                SseEmitterService sseEmitterService,
                                 MeterRegistry meterRegistry) {
         this.notifierRegistry = notifierRegistry;
         this.chapterRepo = chapterRepo;
+        this.notificationLogRepo = notificationLogRepo;
+        this.sseEmitterService = sseEmitterService;
         this.meterRegistry = meterRegistry;
         this.mapper = new ObjectMapper();
     }
@@ -69,6 +78,12 @@ public class ChapterEventService {
                 recordDelivery(channel, status);
                 if (success) {
                     anySuccess = true;
+                }
+                try {
+                    NotificationLogEntry logEntry = notificationLogRepo.findRecentForChapterAndChannel(UUID.fromString(chapterId), channel);
+                    sseEmitterService.publishLog(logEntry);
+                } catch (Exception ex) {
+                    log.error("Failed to publish log event to SSE: {}", ex.getMessage());
                 }
             }
 
