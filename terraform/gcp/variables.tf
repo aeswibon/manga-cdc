@@ -220,3 +220,9 @@ variable "allowed_origins" {
   type        = string
   default     = ""
 }
+
+variable "watchlist_url" {
+  description = "HTTPS URL for the community watchlist YAML (raw GitHub URL in production)"
+  type        = string
+  default     = "https://raw.githubusercontent.com/aeswibon/manga-cdc/master/data/watchlist.yaml"
+}

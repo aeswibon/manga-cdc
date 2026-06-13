@@ -93,4 +93,5 @@ terraform apply -auto-approve \
   -var="webhook_secret=${WEBHOOK_SECRET:-}" \
   -var="qstash_current_signing_key=${QSTASH_CURRENT_SIGNING_KEY:-}" \
   -var="qstash_next_signing_key=${QSTASH_NEXT_SIGNING_KEY:-}" \
-  -var="allowed_origins=${ALLOWED_ORIGINS:-}"
+  -var="allowed_origins=${ALLOWED_ORIGINS:-}" \
+  -var="watchlist_url=${WATCHLIST_URL:-https://raw.githubusercontent.com/aeswibon/manga-cdc/master/data/watchlist.yaml}"

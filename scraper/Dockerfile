@@ -19,9 +19,12 @@ LABEL org.opencontainers.image.title="manga-cdc scraper" \
 
 RUN apk --no-cache add ca-certificates
 RUN addgroup -S mangacdc && adduser -S mangacdc -G mangacdc
+RUN mkdir -p /data && chown mangacdc:mangacdc /data
 COPY --from=builder /scraper /scraper
 COPY --chown=mangacdc:mangacdc db/migrations /migrations
+COPY --chown=mangacdc:mangacdc data/watchlist.yaml /data/watchlist.yaml
 ENV MIGRATIONS_DIR=/migrations
+ENV WATCHLIST_PATH=/data/watchlist.yaml
 EXPOSE 2112
 USER mangacdc
 CMD ["/scraper"]

@@ -255,7 +255,8 @@ jobs:
             --image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} \
             --region=${{ env.GCP_REGION }} \
             --memory=512Mi \
-            --cpu=1
+            --cpu=1 \
+            --update-env-vars=WATCHLIST_URL=https://raw.githubusercontent.com/aeswibon/manga-cdc/master/data/watchlist.yaml
 
       - uses: docker/setup-buildx-action@v4
         if: env.DEPLOY_METHOD == 'terraform'
@@ -326,6 +327,7 @@ jobs:
           QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
           QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
           ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          WATCHLIST_URL: ${{ vars.WATCHLIST_URL }}
         run: bash ./scripts/ci/terraform-apply.sh gcp
 
   deploy-aws:

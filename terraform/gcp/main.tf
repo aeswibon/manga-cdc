@@ -394,6 +394,10 @@ resource "google_cloud_run_v2_job" "scraper_job" {
           value = var.qstash_destination_url != "" ? var.qstash_destination_url : "${google_cloud_run_v2_service.notification_service[0].uri}/api/webhook"
         }
         env {
+          name  = "WATCHLIST_URL"
+          value = var.watchlist_url
+        }
+        env {
           name  = "RUN_ONCE"
           value = "true"
         }
