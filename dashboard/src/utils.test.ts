@@ -15,6 +15,7 @@ import {
   healthLabel,
   healthShortLabel,
   healthVariant,
+  notifierApiUrl,
   type Series,
 } from "./utils";
 
@@ -28,6 +29,20 @@ describe("calculateSuccessRate", () => {
     expect(calculateSuccessRate(1, 2)).toBe(50);
     expect(calculateSuccessRate(2, 3)).toBe(67);
     expect(calculateSuccessRate(10, 10)).toBe(100);
+  });
+});
+
+describe("notifierApiUrl", () => {
+  test("uses direct /api paths in development", () => {
+    expect(notifierApiUrl("/api/stats")).toBe("/api/stats");
+    expect(notifierApiUrl("stats")).toBe("/api/stats");
+  });
+
+  test("strips /api prefix for the Vercel proxy base", () => {
+    expect(notifierApiUrl("/api/stats", "/api/notifier")).toBe("/api/notifier/stats");
+    expect(notifierApiUrl("/api/series/abc/chapters", "/api/notifier")).toBe(
+      "/api/notifier/series/abc/chapters",
+    );
   });
 });
 

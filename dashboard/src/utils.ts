@@ -265,3 +265,13 @@ export function filterLogs(
     return matchesSearch && matchesChannel && matchesStatus;
   });
 }
+
+/** Build a notifier API URL for direct backend or the Vercel /api/notifier proxy. */
+export function notifierApiUrl(path: string, apiBase = ''): string {
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  if (!apiBase) {
+    return normalized.startsWith('/api/') ? normalized : `/api${normalized}`;
+  }
+  const suffix = normalized.replace(/^\/api(?=\/|$)/, '');
+  return `${apiBase.replace(/\/$/, '')}${suffix}`;
+}

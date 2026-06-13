@@ -21,6 +21,7 @@
     healthShortLabel,
     healthVariant,
     type PipelineHealth,
+    notifierApiUrl,
   } from './utils';
 
   const API_BASE = import.meta.env.VITE_API_URL
@@ -169,7 +170,7 @@
 
     chaptersLoadingId = series.id;
     try {
-      const res = await fetch(`${API_BASE}/api/series/${series.id}/chapters?limit=15`);
+      const res = await fetch(notifierApiUrl(`/api/series/${series.id}/chapters?limit=15`, API_BASE));
       if (!res.ok) throw new Error(`chapters fetch failed: ${res.status}`);
       const chapters = await res.json() as Chapter[];
       chaptersBySeries = { ...chaptersBySeries, [series.id]: chapters };
@@ -201,13 +202,13 @@
   async function fetchBackendData() {
     try {
       apiStatus = 'connecting';
-      const statsRes = await fetch(`${API_BASE}/api/stats`);
+      const statsRes = await fetch(notifierApiUrl('/api/stats', API_BASE));
       if (!statsRes.ok) throw new Error(`Stats API returned HTTP ${statsRes.status}`);
 
-      const seriesRes = await fetch(`${API_BASE}/api/series`);
+      const seriesRes = await fetch(notifierApiUrl('/api/series', API_BASE));
       if (!seriesRes.ok) throw new Error(`Series API returned HTTP ${seriesRes.status}`);
 
-      const logsRes = await fetch(`${API_BASE}/api/logs?limit=50`);
+      const logsRes = await fetch(notifierApiUrl('/api/logs?limit=50', API_BASE));
       if (!logsRes.ok) throw new Error(`Logs API returned HTTP ${logsRes.status}`);
 
       stats = await statsRes.json();
@@ -253,7 +254,7 @@
     function connectSSE() {
       if (apiOffline) return;
       eventSource?.close();
-      eventSource = new EventSource(`${API_BASE}/api/logs/stream`);
+      eventSource = new EventSource(notifierApiUrl('/api/logs/stream', API_BASE));
 
       eventSource.addEventListener('log', (event: MessageEvent) => {
         try {
