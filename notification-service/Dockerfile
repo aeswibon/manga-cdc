@@ -6,7 +6,7 @@ COPY src src
 RUN mvn package -DskipTests -B
 
 FROM eclipse-temurin:21 AS jlink
-RUN jlink --add-modules java.base,java.desktop,java.logging,java.sql,java.xml,java.naming,java.management,jdk.management,jdk.unsupported,java.security.jgss,java.instrument \
+RUN jlink --add-modules java.base,java.desktop,java.logging,java.sql,java.xml,java.naming,java.management,jdk.management,jdk.unsupported,java.security.jgss,java.instrument,jdk.crypto.ec \
           --strip-debug --no-man-pages --no-header-files --compress=2 \
           --output /jre
 
@@ -19,7 +19,7 @@ RUN mkdir -p /out/lib && \
 
 FROM busybox:glibc
 
-ARG APP_VERSION=0.3.7
+ARG APP_VERSION=0.3.9
 LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.description="Consumes chapter CDC events from Kafka and sends Discord, Slack, and Telegram notifications" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
