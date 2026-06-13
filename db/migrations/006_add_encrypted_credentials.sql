@@ -1,6 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TABLE source_credentials (
+CREATE TABLE IF NOT EXISTS source_credentials (
     source VARCHAR(50) PRIMARY KEY,
     encrypted_payload BYTEA NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()

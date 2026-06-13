@@ -22,6 +22,7 @@ func resetMigrationTestDB(ctx context.Context, pool *pgxpool.Pool) {
 	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS scraped_rejects CASCADE`)
 	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS chapters CASCADE`)
 	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS manga_series CASCADE`)
+	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS source_credentials CASCADE`)
 	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS goose_db_version CASCADE`)
 	_, _ = pool.Exec(ctx, `DROP FUNCTION IF EXISTS update_updated_at() CASCADE`)
 }
