@@ -92,7 +92,7 @@ jobs:
       run:
         working-directory: dashboard
     env:
-      VITE_STATUS_PAGE_URL: ${{ env.VITE_STATUS_PAGE_URL }}
+      VITE_STATUS_PAGE_URL: ${{ vars.VITE_STATUS_PAGE_URL || 'http://localhost:3001' }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
