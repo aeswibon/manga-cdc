@@ -74,6 +74,43 @@ func TestMangaPlusAdapter_FetchLatest(t *testing.T) {
 	}
 }
 
+func TestMangaPlusAdapter_FetchSeries(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			regResp := &mangapluspb.SuccessResult{
+				RegisterationData: &mangapluspb.RegistrationData{DeviceSecret: "test-secret"},
+			}
+			w.Write(protoMarshalResponse(regResp))
+			return
+		}
+		titleResp := &mangapluspb.SuccessResult{
+			TitleDetailView: &mangapluspb.TitleDetailView{
+				Title: &mangapluspb.Title{
+					TitleId: 100,
+					Name:    "Test Manga",
+					Author:  "Author Name",
+				},
+				TitleImageUrl: "https://example.com/cover.jpg",
+				Overview:      "Overview text",
+			},
+		}
+		w.Write(protoMarshalResponse(titleResp))
+	}))
+	defer srv.Close()
+
+	adapter := NewMangaPlusAdapterWithClient(srv.Client(), srv.URL)
+	series, err := adapter.FetchSeries(context.Background(), "100")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if series.Title != "Test Manga" || series.Author != "Author Name" {
+		t.Errorf("unexpected series: %+v", series)
+	}
+	if series.CoverURL != "https://example.com/cover.jpg" {
+		t.Errorf("cover = %q", series.CoverURL)
+	}
+}
+
 func TestMangaPlusAdapter_FetchChapters(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut {

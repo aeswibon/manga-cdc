@@ -9,9 +9,9 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const timeoutMs = 8000;
 
 const staticAssets = {
-  '/logo.svg': { file: 'logo.svg', type: 'image/svg+xml' },
-  '/favicon.svg': { file: 'logo.svg', type: 'image/svg+xml' },
-  '/favicon.ico': { file: 'logo.svg', type: 'image/svg+xml' },
+  '/logo.svg': { file: 'public/logo.svg', type: 'image/svg+xml' },
+  '/favicon.svg': { file: 'public/logo.svg', type: 'image/svg+xml' },
+  '/favicon.ico': { file: 'public/logo.svg', type: 'image/svg+xml' },
 };
 
 function pathname(req) {
@@ -59,8 +59,8 @@ async function fetchStatus() {
     const latencyMs = Date.now() - started;
     if (!response.ok) {
       return {
-        status: 'down',
-        label: statusLabel('down'),
+        status: 'offline',
+        label: 'Pipeline Offline',
         checkedAt: new Date().toISOString(),
         latencyMs,
         components: [],
@@ -79,8 +79,8 @@ async function fetchStatus() {
     };
   } catch (error) {
     return {
-      status: 'down',
-      label: statusLabel('down'),
+      status: 'offline',
+      label: 'Pipeline Offline',
       checkedAt: new Date().toISOString(),
       latencyMs: Date.now() - started,
       components: [],
@@ -107,7 +107,7 @@ createServer(async (req, res) => {
   }
 
   if ((reqPath === '/' || reqPath === '/index.html') && (method === 'GET' || method === 'HEAD')) {
-    const html = await readFile(path.join(root, 'index.html'));
+    const html = await readFile(path.join(root, 'public/index.html'));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(method === 'HEAD' ? undefined : html);
     return;

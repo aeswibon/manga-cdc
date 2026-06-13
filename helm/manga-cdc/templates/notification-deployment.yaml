@@ -45,6 +45,44 @@ spec:
             - name: CDC_ENABLED
               value: "false"
             {{- end }}
+            - name: ADMIN_MUTATIONS_ENABLED
+              value: {{ .Values.security.adminMutationsEnabled | quote }}
+            - name: SECURITY_REQUIRE_API_KEY
+              value: {{ .Values.security.requireApiKey | quote }}
+            - name: SECURITY_REQUIRE_WEBHOOK_AUTH
+              value: {{ .Values.security.requireWebhookAuth | quote }}
+            {{- if .Values.security.allowedOrigins }}
+            - name: ALLOWED_ORIGINS
+              value: {{ .Values.security.allowedOrigins | quote }}
+            {{- end }}
+            {{- if .Values.security.apiReadKey }}
+            - name: API_READ_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: api-read-key
+            {{- end }}
+            {{- if .Values.security.webhookSecret }}
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: webhook-secret
+            {{- end }}
+            {{- if .Values.security.qstashCurrentSigningKey }}
+            - name: QSTASH_CURRENT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: qstash-current-signing-key
+            {{- end }}
+            {{- if .Values.security.qstashNextSigningKey }}
+            - name: QSTASH_NEXT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: qstash-next-signing-key
+            {{- end }}
             {{- if .Values.notifiers.discord }}
             - name: DISCORD_WEBHOOK_URL
               valueFrom:

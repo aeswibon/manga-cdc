@@ -12,7 +12,7 @@ files_to_pack=(
   docker-compose.observability-cloud.yml
   docker-compose.observability.yml
   alloy
-  prometheus.prod.yml
+  config/prometheus.yml
   grafana
   scripts/deploy-prod-on-vm.sh
   scripts/verify-prod-on-vm.sh

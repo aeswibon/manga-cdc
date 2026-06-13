@@ -65,15 +65,24 @@ class MutationGuardTest {
     }
 
     @SpringBootTest(classes = {MutationConfig.class, MutationGuard.class})
-    @TestPropertySource(properties = "ADMIN_MUTATIONS_ENABLED=true")
-    static class WithMutationsEnabledNoApiKey {
+    @TestPropertySource(properties = {
+            "ADMIN_MUTATIONS_ENABLED=true",
+            "ADMIN_API_KEY="
+    })
+    static class WithMutationsEnabledWithoutApiKey {
 
         @Autowired
         private MutationGuard mutationGuard;
 
         @Test
-        void requireMutationAccess_allowsWithoutAdminKey() {
-            mutationGuard.requireMutationAccess(null);
+        void requireMutationAccess_rejectsWhenAdminKeyMissing() {
+            assertThatThrownBy(() -> mutationGuard.requireMutationAccess("anything"))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(ex -> {
+                        ResponseStatusException rse = (ResponseStatusException) ex;
+                        assertThat(rse.getStatusCode().value()).isEqualTo(403);
+                        assertThat(rse.getReason()).contains("Admin API key is not configured");
+                    });
         }
     }
 }

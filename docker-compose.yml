@@ -67,7 +67,7 @@ services:
     volumes:
       - ./data/watchlist.yaml:/data/watchlist.yaml:ro
     ports:
-      - "2112:2112"
+      - "127.0.0.1:2112:2112"
 
   notification-service:
     image: ${NOTIFICATION_IMAGE:-manga-cdc-notification-service:local}
@@ -87,6 +87,9 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       CDC_ENABLED: "true"
       ADMIN_MUTATIONS_ENABLED: "false"
+      SECURITY_REQUIRE_API_KEY: "false"
+      SECURITY_REQUIRE_WEBHOOK_AUTH: "false"
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-dev-webhook}
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
@@ -131,7 +134,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
 
   grafana:
     image: grafana/grafana:11.1.0

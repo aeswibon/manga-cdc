@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("f", "manga-cdc.config.yaml", "manifest file path")
+	configPath := flag.String("f", "config/manga-cdc.yaml", "manifest file path")
 	generateFlag := flag.Bool("generate", false, "generate artifacts from an existing manifest")
 	validateFlag := flag.Bool("validate", false, "validate manifest only")
 	flag.Parse()
@@ -73,7 +73,7 @@ func main() {
 func printUsage() {
 	fmt.Println(`Usage:
   go run ./configure                 Interactive wizard
-  go run ./configure generate        Generate from manga-cdc.config.yaml
+  go run ./configure generate        Generate from config/manga-cdc.yaml
   go run ./configure generate -f X   Generate from alternate manifest
   go run ./configure validate        Validate manifest only`)
 }

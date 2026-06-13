@@ -43,16 +43,23 @@ pipeline:
   scraper-ready-url: ${PIPELINE_SCRAPER_READY_URL:}
 
 # Write endpoints (POST/PUT/DELETE /api/series, POST /api/logs/{id}/retry) are disabled by default.
-# Set ADMIN_MUTATIONS_ENABLED=true to allow mutations; optionally set ADMIN_API_KEY to require X-Admin-Key.
+# Set ADMIN_MUTATIONS_ENABLED=true and ADMIN_API_KEY to allow authenticated admin mutations.
+
+security:
+  require-api-key: ${SECURITY_REQUIRE_API_KEY:false}
+  require-webhook-auth: ${SECURITY_REQUIRE_WEBHOOK_AUTH:true}
+  read-rate-limit-per-minute: ${SECURITY_READ_RATE_LIMIT:120}
+  webhook-rate-limit-per-minute: ${SECURITY_WEBHOOK_RATE_LIMIT:30}
+  max-sse-connections-per-ip: ${SECURITY_MAX_SSE_PER_IP:5}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,prometheus,info
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: never
   metrics:
     tags:
       application: notification-service

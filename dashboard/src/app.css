@@ -73,7 +73,16 @@ body {
   margin: 0;
   padding: 0;
   overflow-x: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .app-topbar,
+  .mobile-topbar {
+    transform: translateZ(0);
+  }
 }
 
 /* App top bar */
@@ -99,6 +108,7 @@ body {
   align-items: center;
   gap: 0.65rem;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .app-topbar__logo,
@@ -116,6 +126,9 @@ body {
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--gray-100);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-topbar__actions,
@@ -123,23 +136,87 @@ body {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+  flex-shrink: 0;
 }
 
 .app-topbar__status-wrap {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.3rem 0.65rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.7rem;
   border-radius: 9999px;
   border: 1px solid color-mix(in oklab, var(--border-color) 55%, transparent);
   background: color-mix(in oklab, var(--bg-secondary) 55%, transparent);
+  color: inherit;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.app-topbar__status-wrap:active {
+  transform: scale(0.97);
+}
+
+.app-topbar__status-wrap--operational {
+  border-color: color-mix(in oklab, var(--color-success) 45%, transparent);
+  background: color-mix(in oklab, var(--color-success) 10%, transparent);
+}
+
+.app-topbar__status-wrap--degraded,
+.app-topbar__status-wrap--loading {
+  border-color: color-mix(in oklab, var(--color-warning) 45%, transparent);
+  background: color-mix(in oklab, var(--color-warning) 10%, transparent);
+}
+
+.app-topbar__status-wrap--down,
+.app-topbar__status-wrap--unavailable {
+  border-color: color-mix(in oklab, var(--color-error) 45%, transparent);
+  background: color-mix(in oklab, var(--color-error) 10%, transparent);
+}
+
+.app-topbar__status-wrap--operational .app-topbar__status-label {
+  color: color-mix(in oklab, var(--color-success) 72%, var(--gray-100));
+}
+
+.app-topbar__status-wrap--degraded .app-topbar__status-label,
+.app-topbar__status-wrap--loading .app-topbar__status-label {
+  color: color-mix(in oklab, var(--color-warning) 78%, var(--gray-100));
+}
+
+.app-topbar__status-wrap--down .app-topbar__status-label,
+.app-topbar__status-wrap--unavailable .app-topbar__status-label {
+  color: color-mix(in oklab, var(--color-error) 78%, var(--gray-100));
 }
 
 .app-topbar__status-label {
   font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: capitalize;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
   color: var(--gray-400);
+  line-height: 1;
+}
+
+.app-topbar__status-label--full {
+  display: none;
+}
+
+.app-topbar__status-label--compact {
+  display: inline;
+}
+
+@media (min-width: 640px) {
+  .app-topbar__status-label--full {
+    display: inline;
+    text-transform: capitalize;
+    font-weight: 600;
+  }
+
+  .app-topbar__status-label--compact {
+    display: none;
+  }
 }
 
 .app-topbar__demo {

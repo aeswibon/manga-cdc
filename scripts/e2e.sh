@@ -125,6 +125,14 @@ else
 fi
 
 echo "Waiting for notification consumer..." | tee -a "$LOG"
+for _ in $(seq 1 30); do
+  if curl -sf --max-time 5 http://127.0.0.1:8080/api/pipeline/health | grep -q '"status"'; then
+    echo "PASS: Pipeline health endpoint responding" | tee -a "$LOG"
+    break
+  fi
+  sleep 2
+done
+
 for _ in $(seq 1 60); do
   STATUS=$(docker compose exec -T postgres psql -U mangacdc -d mangacdc -tAc \
     "SELECT status FROM notification_logs WHERE channel='discord' AND chapter_id='${CHAPTER_ID}'" 2>/dev/null | tr -d '[:space:]')

@@ -147,6 +147,13 @@ If you use the `terraform` deploy method, the pipeline can dynamically provision
 * `DATABASE_URL`: PostgreSQL connection string (starts with `postgres://` or `postgresql://`).
 * `KAFKA_BROKERS`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`: Message streaming credentials (optional).
 * `DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: Notification variables (optional).
+* `API_READ_KEY`, `WEBHOOK_SECRET`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`: Notifier security (required in production — see [security-model.md](../docs/security-model.md)).
+* `QSTASH_TOKEN`, `QSTASH_DESTINATION_URL`: Serverless scraper event delivery (when using QStash).
+
+#### Security (repository variable)
+* `ALLOWED_ORIGINS`: Comma-separated browser origins allowed to call the notifier API (dashboard/status page URLs).
+
+Deploy jobs use the GitHub **production** environment (configure required reviewers in Settings → Environments). Manual `workflow_dispatch` deploys require an existing `v*` release tag matching `image_tag`.
 
 #### GCP Target Secrets
 * `GCP_WORKLOAD_IDENTITY_PROVIDER`: Workload Identity Provider string (e.g., `projects/12345/locations/global/workloadIdentityPools/my-pool/providers/my-provider`).
@@ -173,3 +180,23 @@ GCP VM direct SSH deploy is not supported in CI; use `deployment_target=vm` with
 * `SSH_PRIVATE_KEY` / `VM_USER` / `VM_HOST`: Credentials for Droplet VM mode.
 * `DOKS_CLUSTER_NAME`: Cluster name for Kubernetes mode.
 * `DO_APP_ID`: Application ID for Serverless mode (DO App Platform).
+
+#### Dashboard & public status page
+* `VITE_STATUS_PAGE_URL` (**repository variable**): Public status page URL embedded in the dashboard image at CI build time.
+* `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` (optional): Enable automated Vercel deploy via the **Deploy** workflow after each release deploy.
+* `GCP_DASHBOARD_CLOUD_RUN_SERVICE` (repository **variable**, optional): Cloud Run service name for dashboard image updates.
+* `PIPELINE_HEALTH_URL`: Configure in the **Vercel project** (not GitHub). The status page serverless function polls this URL (your production notifier `/api/pipeline/health`).
+
+See [`status-page/README.md`](../status-page/README.md) and [CONTRIBUTING.md](../CONTRIBUTING.md) for watchlist and status page setup.
+
+---
+
+## 8. CI/CD workflows
+
+| Workflow | Trigger | Role |
+|----------|---------|------|
+| `.github/workflows/test-and-build.yml` | PR, `master`, tags `v*` | Unit/integration tests, watchlist validation, dashboard + status-page checks, E2E, release images on tags |
+| `.github/workflows/watchlist-check.yml` | PR/push when `data/watchlist.yaml` changes | Fast watchlist-only validation |
+| `.github/workflows/deploy.yml` | After tag build succeeds | Deploy scraper + notifier; optional dashboard Cloud Run + status page Vercel |
+
+Release flow: merge to `master` → tag `v*` → Test and Build → Deploy (backend + optional frontend). Set `VITE_STATUS_PAGE_URL` before tagging so dashboard builds link to the live status page.

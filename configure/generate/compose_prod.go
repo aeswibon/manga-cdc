@@ -66,7 +66,11 @@ volumes:
 `
 
 const caddyfileTemplate = `:80 {
-    reverse_proxy notification-service:8080
+    @webhook path /api/webhook /api/webhook/*
+    handle @webhook {
+        reverse_proxy notification-service:8080
+    }
+    respond "Not Found" 404
 }
 `
 
@@ -88,13 +92,30 @@ func renderComposeProd(m manifest.Manifest) (string, error) {
       SPRING_KAFKA_SASL_MECHANISM: SCRAM-SHA-256
       SPRING_KAFKA_SASL_JAAS_CONFIG: org.apache.kafka.common.security.scram.ScramLoginModule required username="${KAFKA_USERNAME}" password="${KAFKA_PASSWORD}";
       SPRING_KAFKA_SECURITY_PROTOCOL: SASL_SSL
-      CDC_ENABLED: "true"`)
+      CDC_ENABLED: "true"
+      ADMIN_MUTATIONS_ENABLED: "false"
+      SECURITY_REQUIRE_API_KEY: "true"
+      SECURITY_REQUIRE_WEBHOOK_AUTH: "true"
+      API_READ_KEY: ${API_READ_KEY:?err}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?err}
+      QSTASH_CURRENT_SIGNING_KEY: ${QSTASH_CURRENT_SIGNING_KEY:-}
+      QSTASH_NEXT_SIGNING_KEY: ${QSTASH_NEXT_SIGNING_KEY:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}`)
 	case manifest.EventingQStash:
 		data.IncludeCaddy = true
 		data.ScraperEnv = strings.TrimSpace(`
       QSTASH_TOKEN: ${QSTASH_TOKEN:?err}
       QSTASH_DESTINATION_URL: ${QSTASH_DESTINATION_URL:?err}`)
-		data.NotificationEnv = `      CDC_ENABLED: "false"`
+		data.NotificationEnv = strings.TrimSpace(`
+      CDC_ENABLED: "false"
+      ADMIN_MUTATIONS_ENABLED: "false"
+      SECURITY_REQUIRE_API_KEY: "true"
+      SECURITY_REQUIRE_WEBHOOK_AUTH: "true"
+      API_READ_KEY: ${API_READ_KEY:?err}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?err}
+      QSTASH_CURRENT_SIGNING_KEY: ${QSTASH_CURRENT_SIGNING_KEY:-}
+      QSTASH_NEXT_SIGNING_KEY: ${QSTASH_NEXT_SIGNING_KEY:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}`)
 	case manifest.EventingNone:
 		data.ScraperEnv = ""
 		data.NotificationEnv = `      CDC_ENABLED: "false"`

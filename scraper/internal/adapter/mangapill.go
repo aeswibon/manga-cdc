@@ -37,11 +37,35 @@ func (m *MangaPillAdapter) newCollector() *colly.Collector {
 	c := colly.NewCollector(
 		colly.AllowedDomains("mangapill.com"),
 	)
+	configureHTMLCollector(c)
 	return c
 }
 
 func (m *MangaPillAdapter) SetCollector(c *colly.Collector) {
 	m.client = c
+}
+
+func (m *MangaPillAdapter) FetchSeries(ctx context.Context, seriesID string) (model.Series, error) {
+	parts := strings.SplitN(seriesID, "/", 2)
+	id := parts[0]
+	slug := ""
+	if len(parts) > 1 {
+		slug = parts[1]
+	}
+	pageURL := mangapillBase + "/manga/" + id + "/" + slug
+	c := m.newCollector()
+	meta, err := scrapeOpenGraph(c, pageURL)
+	if err != nil {
+		return model.Series{}, fmt.Errorf("mangapill: %w", err)
+	}
+	return model.Series{
+		SourceID:    seriesID,
+		Title:       meta.Title,
+		Description: meta.Description,
+		CoverURL:    meta.Image,
+		SourceURL:   pageURL,
+		Status:      "ONGOING",
+	}, nil
 }
 
 func (m *MangaPillAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {

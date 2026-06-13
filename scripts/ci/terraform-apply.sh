@@ -88,4 +88,9 @@ terraform apply -auto-approve \
   -var="grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY:-}" \
   -var="grafana_cloud_stack_url=${GRAFANA_CLOUD_STACK_URL:-}" \
   -var="qstash_token=${QSTASH_TOKEN:-}" \
-  -var="qstash_destination_url=${QSTASH_DESTINATION_URL:-}"
+  -var="qstash_destination_url=${QSTASH_DESTINATION_URL:-}" \
+  -var="api_read_key=${API_READ_KEY:-}" \
+  -var="webhook_secret=${WEBHOOK_SECRET:-}" \
+  -var="qstash_current_signing_key=${QSTASH_CURRENT_SIGNING_KEY:-}" \
+  -var="qstash_next_signing_key=${QSTASH_NEXT_SIGNING_KEY:-}" \
+  -var="allowed_origins=${ALLOWED_ORIGINS:-}"

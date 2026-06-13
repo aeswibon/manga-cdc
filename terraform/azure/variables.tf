@@ -149,10 +149,45 @@ variable "qstash_token" {
   description = "Upstash QStash Token for serverless event delivery"
   type        = string
   default     = ""
+  sensitive   = true
 }
 
 variable "qstash_destination_url" {
   description = "Target URL for QStash webhooks (notification service endpoint)"
+  type        = string
+  default     = ""
+}
+
+variable "api_read_key" {
+  description = "Shared read API key for notifier read endpoints and actuator metrics"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "webhook_secret" {
+  description = "Fallback shared secret for POST /api/webhook when QStash signing is unavailable"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "qstash_current_signing_key" {
+  description = "Upstash QStash current signing key for webhook verification"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "qstash_next_signing_key" {
+  description = "Upstash QStash next signing key for webhook verification"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "allowed_origins" {
+  description = "Comma-separated browser origins allowed to call the notifier API"
   type        = string
   default     = ""
 }

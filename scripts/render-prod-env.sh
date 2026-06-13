@@ -64,6 +64,14 @@ optional = {
     "GRAFANA_CLOUD_API_KEY": "",
     "GRAFANA_CLOUD_STACK_URL": "",
     "GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID": "",
+    "ADMIN_MUTATIONS_ENABLED": "false",
+    "SECURITY_REQUIRE_API_KEY": "true",
+    "SECURITY_REQUIRE_WEBHOOK_AUTH": "true",
+    "API_READ_KEY": "",
+    "WEBHOOK_SECRET": "",
+    "QSTASH_CURRENT_SIGNING_KEY": "",
+    "QSTASH_NEXT_SIGNING_KEY": "",
+    "ALLOWED_ORIGINS": "",
 }
 
 observability_mode = os.environ.get("OBSERVABILITY_MODE", optional["OBSERVABILITY_MODE"])

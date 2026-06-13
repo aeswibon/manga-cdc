@@ -10,7 +10,10 @@ import {
   seriesStatusLabel,
   seriesStatusVariant,
   parsePipelineHealth,
+  parseStatusPagePayload,
+  pipelineHealthFromStatusPage,
   healthLabel,
+  healthShortLabel,
   healthVariant,
   type Series,
 } from "./utils";
@@ -194,6 +197,13 @@ describe("pipeline health helpers", () => {
     expect(healthVariant("maintenance")).toBe("maintenance");
   });
 
+  test("healthShortLabel maps compact labels for header", () => {
+    expect(healthShortLabel("operational")).toBe("OK");
+    expect(healthShortLabel("degraded")).toBe("Warn");
+    expect(healthShortLabel("down")).toBe("Down");
+    expect(healthShortLabel("offline")).toBe("Offline");
+  });
+
   test("parsePipelineHealth validates payload shape", () => {
     expect(parsePipelineHealth(sampleHealth)?.status).toBe("operational");
     expect(parsePipelineHealth({})).toBeNull();
@@ -203,5 +213,21 @@ describe("pipeline health helpers", () => {
     const parsed = parsePipelineHealth(sampleHealth);
     expect(parsed?.components).toHaveLength(2);
     expect(parsed?.components[0].name).toBe("notifier");
+  });
+
+  test("parseStatusPagePayload maps status page API responses", () => {
+    const payload = parseStatusPagePayload({
+      status: "offline",
+      label: "Pipeline Offline",
+      checkedAt: "2026-06-13T08:00:00.000Z",
+      latencyMs: 120,
+      components: [],
+      error: "HTTP 404",
+    });
+    expect(payload?.status).toBe("offline");
+    expect(healthLabel(payload!.status)).toBe("Offline");
+    const mapped = pipelineHealthFromStatusPage(payload!);
+    expect(mapped.updatedAt).toBe("2026-06-13T08:00:00.000Z");
+    expect(healthVariant(mapped.status)).toBe("down");
   });
 });

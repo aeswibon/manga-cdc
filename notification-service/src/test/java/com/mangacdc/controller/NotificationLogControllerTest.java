@@ -2,10 +2,12 @@ package com.mangacdc.controller;
 
 import com.mangacdc.config.MutationConfig;
 import com.mangacdc.config.MutationGuard;
+import com.mangacdc.support.WebMvcSecurityTestSupport;
 import com.mangacdc.model.NotificationLogEntry;
 import com.mangacdc.repository.NotificationLogRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
@@ -24,7 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(NotificationLogController.class)
-@Import({MutationConfig.class, MutationGuard.class})
+@AutoConfigureMockMvc(addFilters = false)
+@Import({MutationConfig.class, MutationGuard.class, WebMvcSecurityTestSupport.class})
 class NotificationLogControllerTest {
 
     @Autowired

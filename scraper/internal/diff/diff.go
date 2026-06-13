@@ -120,11 +120,10 @@ func (e *Engine) ProcessActiveSeries(ctx context.Context, source adapter.SourceA
 			}
 		}
 
-		run.SeriesAccepted++
-
 		_, rawID, err := watchlist.ParseRawSourceID(series.SourceID)
 		if err != nil {
 			e.log.Error("invalid namespaced source_id", "source_id", series.SourceID, "error", err)
+			run.SeriesRejected++
 			continue
 		}
 
@@ -136,8 +135,31 @@ func (e *Engine) ProcessActiveSeries(ctx context.Context, source adapter.SourceA
 					"series", series.Title,
 					"error", metaErr)
 			} else {
-				series = validate.MergeSeries(series, meta)
+				series = validate.MergeSeries(series, validate.NormalizeSeries(meta))
 			}
+		}
+
+		series = validate.NormalizeSeries(series)
+		seriesResult := validate.Series(series, validate.Update)
+		if !seriesResult.OK {
+			run.SeriesRejected++
+			validate.RecordReject(source.Name(), "series", seriesResult.Issues)
+			e.quarantineReject(ctx, source.Name(), "series", series, seriesResult.Issues)
+			e.log.Warn("rejected series metadata",
+				"source", source.Name(),
+				"series", series.Title,
+				"issues", seriesResult.Issues)
+			continue
+		}
+		validate.RecordAccept(source.Name(), "series")
+		run.SeriesAccepted++
+
+		if err := e.db.UpdateSeries(ctx, series); err != nil {
+			e.log.Error("failed to persist series metadata",
+				"source", source.Name(),
+				"series", series.Title,
+				"error", err)
+			continue
 		}
 
 		chapters, err := source.FetchChapters(ctx, rawID)

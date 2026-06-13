@@ -37,6 +37,21 @@ public class ChapterRepository {
         jdbc.update("UPDATE chapters SET is_new = false WHERE id = ?::uuid", chapterId);
     }
 
+    public boolean existsNewChapter(String chapterId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM chapters WHERE id = ?::uuid AND is_new = true",
+                Integer.class,
+                chapterId);
+        return count != null && count > 0;
+    }
+
+    public String findChapterUrl(String chapterId) {
+        return jdbc.query(
+                "SELECT url FROM chapters WHERE id = ?::uuid",
+                rs -> rs.next() ? rs.getString("url") : null,
+                chapterId);
+    }
+
     public void logNotification(String chapterId, String status, String channel, String errorMessage) {
         jdbc.update(
             "INSERT INTO notification_logs (chapter_id, status, channel, error_message) VALUES (?::uuid, ?, ?, ?)",

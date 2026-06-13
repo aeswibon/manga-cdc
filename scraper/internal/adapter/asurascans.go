@@ -44,11 +44,29 @@ func (a *AsuraScansAdapter) newCollector() *colly.Collector {
 		Delay:       1 * time.Second,
 	})
 	c.SetRequestTimeout(30 * time.Second)
+	configureHTMLCollector(c)
 	return c
 }
 
 func (a *AsuraScansAdapter) SetCollector(c *colly.Collector) {
 	a.client = c
+}
+
+func (a *AsuraScansAdapter) FetchSeries(ctx context.Context, seriesID string) (model.Series, error) {
+	pageURL := asurascansBase + "/comics/" + seriesID
+	c := a.newCollector()
+	meta, err := scrapeOpenGraph(c, pageURL)
+	if err != nil {
+		return model.Series{}, fmt.Errorf("asurascans: %w", err)
+	}
+	return model.Series{
+		SourceID:    seriesID,
+		Title:       meta.Title,
+		Description: meta.Description,
+		CoverURL:    meta.Image,
+		SourceURL:   pageURL,
+		Status:      "ONGOING",
+	}, nil
 }
 
 func (a *AsuraScansAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {

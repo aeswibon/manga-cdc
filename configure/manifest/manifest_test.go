@@ -69,7 +69,7 @@ func TestValidateProductionQStashRequiresHTTPS(t *testing.T) {
 
 func TestLoadSaveRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "manga-cdc.config.yaml")
+	path := filepath.Join(dir, "config", "manga-cdc.yaml")
 
 	m := Manifest{
 		Version: CurrentVersion,

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -110,6 +111,9 @@ func Save(path string, m Manifest) error {
 	data, err := yaml.Marshal(&m)
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create manifest dir: %w", err)
 	}
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("write manifest: %w", err)

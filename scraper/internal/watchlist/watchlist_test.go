@@ -142,6 +142,9 @@ func TestLoadFromURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	remoteURLValidator = func(string) error { return nil }
+	t.Cleanup(func() { remoteURLValidator = ValidateRemoteURL })
+
 	entries, err := LoadFromURL(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatal(err)

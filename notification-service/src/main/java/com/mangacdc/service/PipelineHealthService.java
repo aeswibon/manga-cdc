@@ -79,7 +79,7 @@ public class PipelineHealthService {
             }
         } catch (Exception ex) {
             component.put("status", "down");
-            component.put("detail", ex.getMessage());
+            component.put("detail", "Database check failed");
         }
         return component;
     }
@@ -102,7 +102,7 @@ public class PipelineHealthService {
             component.put("detail", "Broker reachable");
         } catch (Exception ex) {
             component.put("status", "degraded");
-            component.put("detail", ex.getMessage());
+            component.put("detail", "Kafka check failed");
         }
         return component;
     }
@@ -132,7 +132,7 @@ public class PipelineHealthService {
                 }
             }
             component.put("status", "down");
-            component.put("detail", ex.getMessage());
+            component.put("detail", "Scraper check failed");
         }
         return component;
     }

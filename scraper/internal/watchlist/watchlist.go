@@ -21,6 +21,8 @@ var knownSources = map[string]struct{}{
 	"mangapill":  {},
 }
 
+var remoteURLValidator = ValidateRemoteURL
+
 type File struct {
 	Series []Entry `yaml:"series"`
 }
@@ -68,6 +70,9 @@ func LoadFromFile(path string) ([]Entry, error) {
 }
 
 func LoadFromURL(ctx context.Context, url string) ([]Entry, error) {
+	if err := remoteURLValidator(url); err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create watchlist request: %w", err)

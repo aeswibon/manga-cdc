@@ -36,6 +36,9 @@ class PrometheusActuatorIntegrationTest {
         registry.add("cdc.enabled", () -> "false");
         registry.add("spring.kafka.bootstrap-servers", () -> "localhost:19092");
         registry.add("spring.kafka.listener.auto-startup", () -> "false");
+        registry.add("security.require-api-key", () -> "true");
+        registry.add("API_READ_KEY", () -> "test-read-key");
+        registry.add("security.require-webhook-auth", () -> "false");
     }
 
     @Autowired
@@ -49,7 +52,7 @@ class PrometheusActuatorIntegrationTest {
         meterRegistry.counter("notification_deliveries_total", "channel", "discord", "status", "SENT")
             .increment();
 
-        mockMvc.perform(get("/actuator/prometheus"))
+        mockMvc.perform(get("/actuator/prometheus").header("X-Api-Key", "test-read-key"))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("notification_deliveries_total")))
             .andExpect(content().string(containsString("channel=\"discord\"")))

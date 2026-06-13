@@ -47,12 +47,14 @@ export function healthVariant(status: string): HealthVariant {
   const normalized = status.trim().toLowerCase();
   if (normalized === 'success' || normalized === 'operational' || normalized === 'up') return 'operational';
   if (normalized === 'degraded' || normalized === 'warn' || normalized === 'warning') return 'degraded';
-  if (normalized === 'error' || normalized === 'fail' || normalized === 'failed' || normalized === 'down') return 'down';
+  if (normalized === 'offline' || normalized === 'error' || normalized === 'fail' || normalized === 'failed' || normalized === 'down') return 'down';
   if (normalized === 'maintenance') return 'maintenance';
   return 'unknown';
 }
 
 export function healthLabel(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'offline') return 'Offline';
   const variant = healthVariant(status);
   switch (variant) {
     case 'operational': return 'Operational';
@@ -61,6 +63,63 @@ export function healthLabel(status: string): string {
     case 'maintenance': return 'Maintenance';
     default: return status || 'Unknown';
   }
+}
+
+export function healthShortLabel(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === 'offline') return 'Offline';
+  const variant = healthVariant(status);
+  switch (variant) {
+    case 'operational': return 'OK';
+    case 'degraded': return 'Warn';
+    case 'down': return 'Down';
+    case 'maintenance': return 'Maint';
+    default: return 'Unknown';
+  }
+}
+
+export interface StatusPagePayload {
+  status: string;
+  label: string;
+  checkedAt: string;
+  latencyMs: number;
+  sourceUpdatedAt?: string;
+  components: PipelineComponent[];
+  error?: string;
+}
+
+export function parseStatusPagePayload(data: unknown): StatusPagePayload | null {
+  if (!data || typeof data !== 'object') return null;
+  const payload = data as Partial<StatusPagePayload>;
+  if (typeof payload.status !== 'string' || typeof payload.checkedAt !== 'string') return null;
+  const components = Array.isArray(payload.components) ? payload.components : [];
+  return {
+    status: payload.status,
+    label: typeof payload.label === 'string' ? payload.label : 'Status Unknown',
+    checkedAt: payload.checkedAt,
+    latencyMs: typeof payload.latencyMs === 'number' ? payload.latencyMs : 0,
+    sourceUpdatedAt: typeof payload.sourceUpdatedAt === 'string' ? payload.sourceUpdatedAt : undefined,
+    error: typeof payload.error === 'string' ? payload.error : undefined,
+    components: components
+      .filter((component): component is PipelineComponent => {
+        return !!component && typeof component === 'object'
+          && typeof (component as PipelineComponent).name === 'string'
+          && typeof (component as PipelineComponent).status === 'string';
+      })
+      .map((component) => ({
+        name: component.name,
+        status: component.status,
+        detail: typeof component.detail === 'string' ? component.detail : undefined,
+      })),
+  };
+}
+
+export function pipelineHealthFromStatusPage(payload: StatusPagePayload): PipelineHealth {
+  return {
+    status: payload.status,
+    updatedAt: payload.sourceUpdatedAt ?? payload.checkedAt,
+    components: payload.components,
+  };
 }
 
 export function parsePipelineHealth(data: unknown): PipelineHealth | null {

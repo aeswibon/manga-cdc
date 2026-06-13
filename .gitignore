@@ -27,8 +27,12 @@ notification-service/bin/
 docs/superpowers/
 
 # User-specific configure output
-manga-cdc.config.yaml
+config/manga-cdc.yaml
+SETUP.md
 helm/manga-cdc/values-override.yaml
+
+# Local test / e2e artifacts
+target/
 
 # Terraform
 .terraform/

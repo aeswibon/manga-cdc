@@ -19,13 +19,20 @@ public class MutationGuard {
                     HttpStatus.FORBIDDEN,
                     "Admin mutations are disabled. Set ADMIN_MUTATIONS_ENABLED=true to enable write endpoints.");
         }
-        if (mutationConfig.isAdminKeyRequired()) {
-            String configuredKey = mutationConfig.getAdminApiKey();
-            if (adminKey == null || !configuredKey.equals(adminKey)) {
-                throw new ResponseStatusException(
-                        HttpStatus.FORBIDDEN,
-                        "Invalid or missing X-Admin-Key header.");
-            }
+        String configuredKey = mutationConfig.getAdminApiKey();
+        if (configuredKey == null || configuredKey.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Admin API key is not configured.");
         }
+        if (adminKey == null || !constantTimeEquals(configuredKey, adminKey)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Invalid or missing X-Admin-Key header.");
+        }
+    }
+
+    private static boolean constantTimeEquals(String expected, String actual) {
+        return com.mangacdc.security.SecurityUtils.constantTimeEquals(expected, actual);
     }
 }

@@ -103,13 +103,44 @@ func baselineIfNeeded(ctx context.Context, databaseURL string, db *sql.DB) error
 		return nil
 	}
 
-	const initialVersion int64 = 1
-	if _, err := db.ExecContext(ctx,
-		`INSERT INTO goose_db_version (version_id, is_applied) VALUES ($1, true)`,
-		initialVersion,
-	); err != nil {
-		return fmt.Errorf("stamp migration baseline: %w", err)
+	baselineVersion, err := detectBaselineVersion(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("detect migration baseline: %w", err)
+	}
+	if baselineVersion == 0 {
+		return nil
+	}
+
+	for version := int64(1); version <= baselineVersion; version++ {
+		if _, err := db.ExecContext(ctx,
+			`INSERT INTO goose_db_version (version_id, is_applied) VALUES ($1, true)`,
+			version,
+		); err != nil {
+			return fmt.Errorf("stamp migration baseline %d: %w", version, err)
+		}
 	}
 
 	return nil
+}
+
+func detectBaselineVersion(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	checks := []struct {
+		version int64
+		query   string
+	}{
+		{4, `SELECT to_regclass('public.scraped_rejects') IS NOT NULL`},
+		{1, `SELECT to_regclass('public.manga_series') IS NOT NULL`},
+	}
+
+	for _, check := range checks {
+		var present bool
+		if err := pool.QueryRow(ctx, check.query).Scan(&present); err != nil {
+			return 0, err
+		}
+		if present {
+			return check.version, nil
+		}
+	}
+
+	return 0, nil
 }

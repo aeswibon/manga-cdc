@@ -15,6 +15,7 @@ env:
   NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
   DASHBOARD_IMAGE: ghcr.io/aeswibon/manga-cdc/dashboard
   SNAPSHOT_TAG: ci-${{ github.sha }}
+  VITE_STATUS_PAGE_URL: ${{ vars.VITE_STATUS_PAGE_URL || 'http://localhost:3001' }}
 
 # Tag and branch pushes for the same commit use different concurrency groups so a
 # master push cannot cancel an in-flight release (tag) pipeline.
@@ -66,6 +67,69 @@ jobs:
           else
             ./scripts/check-commit-policy.sh "HEAD"
           fi
+
+  watchlist-validate:
+    name: Validate watchlist
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - run: python scripts/validate-watchlist.py
+
+  dashboard-test:
+    name: Dashboard tests
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: dashboard
+    env:
+      VITE_STATUS_PAGE_URL: ${{ env.VITE_STATUS_PAGE_URL }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun run check
+      - run: bun test
+      - name: Production build
+        run: bun run build
+      - name: Verify build output
+        run: test -f dist/index.html
+
+  status-page-check:
+    name: Status page checks
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: status-page
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: status-page/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Verify static assets
+        run: |
+          test -f public/index.html
+          test -f public/logo.svg
+          test -f api/status.ts
+          node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"
 
   go-test:
     name: Go tests
@@ -143,24 +207,6 @@ jobs:
       - run: go mod download
       - run: go vet ./...
       - run: go test ./... -v -count=1
-
-  dashboard-test:
-    name: Dashboard tests
-    needs: gate
-    if: needs.gate.outputs.proceed == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: dashboard
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install
-      - run: bun run check
-      - run: bun test
 
   terraform-fmt:
     name: Terraform fmt
@@ -240,7 +286,7 @@ jobs:
   docker-snapshot:
     name: Build CI snapshot images
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
-    needs: [gate, repo-policy, terraform]
+    needs: [gate, repo-policy, terraform, dashboard-test, status-page-check]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -295,13 +341,15 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          build-args: |
+            VITE_STATUS_PAGE_URL=${{ env.VITE_STATUS_PAGE_URL }}
           cache-from: type=gha,scope=manga-cdc-dashboard
           cache-to: type=gha,mode=max,scope=manga-cdc-dashboard
 
   e2e-test:
     name: End-to-end tests
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
-    needs: [gate, terraform, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test, dashboard-test]
+    needs: [gate, terraform, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test, dashboard-test, watchlist-validate, status-page-check]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -460,7 +508,7 @@ jobs:
           echo "semver=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.version }}
           name: ${{ steps.notes.outputs.version }}

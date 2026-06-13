@@ -88,9 +88,23 @@ jobs:
           SNAPSHOT_TAG: ci-${{ github.event.workflow_run.head_sha }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag_input="${{ github.event.inputs.image_tag }}"
+            if [ "$tag_input" = "latest" ]; then
+              echo "Manual deploy must use an explicit version tag, not latest."
+              exit 1
+            fi
+            if ! echo "$tag_input" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+              echo "Manual deploy image_tag must be a semver (e.g. 0.3.7), not '$tag_input'."
+              exit 1
+            fi
+            git fetch --tags origin
+            if ! git rev-parse "refs/tags/v${tag_input}" >/dev/null 2>&1; then
+              echo "Manual deploy requires an existing release tag v${tag_input} on origin."
+              exit 1
+            fi
             echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-            echo "release_tag=latest" >> "$GITHUB_OUTPUT"
-            echo "image_tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+            echo "release_tag=v${tag_input}" >> "$GITHUB_OUTPUT"
+            echo "image_tag=${tag_input}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -116,15 +130,17 @@ jobs:
           # 3. Verify snapshot images exist on ghcr.io
           echo "Checking for ${{ env.SCRAPER_IMAGE }}:${SNAPSHOT_TAG}..."
           for i in $(seq 1 6); do
-            if docker buildx imagetools inspect "${{ env.SCRAPER_IMAGE }}:${SNAPSHOT_TAG}" > /dev/null 2>&1; then
-              echo "Snapshot image exists."
+            if docker buildx imagetools inspect "${{ env.SCRAPER_IMAGE }}:${SNAPSHOT_TAG}" > /dev/null 2>&1 \
+              && docker buildx imagetools inspect "${{ env.NOTIFICATION_IMAGE }}:${SNAPSHOT_TAG}" > /dev/null 2>&1 \
+              && docker buildx imagetools inspect "${{ env.DASHBOARD_IMAGE }}:${SNAPSHOT_TAG}" > /dev/null 2>&1; then
+              echo "Snapshot images exist."
               break
             fi
-            echo "Attempt $i: image not ready, waiting 10s..."
+            echo "Attempt $i: images not ready, waiting 10s..."
             sleep 10
           done
           if [ "$i" -eq 6 ]; then
-            echo "Snapshot image not found after retries; skipping deploy."
+            echo "Snapshot images not found after retries; skipping deploy."
             echo "should_deploy=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -160,6 +176,7 @@ jobs:
     if: ${{ needs.resolve-release.outputs.should_deploy == 'true' && needs.resolve-release.outputs.cloud_provider == 'gcp' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
     permissions:
       contents: read
       id-token: write
@@ -214,6 +231,11 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/helm-deploy.sh
 
       - name: Deploy to Cloud Run
@@ -290,6 +312,11 @@ jobs:
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
           QSTASH_TOKEN: ${{ secrets.QSTASH_TOKEN }}
           QSTASH_DESTINATION_URL: ${{ secrets.QSTASH_DESTINATION_URL }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/terraform-apply.sh gcp
 
   deploy-aws:
@@ -298,6 +325,7 @@ jobs:
     if: ${{ needs.resolve-release.outputs.should_deploy == 'true' && needs.resolve-release.outputs.cloud_provider == 'aws' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
     permissions:
       contents: read
       id-token: write
@@ -318,14 +346,14 @@ jobs:
 
       - name: Configure AWS Credentials (OIDC)
         if: env.AWS_ROLE_ARN != ''
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure AWS Credentials (access keys)
         if: env.AWS_ROLE_ARN == ''
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -352,6 +380,11 @@ jobs:
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
           GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/render-direct-env.sh
 
       - name: Deploy to VM
@@ -389,6 +422,11 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/helm-deploy.sh
 
       - name: Deploy to ECS Fargate
@@ -430,6 +468,13 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          QSTASH_TOKEN: ${{ secrets.QSTASH_TOKEN }}
+          QSTASH_DESTINATION_URL: ${{ secrets.QSTASH_DESTINATION_URL }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/terraform-apply.sh aws
 
   deploy-azure:
@@ -438,6 +483,7 @@ jobs:
     if: ${{ needs.resolve-release.outputs.should_deploy == 'true' && needs.resolve-release.outputs.cloud_provider == 'azure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
     permissions:
       contents: read
       id-token: write
@@ -457,7 +503,7 @@ jobs:
 
       - name: Log in to Azure (OIDC)
         if: env.AZURE_CLIENT_ID != ''
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -465,7 +511,7 @@ jobs:
 
       - name: Log in to Azure (service principal JSON)
         if: env.AZURE_CLIENT_ID == ''
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -490,6 +536,11 @@ jobs:
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
           GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/render-direct-env.sh
 
       - name: Deploy to VM
@@ -527,6 +578,11 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/helm-deploy.sh
 
       - name: Deploy to Container Apps
@@ -564,6 +620,13 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          QSTASH_TOKEN: ${{ secrets.QSTASH_TOKEN }}
+          QSTASH_DESTINATION_URL: ${{ secrets.QSTASH_DESTINATION_URL }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/terraform-apply.sh azure
 
   deploy-digitalocean:
@@ -572,6 +635,7 @@ jobs:
     if: ${{ needs.resolve-release.outputs.should_deploy == 'true' && needs.resolve-release.outputs.cloud_provider == 'digitalocean' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
     permissions:
       contents: read
       id-token: write
@@ -614,6 +678,11 @@ jobs:
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
           GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/render-direct-env.sh
 
       - name: Deploy to VM
@@ -651,6 +720,11 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/helm-deploy.sh
 
       - name: Deploy to App Platform
@@ -691,4 +765,57 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          QSTASH_TOKEN: ${{ secrets.QSTASH_TOKEN }}
+          QSTASH_DESTINATION_URL: ${{ secrets.QSTASH_DESTINATION_URL }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         run: bash ./scripts/ci/terraform-apply.sh digitalocean
+
+  deploy-status-page:
+    name: Deploy status page (Vercel)
+    needs: resolve-release
+    if: needs.resolve-release.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: bash ./scripts/ci/deploy-status-page.sh
+
+  deploy-dashboard:
+    name: Deploy dashboard (Vercel)
+    needs: resolve-release
+    if: needs.resolve-release.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_DASHBOARD_PROJECT_ID: ${{ secrets.VERCEL_DASHBOARD_PROJECT_ID }}
+        run: bash ./scripts/ci/deploy-dashboard-vercel.sh

@@ -1,5 +1,6 @@
 package com.mangacdc.service;
 
+import com.mangacdc.security.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,11 +44,16 @@ public class TelegramNotifier implements Notifier {
         }
 
         try {
-            String text = String.format("New Chapter!%n<b>%s</b> — Chapter %s", seriesTitle, chapterNum);
-            if (chapterTitle != null && !chapterTitle.isBlank()) {
-                text += ": " + chapterTitle;
+            String safeSeriesTitle = SecurityUtils.escapeTelegramHtml(seriesTitle);
+            String safeChapterNum = SecurityUtils.escapeTelegramHtml(chapterNum);
+            String safeChapterTitle = chapterTitle == null ? "" : SecurityUtils.escapeTelegramHtml(chapterTitle);
+            String text = String.format("New Chapter!%n<b>%s</b> — Chapter %s", safeSeriesTitle, safeChapterNum);
+            if (!safeChapterTitle.isBlank()) {
+                text += ": " + safeChapterTitle;
             }
-            text += "\n" + url;
+            if (SecurityUtils.isHttpUrl(url)) {
+                text += "\n" + url.trim();
+            }
 
             var payload = Map.of(
                 "chat_id", chatId,
