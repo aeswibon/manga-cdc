@@ -354,6 +354,14 @@
       {#if isDemoMode}
         <span class="text-[10px] text-warning bg-warning/10 px-2 py-0.5 rounded border border-warning/20 self-start font-semibold">Demo Mode</span>
       {/if}
+
+      <!-- OpenStatus Badge -->
+      <div class="border-t border-border-color pt-3 flex flex-col gap-1.5">
+        <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Service Status</span>
+        <a href="https://manga-cdc.openstatus.dev" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity">
+          <img src="https://manga-cdc.openstatus.dev/badge/v2?theme={isDarkMode ? 'dark' : 'light'}&size=sm" alt="Pipeline Status" class="h-6" />
+        </a>
+      </div>
     </div>
   </aside>
 
