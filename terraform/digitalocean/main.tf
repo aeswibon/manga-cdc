@@ -346,7 +346,7 @@ resource "digitalocean_app" "manga_cdc" {
 
       env {
         key   = "QSTASH_DESTINATION_URL"
-        value = var.qstash_destination_url != "" ? var.qstash_destination_url : "${digitalocean_app.manga_cdc[0].live_url}/api/webhook"
+        value = var.qstash_destination_url != "" ? var.qstash_destination_url : "$${notifier.APP_URL}/api/webhook"
         type  = "GENERAL"
       }
     }
