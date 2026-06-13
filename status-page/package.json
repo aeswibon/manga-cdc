@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck",
     "dev": "node serve-local.mjs"
   },
   "devDependencies": {
