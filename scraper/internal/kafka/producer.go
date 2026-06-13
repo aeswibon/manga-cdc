@@ -59,7 +59,8 @@ type chapterEvent struct {
 type chapterData struct {
 	ID          string  `json:"id"`
 	SeriesID    string  `json:"series_id"`
-	ChapterNum   float64 `json:"chapter_num"`
+	SeriesTitle string  `json:"series_title,omitempty"`
+	ChapterNum  float64 `json:"chapter_num"`
 	Title       string  `json:"title,omitempty"`
 	URL         string  `json:"url"`
 	IsNew       bool    `json:"is_new"`
@@ -69,12 +70,13 @@ func (p *Producer) PublishChapterEvent(ctx context.Context, chapter model.Chapte
 	event := chapterEvent{
 		Op: "c",
 		After: chapterData{
-			ID:        chapter.ID,
-			SeriesID:  chapter.SeriesID,
-			ChapterNum: chapter.Number,
-			Title:     chapter.Title,
-			URL:       chapter.URL,
-			IsNew:     true,
+			ID:          chapter.ID,
+			SeriesID:    chapter.SeriesID,
+			SeriesTitle: chapter.SeriesTitle,
+			ChapterNum:  chapter.Number,
+			Title:       chapter.Title,
+			URL:         chapter.URL,
+			IsNew:       true,
 		},
 	}
 

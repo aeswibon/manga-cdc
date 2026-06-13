@@ -78,7 +78,7 @@ func main() {
 	}
 	defer database.Close()
 
-	engine := diff.New(database, log)
+	engine := diff.NewWithDelay(database, log, cfg.ScrapeDelay)
 
 	var kafkaProducer *kafka.Producer
 	if cfg.KafkaBrokers != "" {

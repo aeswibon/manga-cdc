@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/aeswibon/manga-cdc/scraper/internal/adapter"
 	"github.com/aeswibon/manga-cdc/scraper/internal/db"
@@ -11,14 +12,24 @@ import (
 )
 
 type Engine struct {
-	db  *db.DB
-	log *slog.Logger
+	db          *db.DB
+	log         *slog.Logger
+	seriesDelay time.Duration
 }
 
 func New(database *db.DB, log *slog.Logger) *Engine {
 	return &Engine{
-		db:  database,
-		log: log,
+		db:          database,
+		log:         log,
+		seriesDelay: 500 * time.Millisecond,
+	}
+}
+
+func NewWithDelay(database *db.DB, log *slog.Logger, delay time.Duration) *Engine {
+	return &Engine{
+		db:          database,
+		log:         log,
+		seriesDelay: delay,
 	}
 }
 
@@ -42,7 +53,15 @@ func (e *Engine) ProcessSource(ctx context.Context, source adapter.SourceAdapter
 
 	var results []Result
 
-	for _, series := range seriesList {
+	for i, series := range seriesList {
+		if i > 0 && e.seriesDelay > 0 {
+			select {
+			case <-ctx.Done():
+				return SourceRun{}, ctx.Err()
+			case <-time.After(e.seriesDelay):
+			}
+		}
+
 		existingID, err := e.db.UpsertSeries(ctx, series)
 		if err != nil {
 			e.log.Error("failed to upsert series", "source", source.Name(), "title", series.Title, "error", err)
@@ -61,6 +80,10 @@ func (e *Engine) ProcessSource(ctx context.Context, source adapter.SourceAdapter
 		if err != nil {
 			e.log.Error("failed to bulk insert chapters", "source", source.Name(), "series", series.Title, "error", err)
 			continue
+		}
+
+		for i := range newChapters {
+			newChapters[i].SeriesTitle = series.Title
 		}
 
 		if len(newChapters) > 0 {
