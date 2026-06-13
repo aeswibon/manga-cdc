@@ -271,9 +271,9 @@ locals {
       SPRING_DATASOURCE_PASSWORD                = local.db_pass
       KAFKA_BROKERS                             = var.kafka_brokers
       SPRING_KAFKA_BOOTSTRAP_SERVERS            = var.kafka_brokers
-      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM    = "SCRAM-SHA-256"
-      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG  = "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"${var.kafka_username}\" password=\"${var.kafka_password}\";"
-      SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL = "SASL_SSL"
+      SPRING_KAFKA_SASL_MECHANISM               = "SCRAM-SHA-256"
+      SPRING_KAFKA_SASL_JAAS_CONFIG             = "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"${var.kafka_username}\" password=\"${var.kafka_password}\";"
+      SPRING_KAFKA_SECURITY_PROTOCOL            = "SASL_SSL"
       KAFKA_TOPIC                               = "mangacdc.public.chapters"
       KAFKA_USERNAME                            = var.kafka_username
       KAFKA_PASSWORD                            = var.kafka_password
