@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -102,6 +103,59 @@ func (d *DB) InsertChapter(ctx context.Context, seriesID string, ch model.Chapte
 		return "", fmt.Errorf("insert chapter: %w", err)
 	}
 	return id, nil
+}
+
+func (d *DB) BulkInsertChapters(ctx context.Context, seriesID string, chapters []model.Chapter) ([]model.Chapter, error) {
+	if len(chapters) == 0 {
+		return nil, nil
+	}
+
+	valueStrings := make([]string, 0, len(chapters))
+	params := make([]any, 0, len(chapters)*5)
+	for i, ch := range chapters {
+		base := i * 5
+		valueStrings = append(valueStrings,
+			fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,true)", base+1, base+2, base+3, base+4, base+5))
+		params = append(params, seriesID, ch.Number, ch.Title, ch.URL, ch.ReleaseDate)
+	}
+
+	query := fmt.Sprintf(`
+		INSERT INTO chapters (series_id,chapter_num,title,url,release_date,is_new)
+		VALUES %s
+		ON CONFLICT (series_id,chapter_num) DO NOTHING
+		RETURNING id, chapter_num
+	`, strings.Join(valueStrings, ","))
+
+	rows, err := d.pool.Query(ctx, query, params...)
+	if err != nil {
+		return nil, fmt.Errorf("bulk insert chapters: %w", err)
+	}
+	defer rows.Close()
+
+	byNum := make(map[float64]model.Chapter, len(chapters))
+	for _, ch := range chapters {
+		byNum[ch.Number] = ch
+	}
+
+	var newChapters []model.Chapter
+	for rows.Next() {
+		var id string
+		var chapterNum float64
+		if err := rows.Scan(&id, &chapterNum); err != nil {
+			return nil, fmt.Errorf("scan chapter: %w", err)
+		}
+		if ref, ok := byNum[chapterNum]; ok {
+			ref.ID = id
+			ref.SeriesID = seriesID
+			ref.IsNew = true
+			newChapters = append(newChapters, ref)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate chapters: %w", err)
+	}
+
+	return newChapters, nil
 }
 
 func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {

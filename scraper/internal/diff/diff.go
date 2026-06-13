@@ -57,18 +57,10 @@ func (e *Engine) ProcessSource(ctx context.Context, source adapter.SourceAdapter
 			continue
 		}
 
-		var newChapters []model.Chapter
-		for _, ch := range chapters {
-			id, err := e.db.InsertChapter(ctx, series.ID, ch)
-			if err != nil {
-				e.log.Error("failed to insert chapter", "source", source.Name(), "chapter", ch.Number, "error", err)
-				continue
-			}
-			if id != "" {
-				ch.ID = id
-				ch.SeriesID = series.ID
-				newChapters = append(newChapters, ch)
-			}
+		newChapters, err := e.db.BulkInsertChapters(ctx, series.ID, chapters)
+		if err != nil {
+			e.log.Error("failed to bulk insert chapters", "source", source.Name(), "series", series.Title, "error", err)
+			continue
 		}
 
 		if len(newChapters) > 0 {
