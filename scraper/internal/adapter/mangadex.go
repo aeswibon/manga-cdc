@@ -149,13 +149,7 @@ func (m *MangaDexAdapter) FetchLatest(ctx context.Context) ([]model.Series, erro
 	var series []model.Series
 	coverFiles := buildMangaDexCoverMap(list.Included)
 	for _, d := range list.Data {
-		title := d.Attributes.Title["en"]
-		if title == "" {
-			for _, t := range d.Attributes.Title {
-				title = t
-				break
-			}
-		}
+		title := mangadexLocalizedText(d.Attributes.Title)
 
 		altTitles := make([]string, 0, len(d.Attributes.AltTitles))
 		for _, at := range d.Attributes.AltTitles {
@@ -165,13 +159,7 @@ func (m *MangaDexAdapter) FetchLatest(ctx context.Context) ([]model.Series, erro
 		}
 
 		entry := d
-		desc := entry.Attributes.Description["en"]
-		if desc == "" {
-			for _, val := range entry.Attributes.Description {
-				desc = val
-				break
-			}
-		}
+		desc := mangadexLocalizedText(entry.Attributes.Description)
 
 		coverURL := ""
 		for _, rel := range entry.Relationships {

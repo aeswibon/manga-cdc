@@ -218,7 +218,7 @@ func (m *MangaPlusAdapter) FetchLatest(ctx context.Context) ([]model.Series, err
 	return series, nil
 }
 
-func (m *MangaPlusAdapter) FetchChapters(ctx context.Context, seriesID string) ([]model.Chapter, error) {
+func (m *MangaPlusAdapter) fetchTitleDetail(ctx context.Context, seriesID string) (*mangapluspb.TitleDetailView, error) {
 	body, err := m.doRequest(ctx, "/title_detailV3", url.Values{
 		"title_id": {seriesID},
 		"lang":     {"eng"},
@@ -230,22 +230,59 @@ func (m *MangaPlusAdapter) FetchChapters(ctx context.Context, seriesID string) (
 
 	var response mangapluspb.Response
 	if err := proto.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("mangaplus: unmarshal chapters: %w", err)
+		return nil, fmt.Errorf("mangaplus: unmarshal title detail: %w", err)
 	}
 
 	success := response.GetSuccess()
 	if success == nil {
-		return nil, fmt.Errorf("mangaplus: chapter request failed: %v", response.GetError())
+		return nil, fmt.Errorf("mangaplus: title detail request failed: %v", response.GetError())
 	}
 
 	detail := success.GetTitleDetailView()
 	if detail == nil {
 		return nil, fmt.Errorf("mangaplus: no titleDetailView in response")
 	}
+	return detail, nil
+}
 
-	var chapters []model.Chapter
+func (m *MangaPlusAdapter) FetchSeries(ctx context.Context, seriesID string) (model.Series, error) {
+	detail, err := m.fetchTitleDetail(ctx, seriesID)
+	if err != nil {
+		return model.Series{}, err
+	}
+
+	title := detail.GetTitle()
+	coverURL := detail.GetTitleImageUrl()
+	if coverURL == "" && title != nil {
+		coverURL = title.GetPortraitImageUrl()
+	}
+
+	name := ""
+	author := ""
+	if title != nil {
+		name = title.GetName()
+		author = title.GetAuthor()
+	}
+
+	return model.Series{
+		SourceID:    seriesID,
+		Title:       name,
+		Author:      author,
+		Description: detail.GetOverview(),
+		CoverURL:    coverURL,
+		SourceURL:   fmt.Sprintf("https://mangaplus.shueisha.co.jp/titles/%s", seriesID),
+		Status:      "ONGOING",
+	}, nil
+}
+
+func (m *MangaPlusAdapter) FetchChapters(ctx context.Context, seriesID string) ([]model.Chapter, error) {
+	detail, err := m.fetchTitleDetail(ctx, seriesID)
+	if err != nil {
+		return nil, err
+	}
 	seen := make(map[int32]bool)
 
+	var chapters []model.Chapter
 	for _, c := range detail.GetChapterListV2() {
 		if seen[c.GetChapterId()] {
 			continue

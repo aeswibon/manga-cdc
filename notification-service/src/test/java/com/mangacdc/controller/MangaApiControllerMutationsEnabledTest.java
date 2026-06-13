@@ -2,11 +2,13 @@ package com.mangacdc.controller;
 
 import com.mangacdc.config.MutationConfig;
 import com.mangacdc.config.MutationGuard;
+import com.mangacdc.support.WebMvcSecurityTestSupport;
 import com.mangacdc.model.MangaSeries;
 import com.mangacdc.repository.ChapterRepository;
 import com.mangacdc.repository.SeriesRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
@@ -22,8 +24,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(MangaApiController.class)
-@Import({MutationConfig.class, MutationGuard.class})
-@TestPropertySource(properties = "ADMIN_MUTATIONS_ENABLED=true")
+@AutoConfigureMockMvc(addFilters = false)
+@Import({MutationConfig.class, MutationGuard.class, WebMvcSecurityTestSupport.class})
+@TestPropertySource(properties = {
+        "ADMIN_MUTATIONS_ENABLED=true",
+        "ADMIN_API_KEY=test-admin-key"
+})
 class MangaApiControllerMutationsEnabledTest {
 
     @Autowired
@@ -41,6 +47,7 @@ class MangaApiControllerMutationsEnabledTest {
     @Test
     void addSeries_rejectsInvalidPayload() throws Exception {
         mockMvc.perform(post("/api/series")
+                        .header("X-Admin-Key", "test-admin-key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -58,6 +65,7 @@ class MangaApiControllerMutationsEnabledTest {
     @Test
     void addSeries_acceptsValidPayload() throws Exception {
         mockMvc.perform(post("/api/series")
+                        .header("X-Admin-Key", "test-admin-key")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {

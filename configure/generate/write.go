@@ -44,7 +44,7 @@ func writePlainFile(relPath, body string) error {
 }
 
 func manifestPathDefault() string {
-	return filepath.Join(RootDir, "manga-cdc.config.yaml")
+	return filepath.Join(RootDir, "config", "manga-cdc.yaml")
 }
 
 func saveManifestErr(err error) error {

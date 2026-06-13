@@ -1,10 +1,13 @@
 package com.mangacdc.controller;
 
 import com.mangacdc.service.PipelineHealthService;
+import com.mangacdc.support.WebMvcSecurityTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -16,6 +19,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(PipelineHealthController.class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import(WebMvcSecurityTestSupport.class)
 class PipelineHealthControllerTest {
 
     @Autowired

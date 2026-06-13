@@ -13,7 +13,7 @@ type PipelineHealth = {
 };
 
 type StatusPayload = {
-  status: 'operational' | 'degraded' | 'down' | 'unknown';
+  status: 'operational' | 'degraded' | 'down' | 'offline' | 'unknown';
   label: string;
   checkedAt: string;
   latencyMs: number;
@@ -40,20 +40,38 @@ function statusLabel(status: StatusPayload['status']): string {
       return 'Degraded Performance';
     case 'down':
       return 'Service Disruption';
+    case 'offline':
+      return 'Pipeline Offline';
     default:
-      return 'Status Unknown';
+      return 'Pipeline Offline';
   }
+}
+
+function offlinePayload(error: string, latencyMs = 0): StatusPayload {
+  return {
+    status: 'offline',
+    label: 'Pipeline Offline',
+    checkedAt: new Date().toISOString(),
+    latencyMs,
+    components: [],
+    error,
+  };
 }
 
 async function fetchPipelineHealth(url: string): Promise<{ health: PipelineHealth | null; latencyMs: number; error?: string }> {
   const started = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const apiKey = process.env.NOTIFIER_API_KEY?.trim();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (apiKey) {
+    headers['X-Api-Key'] = apiKey;
+  }
 
   try {
     const response = await fetch(url, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers,
       signal: controller.signal,
       cache: 'no-store',
     });
@@ -80,34 +98,45 @@ async function fetchPipelineHealth(url: string): Promise<{ health: PipelineHealt
   }
 }
 
+function sendStatus(res: VercelResponse, payload: StatusPayload) {
+  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.status(200).json(payload);
+}
+
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const pipelineUrl = process.env.PIPELINE_HEALTH_URL?.trim();
   if (!pipelineUrl) {
-    res.status(500).json({
-      status: 'unknown',
-      label: 'Status checker not configured',
-      checkedAt: new Date().toISOString(),
-      latencyMs: 0,
-      components: [],
-      error: 'PIPELINE_HEALTH_URL is not set',
-    } satisfies StatusPayload);
+    sendStatus(res, offlinePayload('PIPELINE_HEALTH_URL is not set'));
     return;
   }
 
   const { health, latencyMs, error } = await fetchPipelineHealth(pipelineUrl);
-  const status = health ? normalizeStatus(health.status) : 'down';
+  if (!health) {
+    sendStatus(res, offlinePayload(error ?? 'Production health endpoint unreachable', latencyMs));
+    return;
+  }
 
-  const payload: StatusPayload = {
+  const status = normalizeStatus(health.status);
+  if (status === 'down' || status === 'unknown') {
+    sendStatus(res, {
+      status: 'offline',
+      label: 'Pipeline Offline',
+      checkedAt: new Date().toISOString(),
+      latencyMs,
+      sourceUpdatedAt: health.updatedAt,
+      components: health.components ?? [],
+      error: error ?? `Pipeline reported ${health.status}`,
+    });
+    return;
+  }
+
+  sendStatus(res, {
     status,
     label: statusLabel(status),
     checkedAt: new Date().toISOString(),
     latencyMs,
-    sourceUpdatedAt: health?.updatedAt,
-    components: health?.components ?? [],
-    error: health ? undefined : error,
-  };
-
-  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.status(200).json(payload);
+    sourceUpdatedAt: health.updatedAt,
+    components: health.components ?? [],
+  });
 }

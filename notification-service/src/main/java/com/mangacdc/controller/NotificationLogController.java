@@ -13,7 +13,6 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*")
 public class NotificationLogController {
 
     private static final int MAX_LOG_LIMIT = 100;

@@ -181,6 +181,13 @@ The deploy workflow writes a remote `backend.tf` when these secrets are set. Cre
 * `DATABASE_URL`: PostgreSQL connection string (starts with `postgres://` or `postgresql://`).
 * `KAFKA_BROKERS`, `KAFKA_USERNAME`, `KAFKA_PASSWORD`: Message streaming credentials (optional).
 * `DISCORD_WEBHOOK_URL`, `SLACK_WEBHOOK_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: Notification variables (optional).
+* `API_READ_KEY`, `WEBHOOK_SECRET`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`: Notifier security (required in production — see [security-model.md](../docs/security-model.md)).
+* `QSTASH_TOKEN`, `QSTASH_DESTINATION_URL`: Serverless scraper event delivery (when using QStash).
+
+#### Security (repository variable)
+* `ALLOWED_ORIGINS`: Comma-separated browser origins allowed to call the notifier API.
+
+Deploy jobs use the GitHub **production** environment. Manual `workflow_dispatch` requires an existing `v*` tag matching `image_tag`.
 
 #### GCP Target Secrets
 * `GCP_WORKLOAD_IDENTITY_PROVIDER`: Workload Identity Provider string (e.g., `projects/12345/locations/global/workloadIdentityPools/my-pool/providers/my-provider`).
@@ -207,3 +214,22 @@ GCP VM direct SSH deploy is not supported in CI; use `deployment_target=vm` with
 * `SSH_PRIVATE_KEY` / `VM_USER` / `VM_HOST`: Credentials for Droplet VM mode.
 * `DOKS_CLUSTER_NAME`: Cluster name for Kubernetes mode.
 * `DO_APP_ID`: Application ID for Serverless mode (DO App Platform).
+
+#### Dashboard & public status page
+* `VITE_STATUS_PAGE_URL` (**repository variable**): Public status page URL embedded in the dashboard image at CI build time.
+* `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` (optional): Enable automated Vercel deploy via the **Deploy** workflow after each release.
+* `GCP_DASHBOARD_CLOUD_RUN_SERVICE` (repository **variable**, optional): Cloud Run service name for dashboard image updates.
+* `PIPELINE_HEALTH_URL`: Configure in the **Vercel project** — production notifier `/api/pipeline/health` URL.
+
+See [`status-page/README.md`](../status-page/README.md).
+
+---
+
+## 8. CI/CD workflows
+
+| Workflow | Trigger | Role |
+|----------|---------|------|
+| `test-and-build.yml` | PR, `master`, tags `v*` | Tests, watchlist validation, E2E, release images on tags |
+| `watchlist-check.yml` | Watchlist file changes | Fast watchlist validation |
+| `deploy.yml` | After tag build | Cloud deploy for scraper + notifier |
+| `deploy.yml` | After tag build succeeds | Deploy backend + optional frontend (dashboard Cloud Run, status page Vercel) |

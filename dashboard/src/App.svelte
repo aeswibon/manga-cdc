@@ -15,17 +15,21 @@
     readOnSourceLabel,
     seriesStatusLabel,
     seriesStatusVariant,
-    parsePipelineHealth,
+    parseStatusPagePayload,
+    pipelineHealthFromStatusPage,
     healthLabel,
+    healthShortLabel,
     healthVariant,
     type PipelineHealth,
   } from './utils';
 
-  const API_BASE = import.meta.env.VITE_API_URL ?? '';
+  const API_BASE = import.meta.env.VITE_API_URL
+    ?? (import.meta.env.PROD ? '/api/notifier' : '');
 
   // State Management (Svelte 5 runes)
   let activeTab = $state('overview');
-  let isDemoMode = $state(false);
+  let apiOffline = $state(false);
+  let apiErrorModal = $state<string | null>(null);
   let apiStatus = $state('connecting');
   let isDarkMode = $state(true);
 
@@ -74,6 +78,34 @@
   let duplicateTitles = $derived(duplicateTitleKeys(seriesList));
   let pipelineOverallVariant = $derived(healthVariant(pipelineHealth?.status ?? 'unknown'));
   let pipelineOverallLabel = $derived(healthLabel(pipelineHealth?.status ?? 'unknown'));
+  let pipelineOverallShortLabel = $derived(healthShortLabel(pipelineHealth?.status ?? 'unknown'));
+  let pipelineStatusLinkLabel = $derived(
+    pipelineHealth
+      ? `Pipeline ${pipelineOverallLabel}. Open status page.`
+      : pipelineHealthState === 'loading'
+        ? 'Checking pipeline status. Open status page.'
+        : pipelineHealthState === 'error'
+          ? 'Status page unavailable. Open status page.'
+          : `API ${apiStatus}. Open status page.`,
+  );
+  let pipelineHeaderLabel = $derived(
+    pipelineHealth
+      ? pipelineOverallLabel
+      : pipelineHealthState === 'loading'
+        ? 'Checking…'
+        : pipelineHealthState === 'error'
+          ? 'Unavailable'
+          : apiStatus,
+  );
+  let pipelineHeaderShortLabel = $derived(
+    pipelineHealth
+      ? pipelineOverallShortLabel
+      : pipelineHealthState === 'loading'
+        ? '…'
+        : pipelineHealthState === 'error'
+          ? 'N/A'
+          : 'API',
+  );
 
   const NAV_TABS = [
     { id: 'overview', label: 'Overview', shortLabel: 'Overview', emoji: '📊' },
@@ -106,151 +138,26 @@
     }
   });
 
-  // Mock data definitions
-  const MOCK_SERIES: Series[] = [
-    {
-      id: "1",
-      sourceId: "md-1",
-      title: "One Piece",
-      author: "Eiichiro Oda",
-      artist: "Eiichiro Oda",
-      description: "Gol D. Roger, a man referred to as the King of the Pirates, is set to be executed by the World Government...",
-      coverUrl: "https://mangadex.org/covers/a1c3b275-c93f-4279-a17d-2b4742e47444/92330a10-2440-410a-8bf7-4632875f10b2.jpg",
-      status: "ONGOING",
-      sourceUrl: "https://mangadex.org/title/a1c3b275-c93f-4279-a17d-2b4742e47444/one-piece",
-      latestChapter: 1115.0,
-      lastChecked: new Date().toISOString(),
-      isActive: true
-    },
-    {
-      id: "2",
-      sourceId: "md-2",
-      title: "Solo Leveling",
-      author: "Chugong",
-      artist: "DUBU (REDICE STUDIO)",
-      description: "In a world where hunters must battle deadly monsters to protect mankind, Sung Jin-Woo, the weakest hunter...",
-      coverUrl: "https://mangadex.org/covers/321e481a-641e-40d9-93b5-74c055272a5a/d32f418b-4b11-477d-bb62-43d92ccb7cd8.jpg",
-      status: "COMPLETED",
-      sourceUrl: "https://mangadex.org/title/321e481a-641e-40d9-93b5-74c055272a5a/solo-leveling",
-      latestChapter: 200.0,
-      lastChecked: new Date().toISOString(),
-      isActive: false
-    },
-    {
-      id: "3",
-      sourceId: "as-1",
-      title: "The Beginning After the End",
-      author: "TurtleMe",
-      artist: "Fuyuki 23",
-      description: "King Grey has unrivaled strength, wealth, and prestige in a world governed by martial ability. However...",
-      coverUrl: "https://mangadex.org/covers/3331828f-7c15-46a1-a672-2d12e698889a/9903b412-2439-440a-91ff-2f63812d1b09.jpg",
-      status: "ONGOING",
-      sourceUrl: "https://asuracomics.com/manga/the-beginning-after-the-end",
-      latestChapter: 185.0,
-      lastChecked: new Date().toISOString(),
-      isActive: true
-    }
-  ];
-
-  const MOCK_LOGS: LogEntry[] = [
-    {
-      id: "l1",
-      chapterId: "c1",
-      status: "SENT",
-      channel: "discord",
-      errorMessage: "",
-      createdAt: new Date(Date.now() - 5 * 60000).toISOString(),
-      seriesTitle: "One Piece",
-      chapterNum: 1115.0,
-      chapterTitle: "The Message of Void"
-    },
-    {
-      id: "l2",
-      chapterId: "c2",
-      status: "SENT",
-      channel: "telegram",
-      errorMessage: "",
-      createdAt: new Date(Date.now() - 12 * 60000).toISOString(),
-      seriesTitle: "The Beginning After the End",
-      chapterNum: 185.0,
-      chapterTitle: "Training Arc Commences"
-    },
-    {
-      id: "l3",
-      chapterId: "c3",
-      status: "FAILED",
-      channel: "slack",
-      errorMessage: "Webhook returned status 404 Not Found",
-      createdAt: new Date(Date.now() - 60 * 60000).toISOString(),
-      seriesTitle: "Solo Leveling",
-      chapterNum: 200.0,
-      chapterTitle: "Epilogue — The Eternal Monarch"
-    },
-    {
-      id: "l4",
-      chapterId: "c4",
-      status: "SENT",
-      channel: "discord",
-      errorMessage: "",
-      createdAt: new Date(Date.now() - 3 * 3600000).toISOString(),
-      seriesTitle: "Chainsaw Man",
-      chapterNum: 182.0,
-      chapterTitle: "A Way Back"
-    },
-    {
-      id: "l5",
-      chapterId: "c5",
-      status: "SENT",
-      channel: "slack",
-      errorMessage: "",
-      createdAt: new Date(Date.now() - 6 * 3600000).toISOString(),
-      seriesTitle: "Jujutsu Kaisen",
-      chapterNum: 271.0,
-      chapterTitle: "Hidden Inventory, Part 4"
-    },
-    {
-      id: "l6",
-      chapterId: "c6",
-      status: "FAILED",
-      channel: "telegram",
-      errorMessage: "Bot token unauthorized: chat_id not found",
-      createdAt: new Date(Date.now() - 9 * 3600000).toISOString(),
-      seriesTitle: "Blue Lock",
-      chapterNum: 298.0,
-      chapterTitle: "World's Best Striker"
-    },
-    {
-      id: "l7",
-      chapterId: "c7",
-      status: "SENT",
-      channel: "telegram",
-      errorMessage: "",
-      createdAt: new Date(Date.now() - 24 * 3600000).toISOString(),
-      seriesTitle: "One Piece",
-      chapterNum: 1114.0,
-      chapterTitle: "The Wings of Icarus"
-    },
-    {
-      id: "l8",
-      chapterId: "c8",
-      status: "FAILED",
-      channel: "discord",
-      errorMessage: "Rate limited: retry after 30s",
-      createdAt: new Date(Date.now() - 36 * 3600000).toISOString(),
-      seriesTitle: "The Beginning After the End",
-      chapterNum: 184.0,
-      chapterTitle: "A New Horizon"
-    },
-  ];
-
-  const MOCK_STATS = {
-    total_series: 3,
-    active_series: 2,
-    total_chapters: 1500,
-    total_logs: 8,
-    successful_deliveries: 5,
-    failed_deliveries: 3
+  const EMPTY_STATS = {
+    total_series: 0,
+    active_series: 0,
+    total_chapters: 0,
+    total_logs: 0,
+    successful_deliveries: 0,
+    failed_deliveries: 0,
   };
+
+  function describeApiError(err: unknown): string {
+    if (err instanceof TypeError && /fetch/i.test(err.message)) {
+      return 'Could not reach the notification API. Check your network connection or API URL configuration.';
+    }
+    if (err instanceof Error) return err.message;
+    return 'API unreachable';
+  }
+
+  function showApiError(message: string) {
+    apiErrorModal = message;
+  }
 
   async function toggleChapterHistory(series: Series) {
     if (expandedSeriesId === series.id) {
@@ -274,23 +181,19 @@
     }
   }
 
-  async function fetchPipelineHealth() {
-    if (isDemoMode) {
-      pipelineHealth = null;
-      pipelineHealthState = 'error';
-      return;
-    }
+  async function fetchStatusPageHealth() {
     try {
       pipelineHealthState = 'loading';
-      const res = await fetch(`${API_BASE}/api/pipeline/health`, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`pipeline health ${res.status}`);
-      const parsed = parsePipelineHealth(await res.json());
-      if (!parsed) throw new Error('Invalid pipeline health payload');
-      pipelineHealth = parsed;
-      pipelineHealthPolledAt = new Date().toISOString();
+      const res = await fetch(`${STATUS_PAGE_URL}/api/status`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`Status page returned HTTP ${res.status}`);
+      const parsed = parseStatusPagePayload(await res.json());
+      if (!parsed) throw new Error('Invalid status page payload');
+      pipelineHealth = pipelineHealthFromStatusPage(parsed);
+      pipelineHealthPolledAt = parsed.checkedAt;
       pipelineHealthState = 'ok';
     } catch (err) {
-      console.warn('Pipeline health unavailable.', err);
+      console.warn('Status page unavailable.', err);
+      pipelineHealth = null;
       pipelineHealthState = 'error';
     }
   }
@@ -299,27 +202,29 @@
     try {
       apiStatus = 'connecting';
       const statsRes = await fetch(`${API_BASE}/api/stats`);
-      if (!statsRes.ok) throw new Error('API unreachable');
-      stats = await statsRes.json();
+      if (!statsRes.ok) throw new Error(`Stats API returned HTTP ${statsRes.status}`);
 
       const seriesRes = await fetch(`${API_BASE}/api/series`);
-      seriesList = await seriesRes.json();
+      if (!seriesRes.ok) throw new Error(`Series API returned HTTP ${seriesRes.status}`);
 
       const logsRes = await fetch(`${API_BASE}/api/logs?limit=50`);
+      if (!logsRes.ok) throw new Error(`Logs API returned HTTP ${logsRes.status}`);
+
+      stats = await statsRes.json();
+      seriesList = await seriesRes.json();
       logList = await logsRes.json();
 
-      isDemoMode = false;
+      apiOffline = false;
+      apiErrorModal = null;
       apiStatus = 'online';
-      await fetchPipelineHealth();
     } catch (err) {
-      console.warn("Backend API offline.", err);
-      isDemoMode = true;
+      console.warn('Backend API offline.', err);
+      apiOffline = true;
       apiStatus = 'offline';
-      stats = { ...MOCK_STATS };
-      seriesList = [...MOCK_SERIES];
-      logList = [...MOCK_LOGS];
-      pipelineHealth = null;
-      pipelineHealthState = 'error';
+      stats = { ...EMPTY_STATS };
+      seriesList = [];
+      logList = [];
+      showApiError(describeApiError(err));
     }
   }
 
@@ -335,17 +240,18 @@
     }
 
     fetchBackendData().then(() => {
-      if (!isDemoMode) {
+      if (!apiOffline) {
         connectSSE();
       }
     });
+    fetchStatusPageHealth();
     const interval = setInterval(fetchBackendData, 30000);
-    const pipelineHealthInterval = setInterval(fetchPipelineHealth, 60000);
+    const statusPageInterval = setInterval(fetchStatusPageHealth, 60000);
 
     let eventSource: EventSource | null = null;
 
     function connectSSE() {
-      if (isDemoMode) return;
+      if (apiOffline) return;
       eventSource?.close();
       eventSource = new EventSource(`${API_BASE}/api/logs/stream`);
 
@@ -378,7 +284,7 @@
 
     return () => {
       clearInterval(interval);
-      clearInterval(pipelineHealthInterval);
+      clearInterval(statusPageInterval);
       eventSource?.close();
     };
   });</script>
@@ -391,28 +297,30 @@
       <span class="app-topbar__title">Manga-CDC</span>
     </div>
     <div class="app-topbar__actions">
-      {#if isDemoMode}
-        <span class="app-topbar__demo">Demo</span>
-      {:else}
-        <div class="app-topbar__status-wrap" title={pipelineHealth ? pipelineOverallLabel : apiStatus}>
-          <span
-            class="app-topbar__status"
-            class:app-topbar__status--ok={pipelineHealth ? pipelineOverallVariant === 'operational' : apiStatus === 'online'}
-            class:app-topbar__status--warn={pipelineHealth ? pipelineOverallVariant === 'degraded' : apiStatus === 'connecting'}
-            class:app-topbar__status--down={pipelineHealth ? pipelineOverallVariant === 'down' || pipelineOverallVariant === 'unknown' : apiStatus === 'offline'}
-            aria-hidden="true"
-          ></span>
-          <span class="app-topbar__status-label hidden sm:inline">
-            {#if pipelineHealth}
-              {pipelineOverallLabel}
-            {:else if pipelineHealthState === 'loading'}
-              Checking…
-            {:else}
-              {apiStatus}
-            {/if}
-          </span>
-        </div>
-      {/if}
+      <a
+        href={STATUS_PAGE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="app-topbar__status-wrap"
+        class:app-topbar__status-wrap--operational={pipelineHealth && pipelineOverallVariant === 'operational'}
+        class:app-topbar__status-wrap--degraded={pipelineHealth && pipelineOverallVariant === 'degraded'}
+        class:app-topbar__status-wrap--down={pipelineHealth && (pipelineOverallVariant === 'down' || pipelineOverallVariant === 'unknown')}
+        class:app-topbar__status-wrap--loading={pipelineHealthState === 'loading'}
+        class:app-topbar__status-wrap--unavailable={!pipelineHealth && pipelineHealthState === 'error'}
+        aria-label={pipelineStatusLinkLabel}
+        role="status"
+        aria-live="polite"
+      >
+        <span
+          class="app-topbar__status"
+          class:app-topbar__status--ok={pipelineHealth ? pipelineOverallVariant === 'operational' : false}
+          class:app-topbar__status--warn={pipelineHealth ? pipelineOverallVariant === 'degraded' : pipelineHealthState === 'loading'}
+          class:app-topbar__status--down={!pipelineHealth || pipelineOverallVariant === 'down' || pipelineOverallVariant === 'unknown' || pipelineHealthState === 'error'}
+          aria-hidden="true"
+        ></span>
+        <span class="app-topbar__status-label app-topbar__status-label--compact">{pipelineHeaderShortLabel}</span>
+        <span class="app-topbar__status-label app-topbar__status-label--full">{pipelineHeaderLabel}</span>
+      </a>
       <button
         onclick={toggleTheme}
         class="app-topbar__theme"
@@ -426,13 +334,6 @@
   <!-- Main Content -->
   <main class="app-main flex-grow p-5 md:p-10 pb-[calc(6.75rem+env(safe-area-inset-bottom))] overflow-y-auto">
     <div class="max-w-6xl xl:max-w-7xl mx-auto w-full flex flex-col">
-      {#if isDemoMode}
-        <div class="demo-banner">
-          <span>⚠️ API Connection Offline. Showing sample tracker data.</span>
-          <button onclick={fetchBackendData} class="demo-banner__action">Retry Connection</button>
-        </div>
-      {/if}
-
       <header class="page-header">
         <div>
           <h1 class="page-header__title">
@@ -591,8 +492,8 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {#if paginatedSeries.length === 0}
           <div class="col-span-full dash-panel dash-empty">
-            {#if isDemoMode}
-              Cannot load watchlist — API is offline. Use Retry Connection above.
+            {#if apiOffline}
+              Cannot load watchlist — API is offline. Use Retry in the connection dialog.
             {:else}
               No series match your filters, or the watchlist is empty.
             {/if}
@@ -917,6 +818,24 @@
     </div>
   </nav>
 </div>
+
+<!-- API ERROR MODAL -->
+{#if apiErrorModal}
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in">
+    <div class="modal-sheet flex flex-col gap-4" role="alertdialog" aria-labelledby="api-error-title">
+      <div class="flex justify-between items-center pb-2 border-b border-border-color">
+        <h3 id="api-error-title" class="font-heading font-semibold text-lg text-gray-100">API Connection Error</h3>
+        <button onclick={() => apiErrorModal = null} class="text-gray-400 hover:text-gray-200 text-lg cursor-pointer" aria-label="Close">✕</button>
+      </div>
+      <p class="text-sm text-gray-300 leading-relaxed">{apiErrorModal}</p>
+      <p class="text-xs text-gray-500">The dashboard stays available while the notification API is unreachable.</p>
+      <div class="flex justify-end gap-3 mt-1">
+        <button onclick={() => apiErrorModal = null} class="px-5.5 py-2 bg-bg-tertiary border border-border-color rounded text-xs text-gray-300 hover:text-gray-100 cursor-pointer">Dismiss</button>
+        <button onclick={() => { apiErrorModal = null; fetchBackendData(); }} class="px-5.5 py-2 bg-accent/20 border border-accent/40 rounded text-xs text-accent hover:bg-accent/30 cursor-pointer">Retry Connection</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- LOG DETAILS MODAL -->
 {#if selectedLogForModal}

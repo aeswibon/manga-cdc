@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mangacdc.repository.ChapterRepository;
 import com.mangacdc.repository.NotificationLogRepository;
 import com.mangacdc.model.NotificationLogEntry;
+import com.mangacdc.security.SecurityUtils;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +62,22 @@ public class ChapterEventService {
             boolean isNew = after.path("is_new").asBoolean(false);
 
             if (!isNew) {
+                return;
+            }
+
+            if (!SecurityUtils.isHttpUrl(url)) {
+                log.warn("Rejected chapter event with invalid URL for chapter {}", chapterId);
+                return;
+            }
+
+            if (!chapterRepo.existsNewChapter(chapterId)) {
+                log.warn("Rejected chapter event for unknown or already-notified chapter {}", chapterId);
+                return;
+            }
+
+            String storedUrl = chapterRepo.findChapterUrl(chapterId);
+            if (storedUrl == null || storedUrl.isBlank() || !storedUrl.equals(url)) {
+                log.warn("Rejected chapter event with URL mismatch for chapter {}", chapterId);
                 return;
             }
 

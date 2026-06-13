@@ -17,6 +17,15 @@ func testDSN() string {
 	return "postgres://mangacdc:mangacdc@localhost:5432/mangacdc?sslmode=disable"
 }
 
+func resetMigrationTestDB(ctx context.Context, pool *pgxpool.Pool) {
+	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS notification_logs CASCADE`)
+	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS scraped_rejects CASCADE`)
+	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS chapters CASCADE`)
+	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS manga_series CASCADE`)
+	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS goose_db_version CASCADE`)
+	_, _ = pool.Exec(ctx, `DROP FUNCTION IF EXISTS update_updated_at() CASCADE`)
+}
+
 func TestIntegration_RunAppliesSchema(t *testing.T) {
 	dsn := testDSN()
 	ctx := context.Background()
@@ -27,11 +36,7 @@ func TestIntegration_RunAppliesSchema(t *testing.T) {
 	}
 	defer pool.Close()
 
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS notification_logs CASCADE`)
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS chapters CASCADE`)
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS manga_series CASCADE`)
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS goose_db_version CASCADE`)
-	_, _ = pool.Exec(ctx, `DROP FUNCTION IF EXISTS update_updated_at() CASCADE`)
+	resetMigrationTestDB(ctx, pool)
 
 	if err := Run(ctx, dsn); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -60,11 +65,7 @@ func TestIntegration_BaselineExistingSchema(t *testing.T) {
 	}
 	defer pool.Close()
 
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS notification_logs CASCADE`)
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS chapters CASCADE`)
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS manga_series CASCADE`)
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS goose_db_version CASCADE`)
-	_, _ = pool.Exec(ctx, `DROP FUNCTION IF EXISTS update_updated_at() CASCADE`)
+	resetMigrationTestDB(ctx, pool)
 
 	if err := Run(ctx, dsn); err != nil {
 		t.Fatalf("initial Run: %v", err)

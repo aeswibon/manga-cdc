@@ -9,15 +9,16 @@ Public status page hosted **separately** from Cloud Run. When production is down
 
 | Variable | Example |
 |----------|---------|
-| `PIPELINE_HEALTH_URL` | `https://manga-cdc-notifier-prod-….run.app/api/pipeline/health` |
+| `PIPELINE_HEALTH_URL` | `https://<your-notifier-host>/api/pipeline/health` |
+| `NOTIFIER_API_KEY` | Same value as production `API_READ_KEY` (server-side only) |
 
 3. Deploy. Optional: attach a custom domain (e.g. `status.yourdomain.com`).
 
 ## How it works
 
-- `index.html` polls `/api/status` every 60 seconds.
+- `index.html` lives in `public/` and polls `/api/status` every 60 seconds.
 - `/api/status` (Vercel serverless) fetches `PIPELINE_HEALTH_URL` from Vercel's network.
-- Vercel Cron hits `/api/status` every 5 minutes to keep checks warm.
+- Vercel Cron hits `/api/status` once daily (Hobby plan limit) to keep the function warm.
 
 ## Dashboard link
 
@@ -42,4 +43,8 @@ cd status-page
 PIPELINE_HEALTH_URL=http://localhost:8080/api/pipeline/health npm run dev
 ```
 
-## Vercel deploy
+## Automated deploy (GitHub Actions)
+
+After configuring `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` repository secrets, the **Deploy status page** workflow runs automatically when the main **Deploy** workflow completes on a release. You can also run it manually from the Actions tab.
+
+Set `PIPELINE_HEALTH_URL` in the Vercel project environment (not in GitHub) so `/api/status` can reach production.

@@ -44,11 +44,29 @@ func (m *MangaFireAdapter) newCollector() *colly.Collector {
 		Delay:       1 * time.Second,
 	})
 	c.SetRequestTimeout(30 * time.Second)
+	configureHTMLCollector(c)
 	return c
 }
 
 func (m *MangaFireAdapter) SetCollector(c *colly.Collector) {
 	m.client = c
+}
+
+func (m *MangaFireAdapter) FetchSeries(ctx context.Context, seriesID string) (model.Series, error) {
+	pageURL := mangafireBase + "/manga/" + seriesID
+	c := m.newCollector()
+	meta, err := scrapeOpenGraph(c, pageURL)
+	if err != nil {
+		return model.Series{}, fmt.Errorf("mangafire: %w", err)
+	}
+	return model.Series{
+		SourceID:    seriesID,
+		Title:       meta.Title,
+		Description: meta.Description,
+		CoverURL:    meta.Image,
+		SourceURL:   pageURL,
+		Status:      "ONGOING",
+	}, nil
 }
 
 func (m *MangaFireAdapter) FetchLatest(ctx context.Context) ([]model.Series, error) {

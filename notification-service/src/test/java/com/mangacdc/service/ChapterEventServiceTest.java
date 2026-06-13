@@ -91,6 +91,8 @@ class ChapterEventServiceTest {
     void processChapterEvent_shouldProcessNewChapterSuccessfully() {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/ch/1100");
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", true));
 
@@ -106,6 +108,8 @@ class ChapterEventServiceTest {
     void processChapterEvent_shouldHandleMissingSeriesTitle() {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", true));
 
@@ -120,6 +124,8 @@ class ChapterEventServiceTest {
     void processChapterEvent_shouldLogFailedNotification() {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", false));
 
@@ -134,6 +140,8 @@ class ChapterEventServiceTest {
     void processChapterEvent_shouldHandleMixedResults() {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", true, "slack", false, "telegram", true));
 
@@ -150,6 +158,8 @@ class ChapterEventServiceTest {
     void processChapterEvent_allChannelsFailed_shouldNotMarkNotified() {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", false, "slack", false));
 
@@ -163,6 +173,8 @@ class ChapterEventServiceTest {
     void processChapterEvent_shouldRecordDeliveryMetrics() {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", true, "slack", false, "telegram", true));
 
@@ -187,6 +199,20 @@ class ChapterEventServiceTest {
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "1", "Title", "https://ex.com", false));
 
         assertEquals(0, meterRegistry.find("notification_deliveries_total").counters().size());
+    }
+
+    @Test
+    void processChapterEvent_rejectsUrlMismatch() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/safe");
+
+        ChapterEventService service = newService(registry, repo);
+        service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1100", "Title", "https://evil.example/phish", true));
+
+        verifyNoInteractions(registry);
+        verify(repo, never()).logNotification(anyString(), anyString(), anyString(), any());
     }
 
     @Test

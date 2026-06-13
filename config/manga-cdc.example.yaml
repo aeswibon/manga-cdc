@@ -1,0 +1,14 @@
+# Example manifest — copy and edit, then run: go run ./configure generate
+version: 1
+tier: local
+database:
+  mode: embedded
+eventing:
+  backend: kafka
+  kafka:
+    topic: mangacdc.public.chapters
+notifiers:
+  - discord
+deploy:
+  targets:
+    - docker-compose

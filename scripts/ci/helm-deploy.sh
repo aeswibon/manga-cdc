@@ -39,4 +39,12 @@ helm upgrade --install manga-cdc ./helm/manga-cdc \
   --set "telegram.chatId=${TELEGRAM_CHAT_ID:-}" \
   --set "notifiers.discord=${discord_enabled}" \
   --set "notifiers.slack=${slack_enabled}" \
-  --set "notifiers.telegram=${telegram_enabled}"
+  --set "notifiers.telegram=${telegram_enabled}" \
+  --set "security.requireApiKey=true" \
+  --set "security.requireWebhookAuth=true" \
+  --set "security.adminMutationsEnabled=false" \
+  --set-string "security.allowedOrigins=${ALLOWED_ORIGINS:-}" \
+  --set-string "security.apiReadKey=${API_READ_KEY:-}" \
+  --set-string "security.webhookSecret=${WEBHOOK_SECRET:-}" \
+  --set-string "security.qstashCurrentSigningKey=${QSTASH_CURRENT_SIGNING_KEY:-}" \
+  --set-string "security.qstashNextSigningKey=${QSTASH_NEXT_SIGNING_KEY:-}"

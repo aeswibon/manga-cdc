@@ -58,5 +58,15 @@ notifiers:
   slack: false
   telegram: false
 
+security:
+  requireApiKey: "true"
+  requireWebhookAuth: "true"
+  adminMutationsEnabled: "false"
+  apiReadKey: ""
+  webhookSecret: ""
+  qstashCurrentSigningKey: ""
+  qstashNextSigningKey: ""
+  allowedOrigins: ""
+
 debezium:
   autoRegister: true

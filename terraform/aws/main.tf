@@ -76,6 +76,14 @@ KAFKA_TOPIC=mangacdc.public.chapters
 KAFKA_USERNAME=${var.kafka_username}
 KAFKA_PASSWORD=${var.kafka_password}
 CDC_ENABLED=true
+ADMIN_MUTATIONS_ENABLED=false
+SECURITY_REQUIRE_API_KEY=true
+SECURITY_REQUIRE_WEBHOOK_AUTH=true
+API_READ_KEY=${var.api_read_key}
+WEBHOOK_SECRET=${var.webhook_secret}
+QSTASH_CURRENT_SIGNING_KEY=${var.qstash_current_signing_key}
+QSTASH_NEXT_SIGNING_KEY=${var.qstash_next_signing_key}
+ALLOWED_ORIGINS=${var.allowed_origins}
 DISCORD_WEBHOOK_URL=${var.discord_webhook_url}
 SLACK_WEBHOOK_URL=${var.slack_webhook_url}
 TELEGRAM_BOT_TOKEN=${var.telegram_bot_token}
@@ -369,6 +377,46 @@ resource "helm_release" "manga_cdc" {
     name  = "notifiers.telegram"
     value = var.telegram_bot_token != "" ? "true" : "false"
   }
+
+  set {
+    name  = "security.requireApiKey"
+    value = "true"
+  }
+
+  set {
+    name  = "security.requireWebhookAuth"
+    value = "true"
+  }
+
+  set {
+    name  = "security.adminMutationsEnabled"
+    value = "false"
+  }
+
+  set {
+    name  = "security.allowedOrigins"
+    value = var.allowed_origins
+  }
+
+  set_sensitive {
+    name  = "security.apiReadKey"
+    value = var.api_read_key
+  }
+
+  set_sensitive {
+    name  = "security.webhookSecret"
+    value = var.webhook_secret
+  }
+
+  set_sensitive {
+    name  = "security.qstashCurrentSigningKey"
+    value = var.qstash_current_signing_key
+  }
+
+  set_sensitive {
+    name  = "security.qstashNextSigningKey"
+    value = var.qstash_next_signing_key
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -390,6 +438,14 @@ locals {
       KAFKA_USERNAME                 = var.kafka_username
       KAFKA_PASSWORD                 = var.kafka_password
       CDC_ENABLED                    = "true"
+      ADMIN_MUTATIONS_ENABLED        = "false"
+      SECURITY_REQUIRE_API_KEY       = "true"
+      SECURITY_REQUIRE_WEBHOOK_AUTH  = "true"
+      API_READ_KEY                   = var.api_read_key
+      WEBHOOK_SECRET                 = var.webhook_secret
+      QSTASH_CURRENT_SIGNING_KEY     = var.qstash_current_signing_key
+      QSTASH_NEXT_SIGNING_KEY        = var.qstash_next_signing_key
+      ALLOWED_ORIGINS                = var.allowed_origins
       DISCORD_WEBHOOK_URL            = var.discord_webhook_url
       SLACK_WEBHOOK_URL              = var.slack_webhook_url
       TELEGRAM_BOT_TOKEN             = var.telegram_bot_token
