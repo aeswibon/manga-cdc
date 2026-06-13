@@ -28,3 +28,11 @@ dist-ssr
 .vercel
 api/**/*.js
 !api/**/*.config.js
+
+# Kafka TLS debug artifacts (local only)
+ca.pem
+*.pem
+*.p12
+*.jks
+service.cert
+service.key
