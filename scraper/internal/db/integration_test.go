@@ -22,7 +22,7 @@ func getTestDB(t *testing.T) *DB {
 		dsn = "postgres://mangacdc:mangacdc@localhost:5432/mangacdc?sslmode=disable"
 	}
 
-	db, err := New(context.Background(), dsn)
+	db, err := New(context.Background(), dsn, 5)
 	if err != nil {
 		t.Fatalf("connect to test DB: %v", err)
 	}
