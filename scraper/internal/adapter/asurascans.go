@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aeswibon/manga-cdc/scraper/internal/adapter/httpclient"
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 	"github.com/gocolly/colly/v2"
 )
@@ -43,7 +44,14 @@ func (a *AsuraScansAdapter) newCollector() *colly.Collector {
 		Parallelism: 1,
 		Delay:       1 * time.Second,
 	})
-	c.SetRequestTimeout(30 * time.Second)
+	c.SetRequestTimeout(60 * time.Second) // Match FlareSolverr timeout
+	
+	// Inject FlareSolverr
+	c.WithTransport(&httpclient.Transport{
+		Client:          httpclient.New(),
+		UseFlareSolverr: true, // AsuraScans requires FlareSolverr
+	})
+
 	configureHTMLCollector(c)
 	return c
 }
@@ -176,4 +184,36 @@ func (a *AsuraScansAdapter) FetchChapters(ctx context.Context, seriesID string) 
 	c.Wait()
 
 	return chapters, nil
+}
+
+func (a *AsuraScansAdapter) FetchPages(ctx context.Context, chapterUrl string) ([]string, error) {
+	var pages []string
+	var mu sync.Mutex
+
+	c := a.newCollector()
+
+	c.OnHTML("#readerarea img", func(e *colly.HTMLElement) {
+		mu.Lock()
+		defer mu.Unlock()
+		
+		src := e.Attr("src")
+		if src == "" {
+			src = e.Attr("data-src")
+		}
+		
+		if src != "" && !strings.Contains(src, "discord") {
+			pages = append(pages, strings.TrimSpace(src))
+		}
+	})
+
+	if err := c.Visit(chapterUrl); err != nil {
+		return nil, fmt.Errorf("asurascans: fetch pages %s: %w", chapterUrl, err)
+	}
+	c.Wait()
+
+	if len(pages) == 0 {
+		return nil, fmt.Errorf("asurascans: no pages found at %s", chapterUrl)
+	}
+
+	return pages, nil
 }

@@ -13,6 +13,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/migrations:/docker-entrypoint-initdb.d
+    command: ["postgres", "-c", "wal_level=logical"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mangacdc"]
       interval: 5s
@@ -64,8 +65,11 @@ services:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: mangacdc.public.chapters
       WATCHLIST_PATH: /data/watchlist.yaml
+      DB_ENCRYPTION_KEY: local-dev-secret-key-12345
+      FLARESOLVERR_URL: http://flaresolverr:8191/v1
     volumes:
       - ./data/watchlist.yaml:/data/watchlist.yaml:ro
+      - ./data/archives:/archives
     ports:
       - "127.0.0.1:2112:2112"
 
@@ -91,7 +95,9 @@ services:
       SECURITY_REQUIRE_WEBHOOK_AUTH: "false"
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-dev-webhook}
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       PIPELINE_SCRAPER_HEALTH_URL: http://scraper:2112/healthz
@@ -135,6 +141,29 @@ services:
       - "9090:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  debezium:
+    image: debezium/server:2.6
+    container_name: manga-cdc-debezium-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    volumes:
+      - ./db/debezium/application.properties:/debezium/conf/application.properties:ro
+    restart: unless-stopped
+
+  flaresolverr:
+    image: flaresolverr/flaresolverr:latest
+    container_name: manga-cdc-flaresolverr-1
+    environment:
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+    ports:
+      - "8191:8191"
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:11.1.0

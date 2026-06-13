@@ -11,6 +11,7 @@ type SourceAdapter interface {
 	Name() string
 	FetchLatest(ctx context.Context) ([]model.Series, error)
 	FetchChapters(ctx context.Context, seriesID string) ([]model.Chapter, error)
+	FetchPages(ctx context.Context, chapterUrl string) ([]string, error)
 }
 
 // SeriesMetadataFetcher is implemented by adapters that can load series details by source ID.

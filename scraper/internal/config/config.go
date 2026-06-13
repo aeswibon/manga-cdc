@@ -23,6 +23,8 @@ type Config struct {
 	QStashToken              string
 	QStashDestination        string
 	AdminDiscordWebhookURL   string
+	DBEncryptionKey          string
+	FlareSolverrURL          string
 	ZeroResultAlertThreshold int
 	RejectRateAlertThreshold float64
 	RejectRateMinSample      int
@@ -142,6 +144,8 @@ func Load() (*Config, error) {
 		QStashToken:              os.Getenv("QSTASH_TOKEN"),
 		QStashDestination:        os.Getenv("QSTASH_DESTINATION_URL"),
 		AdminDiscordWebhookURL:   adminWebhook,
+		DBEncryptionKey:          os.Getenv("DB_ENCRYPTION_KEY"),
+		FlareSolverrURL:          os.Getenv("FLARESOLVERR_URL"),
 		ZeroResultAlertThreshold: threshold,
 		RejectRateAlertThreshold: rejectRateThreshold,
 		RejectRateMinSample:      rejectRateMinSample,

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -302,4 +303,49 @@ func (m *MangaPlusAdapter) FetchChapters(ctx context.Context, seriesID string) (
 	}
 
 	return chapters, nil
+}
+
+func (m *MangaPlusAdapter) FetchPages(ctx context.Context, chapterUrl string) ([]string, error) {
+	parts := strings.Split(chapterUrl, "/viewer/")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid mangaplus chapter url: %s", chapterUrl)
+	}
+	chapterID := parts[1]
+
+	body, err := m.doRequest(ctx, "/manga_viewer", url.Values{
+		"chapter_id":  {chapterID},
+		"split":       {"yes"},
+		"img_quality": {"super_high"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mangaplus: fetch viewer: %w", err)
+	}
+
+	var response mangapluspb.Response
+	if err := proto.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("mangaplus: unmarshal viewer: %w", err)
+	}
+
+	success := response.GetSuccess()
+	if success == nil {
+		return nil, fmt.Errorf("mangaplus: viewer request failed: %v", response.GetError())
+	}
+
+	viewer := success.GetMangaViewer()
+	if viewer == nil {
+		return nil, fmt.Errorf("mangaplus: no mangaViewer in response")
+	}
+
+	var pages []string
+	for _, p := range viewer.GetPages() {
+		if mp := p.GetMangaPage(); mp != nil && mp.GetImageUrl() != "" {
+			pages = append(pages, mp.GetImageUrl())
+		}
+	}
+
+	if len(pages) == 0 {
+		return nil, fmt.Errorf("mangaplus: no pages found at %s", chapterUrl)
+	}
+
+	return pages, nil
 }

@@ -158,3 +158,8 @@ func (m *MangaFireAdapter) FetchChapters(ctx context.Context, seriesID string) (
 
 	return chapters, nil
 }
+
+func (a *MangaFireAdapter) FetchPages(ctx context.Context, chapterUrl string) ([]string, error) {
+	// TODO: implement
+	return nil, nil
+}

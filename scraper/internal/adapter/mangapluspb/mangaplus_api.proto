@@ -24,7 +24,12 @@ message ErrorResult {
 message SuccessResult {
   RegistrationData registerationData = 2;
   TitleDetailView titleDetailView = 8;
+  MangaViewer mangaViewer = 10;
   SearchView searchView = 35;
+}
+
+message MangaViewer {
+  repeated Page pages = 1;
 }
 
 message RegistrationData {

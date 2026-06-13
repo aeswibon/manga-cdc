@@ -9,6 +9,7 @@ import (
 
 	"github.com/aeswibon/manga-cdc/scraper/internal/adapter"
 	"github.com/aeswibon/manga-cdc/scraper/internal/db"
+	"github.com/aeswibon/manga-cdc/scraper/internal/metadata"
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 	"github.com/aeswibon/manga-cdc/scraper/internal/validate"
 	"github.com/aeswibon/manga-cdc/scraper/internal/watchlist"
@@ -18,21 +19,24 @@ type Engine struct {
 	db          *db.DB
 	log         *slog.Logger
 	seriesDelay time.Duration
+	resolver    *metadata.Resolver
 }
 
-func New(database *db.DB, log *slog.Logger) *Engine {
+func New(database *db.DB, log *slog.Logger, resolver *metadata.Resolver) *Engine {
 	return &Engine{
 		db:          database,
 		log:         log,
 		seriesDelay: 500 * time.Millisecond,
+		resolver:    resolver,
 	}
 }
 
-func NewWithDelay(database *db.DB, log *slog.Logger, delay time.Duration) *Engine {
+func NewWithDelay(database *db.DB, log *slog.Logger, resolver *metadata.Resolver, delay time.Duration) *Engine {
 	return &Engine{
 		db:          database,
 		log:         log,
 		seriesDelay: delay,
+		resolver:    resolver,
 	}
 }
 
@@ -136,6 +140,17 @@ func (e *Engine) ProcessActiveSeries(ctx context.Context, source adapter.SourceA
 					"error", metaErr)
 			} else {
 				series = validate.MergeSeries(series, validate.NormalizeSeries(meta))
+			}
+		}
+
+		if series.AniListID == nil && e.resolver != nil {
+			md, err := e.resolver.Resolve(ctx, series.Title, series.AltTitles)
+			if err != nil {
+				e.log.Warn("failed to resolve metadata", "series", series.Title, "error", err)
+			} else if md != nil {
+				series.AniListID = &md.AniListID
+				series.MalID = md.MalID
+				series.CanonicalTitle = md.CanonicalTitle
 			}
 		}
 

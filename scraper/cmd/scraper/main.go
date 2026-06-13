@@ -11,11 +11,12 @@ import (
 
 	"github.com/aeswibon/manga-cdc/scraper/internal/adapter"
 	"github.com/aeswibon/manga-cdc/scraper/internal/alert"
+	"github.com/aeswibon/manga-cdc/scraper/internal/archive"
 	"github.com/aeswibon/manga-cdc/scraper/internal/config"
 	"github.com/aeswibon/manga-cdc/scraper/internal/db"
 	"github.com/aeswibon/manga-cdc/scraper/internal/diff"
 	"github.com/aeswibon/manga-cdc/scraper/internal/health"
-	"github.com/aeswibon/manga-cdc/scraper/internal/kafka"
+	"github.com/aeswibon/manga-cdc/scraper/internal/metadata"
 	"github.com/aeswibon/manga-cdc/scraper/internal/migrate"
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 	"github.com/aeswibon/manga-cdc/scraper/internal/qstash"
@@ -80,18 +81,8 @@ func main() {
 	}
 	defer database.Close()
 
-	engine := diff.NewWithDelay(database, log, cfg.ScrapeDelay)
-
-	var kafkaProducer *kafka.Producer
-	if cfg.KafkaBrokers != "" {
-		kafkaProducer, err = kafka.NewProducer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaUsername, cfg.KafkaPassword)
-		if err != nil {
-			log.Error("failed to create Kafka producer", "error", err)
-			os.Exit(1)
-		}
-		defer kafkaProducer.Close()
-		log.Info("Kafka producer enabled", "brokers", cfg.KafkaBrokers, "topic", cfg.KafkaTopic)
-	}
+	resolver := metadata.NewResolver()
+	engine := diff.NewWithDelay(database, log, resolver, cfg.ScrapeDelay)
 
 	var qstashPublisher *qstash.Publisher
 	if cfg.QStashToken != "" && cfg.QStashDestination != "" {
@@ -113,7 +104,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", promhttp.Handler())
-	health.New(database, kafkaProducer, cfg.KafkaBrokers != "").Register(mux)
+	health.New(database, nil, false).Register(mux)
 	metricsServer := &http.Server{Addr: ":2112", Handler: mux}
 	go func() {
 		log.Info("metrics server starting", "addr", ":2112")
@@ -139,9 +130,12 @@ func main() {
 		"watchlist_url", cfg.WatchlistURL,
 		"watchlist_path", cfg.WatchlistPath)
 
+	archiver := archive.NewArchiver("/archives")
+	log.Info("archiver enabled", "base_dir", "/archives")
+
 	syncWatchlist(ctx, log, engine, cfg)
 
-	scrapeActiveSeries(ctx, log, engine, zeroMonitor, database, sourceRegistry, kafkaProducer, qstashPublisher)
+	scrapeActiveSeries(ctx, log, engine, zeroMonitor, database, sourceRegistry, qstashPublisher, archiver)
 
 	if cfg.RunOnce {
 		log.Info("run_once enabled, exiting scrape run")
@@ -165,7 +159,7 @@ func main() {
 		case <-watchlistTicker.C:
 			syncWatchlist(ctx, log, engine, cfg)
 		case <-scrapeTicker.C:
-			scrapeActiveSeries(ctx, log, engine, zeroMonitor, database, sourceRegistry, kafkaProducer, qstashPublisher)
+			scrapeActiveSeries(ctx, log, engine, zeroMonitor, database, sourceRegistry, qstashPublisher, archiver)
 		}
 	}
 }
@@ -199,8 +193,8 @@ func scrapeActiveSeries(
 	zeroMonitor *alert.Monitor,
 	database *db.DB,
 	sourceRegistry map[string]adapter.SourceAdapter,
-	kafkaProducer *kafka.Producer,
 	qstashPublisher *qstash.Publisher,
+	archiver *archive.Archiver,
 ) {
 	activeSeries, err := database.GetActiveSeries(ctx)
 	if err != nil {
@@ -212,7 +206,7 @@ func scrapeActiveSeries(
 
 	for name, source := range sourceRegistry {
 		seriesForSource := bySource[name]
-		scrapeSource(ctx, log, engine, zeroMonitor, source, seriesForSource, kafkaProducer, qstashPublisher)
+		scrapeSource(ctx, log, engine, zeroMonitor, source, seriesForSource, qstashPublisher, archiver)
 	}
 }
 
@@ -235,8 +229,8 @@ func scrapeSource(
 	zeroMonitor *alert.Monitor,
 	source adapter.SourceAdapter,
 	activeSeries []model.Series,
-	kafkaProducer *kafka.Producer,
 	qstashPublisher *qstash.Publisher,
+	archiver *archive.Archiver,
 ) {
 	start := time.Now()
 	run, err := engine.ProcessActiveSeries(ctx, source, activeSeries)
@@ -259,20 +253,6 @@ func scrapeSource(
 			"series", r.SeriesTitle,
 			"new_chapters", r.NewChapters)
 
-		if kafkaProducer != nil {
-			for _, ch := range r.Chapters {
-				if err := kafkaProducer.PublishChapterEvent(ctx, ch); err != nil {
-					log.Error("failed to publish chapter event",
-						"source", source.Name(),
-						"series", r.SeriesTitle,
-						"chapter", ch.Number,
-						"error", err)
-					continue
-				}
-				chaptersPublished.Inc()
-			}
-		}
-
 		if qstashPublisher != nil {
 			for _, ch := range r.Chapters {
 				if err := qstashPublisher.PublishChapterEvent(ctx, ch); err != nil {
@@ -284,6 +264,21 @@ func scrapeSource(
 					continue
 				}
 				chaptersPublished.Inc()
+			}
+		}
+
+		if archiver != nil {
+			for _, ch := range r.Chapters {
+				pages, err := source.FetchPages(ctx, ch.URL)
+				if err != nil {
+					log.Error("failed to fetch pages for archive", "source", source.Name(), "chapter", ch.Number, "error", err)
+					continue
+				}
+				if err := archiver.ArchiveChapter(ctx, model.Series{Title: r.SeriesTitle}, ch, pages); err != nil {
+					log.Error("failed to archive chapter", "source", source.Name(), "chapter", ch.Number, "error", err)
+				} else {
+					log.Info("chapter archived", "source", source.Name(), "series", r.SeriesTitle, "chapter", ch.Number)
+				}
 			}
 		}
 	}

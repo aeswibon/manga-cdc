@@ -26,11 +26,13 @@ spring:
 
 discord:
   webhook-url: ${DISCORD_WEBHOOK_URL:}
+  bot-token: ${DISCORD_BOT_TOKEN:}
 
 slack:
   webhook-url: ${SLACK_WEBHOOK_URL:}
 
 telegram:
+  bot-username: ${TELEGRAM_BOT_USERNAME:}
   bot-token: ${TELEGRAM_BOT_TOKEN:}
   chat-id: ${TELEGRAM_CHAT_ID:}
 

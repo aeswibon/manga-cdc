@@ -186,3 +186,8 @@ func extractMangaPillChapterNum(text, href string) float64 {
 
 	return math.NaN()
 }
+
+func (a *MangaPillAdapter) FetchPages(ctx context.Context, chapterUrl string) ([]string, error) {
+	// TODO: implement
+	return nil, nil
+}

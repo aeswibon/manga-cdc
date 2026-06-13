@@ -23,6 +23,23 @@ public class ChapterRepository {
             DataClassRowMapper.newInstance(Chapter.class));
     }
 
+    public List<Chapter> findRecentChapters(int limit) {
+        return jdbc.query(
+            "SELECT c.id, c.series_id, c.chapter_num, c.title, c.url, c.release_date, c.is_new, s.title as series_title " +
+            "FROM chapters c JOIN manga_series s ON c.series_id = s.id " +
+            "ORDER BY c.release_date DESC LIMIT ?",
+            (rs, rowNum) -> {
+                String title = rs.getString("title");
+                String fullTitle = rs.getString("series_title") + (title != null && !title.isEmpty() ? " - " + title : "");
+                java.sql.Timestamp ts = rs.getTimestamp("release_date");
+                return new Chapter(
+                    rs.getString("id"), rs.getString("series_id"), rs.getDouble("chapter_num"),
+                    fullTitle, rs.getString("url"), ts != null ? ts.toInstant() : null, rs.getBoolean("is_new")
+                );
+            },
+            limit);
+    }
+
     public List<Chapter> findBySeriesId(String seriesId, int limit) {
         int capped = Math.min(Math.max(limit, 1), 100);
         return jdbc.query(

@@ -9,6 +9,9 @@ type Series struct {
 	SourceID      string    `json:"source_id"`
 	Title         string    `json:"title"`
 	AltTitles     []string  `json:"alt_titles,omitempty"`
+	AniListID     *int      `json:"anilist_id,omitempty"`
+	MalID         *int      `json:"mal_id,omitempty"`
+	CanonicalTitle string   `json:"canonical_title,omitempty"`
 	Author        string    `json:"author,omitempty"`
 	Artist        string    `json:"artist,omitempty"`
 	Description   string    `json:"description,omitempty"`

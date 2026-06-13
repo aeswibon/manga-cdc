@@ -23,6 +23,23 @@ public class SeriesRepository {
             DataClassRowMapper.newInstance(MangaSeries.class));
     }
 
+    public List<MangaSeries> findAllActive() {
+        return jdbc.query(
+            "SELECT id, source_id, title, author, artist, description, cover_url, status, source_url, latest_chapter, last_checked, is_active " +
+            "FROM manga_series WHERE is_active = true ORDER BY title ASC",
+            DataClassRowMapper.newInstance(MangaSeries.class));
+    }
+
+    public int countAll() {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM manga_series", Integer.class);
+        return count != null ? count : 0;
+    }
+
+    public int countActive() {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM manga_series WHERE is_active = true", Integer.class);
+        return count != null ? count : 0;
+    }
+
     public void updateActiveStatus(String id, boolean active) {
         jdbc.update("UPDATE manga_series SET is_active = ?, updated_at = NOW() WHERE id = ?::uuid", active, id);
     }

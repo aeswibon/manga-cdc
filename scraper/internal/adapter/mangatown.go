@@ -182,3 +182,8 @@ func extractMangaTownChapterNum(link string) float64 {
 	}
 	return n
 }
+
+func (a *MangaTownAdapter) FetchPages(ctx context.Context, chapterUrl string) ([]string, error) {
+	// TODO: implement
+	return nil, nil
+}

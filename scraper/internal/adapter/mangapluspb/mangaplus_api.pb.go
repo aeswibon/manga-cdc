@@ -273,6 +273,7 @@ type SuccessResult struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	RegisterationData *RegistrationData      `protobuf:"bytes,2,opt,name=registerationData,proto3" json:"registerationData,omitempty"`
 	TitleDetailView   *TitleDetailView       `protobuf:"bytes,8,opt,name=titleDetailView,proto3" json:"titleDetailView,omitempty"`
+	MangaViewer       *MangaViewer           `protobuf:"bytes,10,opt,name=mangaViewer,proto3" json:"mangaViewer,omitempty"`
 	SearchView        *SearchView            `protobuf:"bytes,35,opt,name=searchView,proto3" json:"searchView,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -322,9 +323,60 @@ func (x *SuccessResult) GetTitleDetailView() *TitleDetailView {
 	return nil
 }
 
+func (x *SuccessResult) GetMangaViewer() *MangaViewer {
+	if x != nil {
+		return x.MangaViewer
+	}
+	return nil
+}
+
 func (x *SuccessResult) GetSearchView() *SearchView {
 	if x != nil {
 		return x.SearchView
+	}
+	return nil
+}
+
+type MangaViewer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Pages         []*Page                `protobuf:"bytes,1,rep,name=pages,proto3" json:"pages,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MangaViewer) Reset() {
+	*x = MangaViewer{}
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MangaViewer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MangaViewer) ProtoMessage() {}
+
+func (x *MangaViewer) ProtoReflect() protoreflect.Message {
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MangaViewer.ProtoReflect.Descriptor instead.
+func (*MangaViewer) Descriptor() ([]byte, []int) {
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *MangaViewer) GetPages() []*Page {
+	if x != nil {
+		return x.Pages
 	}
 	return nil
 }
@@ -338,7 +390,7 @@ type RegistrationData struct {
 
 func (x *RegistrationData) Reset() {
 	*x = RegistrationData{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[3]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -350,7 +402,7 @@ func (x *RegistrationData) String() string {
 func (*RegistrationData) ProtoMessage() {}
 
 func (x *RegistrationData) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[3]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -363,7 +415,7 @@ func (x *RegistrationData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegistrationData.ProtoReflect.Descriptor instead.
 func (*RegistrationData) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{3}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RegistrationData) GetDeviceSecret() string {
@@ -385,7 +437,7 @@ type SearchView struct {
 
 func (x *SearchView) Reset() {
 	*x = SearchView{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[4]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -397,7 +449,7 @@ func (x *SearchView) String() string {
 func (*SearchView) ProtoMessage() {}
 
 func (x *SearchView) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[4]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -410,7 +462,7 @@ func (x *SearchView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchView.ProtoReflect.Descriptor instead.
 func (*SearchView) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{4}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SearchView) GetTopSearchBanners() []*Banner {
@@ -454,7 +506,7 @@ type Contents struct {
 
 func (x *Contents) Reset() {
 	*x = Contents{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[5]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -466,7 +518,7 @@ func (x *Contents) String() string {
 func (*Contents) ProtoMessage() {}
 
 func (x *Contents) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[5]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -479,7 +531,7 @@ func (x *Contents) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Contents.ProtoReflect.Descriptor instead.
 func (*Contents) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{5}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Contents) GetBanner() *Banner {
@@ -528,7 +580,7 @@ type TitleRankingGroup struct {
 
 func (x *TitleRankingGroup) Reset() {
 	*x = TitleRankingGroup{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[6]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -540,7 +592,7 @@ func (x *TitleRankingGroup) String() string {
 func (*TitleRankingGroup) ProtoMessage() {}
 
 func (x *TitleRankingGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[6]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -553,7 +605,7 @@ func (x *TitleRankingGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TitleRankingGroup.ProtoReflect.Descriptor instead.
 func (*TitleRankingGroup) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{6}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *TitleRankingGroup) GetOriginalTitleId() int32 {
@@ -588,7 +640,7 @@ type TitleList struct {
 
 func (x *TitleList) Reset() {
 	*x = TitleList{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[7]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -600,7 +652,7 @@ func (x *TitleList) String() string {
 func (*TitleList) ProtoMessage() {}
 
 func (x *TitleList) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[7]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -613,7 +665,7 @@ func (x *TitleList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TitleList.ProtoReflect.Descriptor instead.
 func (*TitleList) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{7}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *TitleList) GetListName() string {
@@ -647,7 +699,7 @@ type ChapterPageList struct {
 
 func (x *ChapterPageList) Reset() {
 	*x = ChapterPageList{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[8]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -659,7 +711,7 @@ func (x *ChapterPageList) String() string {
 func (*ChapterPageList) ProtoMessage() {}
 
 func (x *ChapterPageList) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[8]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -672,7 +724,7 @@ func (x *ChapterPageList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChapterPageList.ProtoReflect.Descriptor instead.
 func (*ChapterPageList) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{8}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ChapterPageList) GetListName() string {
@@ -704,7 +756,7 @@ type ChapterPages struct {
 
 func (x *ChapterPages) Reset() {
 	*x = ChapterPages{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[9]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -716,7 +768,7 @@ func (x *ChapterPages) String() string {
 func (*ChapterPages) ProtoMessage() {}
 
 func (x *ChapterPages) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[9]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -729,7 +781,7 @@ func (x *ChapterPages) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChapterPages.ProtoReflect.Descriptor instead.
 func (*ChapterPages) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{9}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ChapterPages) GetContainerId() int32 {
@@ -791,7 +843,7 @@ type Tag struct {
 
 func (x *Tag) Reset() {
 	*x = Tag{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[10]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -803,7 +855,7 @@ func (x *Tag) String() string {
 func (*Tag) ProtoMessage() {}
 
 func (x *Tag) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[10]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -816,7 +868,7 @@ func (x *Tag) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tag.ProtoReflect.Descriptor instead.
 func (*Tag) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{10}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Tag) GetTag() string {
@@ -845,7 +897,7 @@ type Banner struct {
 
 func (x *Banner) Reset() {
 	*x = Banner{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[11]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -857,7 +909,7 @@ func (x *Banner) String() string {
 func (*Banner) ProtoMessage() {}
 
 func (x *Banner) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[11]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -870,7 +922,7 @@ func (x *Banner) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Banner.ProtoReflect.Descriptor instead.
 func (*Banner) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{11}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Banner) GetImageUrl() string {
@@ -914,7 +966,7 @@ type AllTitlesGroup struct {
 
 func (x *AllTitlesGroup) Reset() {
 	*x = AllTitlesGroup{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[12]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -926,7 +978,7 @@ func (x *AllTitlesGroup) String() string {
 func (*AllTitlesGroup) ProtoMessage() {}
 
 func (x *AllTitlesGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[12]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -939,7 +991,7 @@ func (x *AllTitlesGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AllTitlesGroup.ProtoReflect.Descriptor instead.
 func (*AllTitlesGroup) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{12}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *AllTitlesGroup) GetTheTitle() string {
@@ -992,7 +1044,7 @@ type Title struct {
 
 func (x *Title) Reset() {
 	*x = Title{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[13]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +1056,7 @@ func (x *Title) String() string {
 func (*Title) ProtoMessage() {}
 
 func (x *Title) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[13]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +1069,7 @@ func (x *Title) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Title.ProtoReflect.Descriptor instead.
 func (*Title) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{13}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Title) GetTitleId() int32 {
@@ -1079,7 +1131,7 @@ type Label struct {
 
 func (x *Label) Reset() {
 	*x = Label{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[14]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1091,7 +1143,7 @@ func (x *Label) String() string {
 func (*Label) ProtoMessage() {}
 
 func (x *Label) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[14]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1104,7 +1156,7 @@ func (x *Label) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Label.ProtoReflect.Descriptor instead.
 func (*Label) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{14}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Label) GetLabel() string {
@@ -1135,7 +1187,7 @@ type TitleDetailView struct {
 
 func (x *TitleDetailView) Reset() {
 	*x = TitleDetailView{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[15]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1147,7 +1199,7 @@ func (x *TitleDetailView) String() string {
 func (*TitleDetailView) ProtoMessage() {}
 
 func (x *TitleDetailView) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[15]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1160,7 +1212,7 @@ func (x *TitleDetailView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TitleDetailView.ProtoReflect.Descriptor instead.
 func (*TitleDetailView) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{15}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TitleDetailView) GetTitle() *Title {
@@ -1225,7 +1277,7 @@ type Chapter struct {
 
 func (x *Chapter) Reset() {
 	*x = Chapter{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[16]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1289,7 @@ func (x *Chapter) String() string {
 func (*Chapter) ProtoMessage() {}
 
 func (x *Chapter) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[16]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1302,7 @@ func (x *Chapter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Chapter.ProtoReflect.Descriptor instead.
 func (*Chapter) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{16}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Chapter) GetTitleId() int32 {
@@ -1346,7 +1398,7 @@ type Page struct {
 
 func (x *Page) Reset() {
 	*x = Page{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[17]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1358,7 +1410,7 @@ func (x *Page) String() string {
 func (*Page) ProtoMessage() {}
 
 func (x *Page) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[17]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1371,7 +1423,7 @@ func (x *Page) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Page.ProtoReflect.Descriptor instead.
 func (*Page) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{17}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Page) GetMangaPage() *Page_MangaPage {
@@ -1392,7 +1444,7 @@ type Page_MangaPage struct {
 
 func (x *Page_MangaPage) Reset() {
 	*x = Page_MangaPage{}
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[18]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1404,7 +1456,7 @@ func (x *Page_MangaPage) String() string {
 func (*Page_MangaPage) ProtoMessage() {}
 
 func (x *Page_MangaPage) ProtoReflect() protoreflect.Message {
-	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[18]
+	mi := &file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1417,7 +1469,7 @@ func (x *Page_MangaPage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Page_MangaPage.ProtoReflect.Descriptor instead.
 func (*Page_MangaPage) Descriptor() ([]byte, []int) {
-	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{17, 0}
+	return file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP(), []int{18, 0}
 }
 
 func (x *Page_MangaPage) GetImageUrl() string {
@@ -1456,13 +1508,17 @@ const file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDesc = ""
 	"\aDEFAULT\x10\x00\x12\x10\n" +
 	"\fUNAUTHORIZED\x10\x01\x12\x0f\n" +
 	"\vMAINTENANCE\x10\x02\x12\x12\n" +
-	"\x0eGEOIP_BLOCKING\x10\x03\"\xe3\x01\n" +
+	"\x0eGEOIP_BLOCKING\x10\x03\"\xa1\x02\n" +
 	"\rSuccessResult\x12M\n" +
 	"\x11registerationData\x18\x02 \x01(\v2\x1f.mangaplus_api.RegistrationDataR\x11registerationData\x12H\n" +
-	"\x0ftitleDetailView\x18\b \x01(\v2\x1e.mangaplus_api.TitleDetailViewR\x0ftitleDetailView\x129\n" +
+	"\x0ftitleDetailView\x18\b \x01(\v2\x1e.mangaplus_api.TitleDetailViewR\x0ftitleDetailView\x12<\n" +
+	"\vmangaViewer\x18\n" +
+	" \x01(\v2\x1a.mangaplus_api.MangaViewerR\vmangaViewer\x129\n" +
 	"\n" +
 	"searchView\x18# \x01(\v2\x19.mangaplus_api.SearchViewR\n" +
-	"searchView\"6\n" +
+	"searchView\"8\n" +
+	"\vMangaViewer\x12)\n" +
+	"\x05pages\x18\x01 \x03(\v2\x13.mangaplus_api.PageR\x05pages\"6\n" +
 	"\x10RegistrationData\x12\"\n" +
 	"\fdeviceSecret\x18\x01 \x01(\tR\fdeviceSecret\"\xf9\x01\n" +
 	"\n" +
@@ -1577,64 +1633,67 @@ func file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDescGZIP()
 }
 
 var file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_goTypes = []any{
 	(Language)(0),             // 0: mangaplus_api.Language
 	(ErrorResult_Action)(0),   // 1: mangaplus_api.ErrorResult.Action
 	(*Response)(nil),          // 2: mangaplus_api.Response
 	(*ErrorResult)(nil),       // 3: mangaplus_api.ErrorResult
 	(*SuccessResult)(nil),     // 4: mangaplus_api.SuccessResult
-	(*RegistrationData)(nil),  // 5: mangaplus_api.RegistrationData
-	(*SearchView)(nil),        // 6: mangaplus_api.SearchView
-	(*Contents)(nil),          // 7: mangaplus_api.Contents
-	(*TitleRankingGroup)(nil), // 8: mangaplus_api.TitleRankingGroup
-	(*TitleList)(nil),         // 9: mangaplus_api.TitleList
-	(*ChapterPageList)(nil),   // 10: mangaplus_api.ChapterPageList
-	(*ChapterPages)(nil),      // 11: mangaplus_api.ChapterPages
-	(*Tag)(nil),               // 12: mangaplus_api.Tag
-	(*Banner)(nil),            // 13: mangaplus_api.Banner
-	(*AllTitlesGroup)(nil),    // 14: mangaplus_api.AllTitlesGroup
-	(*Title)(nil),             // 15: mangaplus_api.Title
-	(*Label)(nil),             // 16: mangaplus_api.Label
-	(*TitleDetailView)(nil),   // 17: mangaplus_api.TitleDetailView
-	(*Chapter)(nil),           // 18: mangaplus_api.Chapter
-	(*Page)(nil),              // 19: mangaplus_api.Page
-	(*Page_MangaPage)(nil),    // 20: mangaplus_api.Page.MangaPage
+	(*MangaViewer)(nil),       // 5: mangaplus_api.MangaViewer
+	(*RegistrationData)(nil),  // 6: mangaplus_api.RegistrationData
+	(*SearchView)(nil),        // 7: mangaplus_api.SearchView
+	(*Contents)(nil),          // 8: mangaplus_api.Contents
+	(*TitleRankingGroup)(nil), // 9: mangaplus_api.TitleRankingGroup
+	(*TitleList)(nil),         // 10: mangaplus_api.TitleList
+	(*ChapterPageList)(nil),   // 11: mangaplus_api.ChapterPageList
+	(*ChapterPages)(nil),      // 12: mangaplus_api.ChapterPages
+	(*Tag)(nil),               // 13: mangaplus_api.Tag
+	(*Banner)(nil),            // 14: mangaplus_api.Banner
+	(*AllTitlesGroup)(nil),    // 15: mangaplus_api.AllTitlesGroup
+	(*Title)(nil),             // 16: mangaplus_api.Title
+	(*Label)(nil),             // 17: mangaplus_api.Label
+	(*TitleDetailView)(nil),   // 18: mangaplus_api.TitleDetailView
+	(*Chapter)(nil),           // 19: mangaplus_api.Chapter
+	(*Page)(nil),              // 20: mangaplus_api.Page
+	(*Page_MangaPage)(nil),    // 21: mangaplus_api.Page.MangaPage
 }
 var file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_depIdxs = []int32{
 	4,  // 0: mangaplus_api.Response.success:type_name -> mangaplus_api.SuccessResult
 	3,  // 1: mangaplus_api.Response.error:type_name -> mangaplus_api.ErrorResult
 	1,  // 2: mangaplus_api.ErrorResult.action:type_name -> mangaplus_api.ErrorResult.Action
-	5,  // 3: mangaplus_api.SuccessResult.registerationData:type_name -> mangaplus_api.RegistrationData
-	17, // 4: mangaplus_api.SuccessResult.titleDetailView:type_name -> mangaplus_api.TitleDetailView
-	6,  // 5: mangaplus_api.SuccessResult.searchView:type_name -> mangaplus_api.SearchView
-	13, // 6: mangaplus_api.SearchView.topSearchBanners:type_name -> mangaplus_api.Banner
-	12, // 7: mangaplus_api.SearchView.allTags:type_name -> mangaplus_api.Tag
-	14, // 8: mangaplus_api.SearchView.allTitlesGroup:type_name -> mangaplus_api.AllTitlesGroup
-	7,  // 9: mangaplus_api.SearchView.contents:type_name -> mangaplus_api.Contents
-	13, // 10: mangaplus_api.Contents.banner:type_name -> mangaplus_api.Banner
-	9,  // 11: mangaplus_api.Contents.titleList:type_name -> mangaplus_api.TitleList
-	8,  // 12: mangaplus_api.Contents.rankedTitles:type_name -> mangaplus_api.TitleRankingGroup
-	16, // 13: mangaplus_api.Contents.allLabels:type_name -> mangaplus_api.Label
-	10, // 14: mangaplus_api.Contents.chapterPagesList:type_name -> mangaplus_api.ChapterPageList
-	15, // 15: mangaplus_api.TitleRankingGroup.titles:type_name -> mangaplus_api.Title
-	15, // 16: mangaplus_api.TitleList.featuredTitles:type_name -> mangaplus_api.Title
-	11, // 17: mangaplus_api.ChapterPageList.chapterPages:type_name -> mangaplus_api.ChapterPages
-	19, // 18: mangaplus_api.ChapterPages.pages:type_name -> mangaplus_api.Page
-	15, // 19: mangaplus_api.AllTitlesGroup.titles:type_name -> mangaplus_api.Title
-	12, // 20: mangaplus_api.AllTitlesGroup.tags:type_name -> mangaplus_api.Tag
-	16, // 21: mangaplus_api.AllTitlesGroup.label:type_name -> mangaplus_api.Label
-	0,  // 22: mangaplus_api.Title.language:type_name -> mangaplus_api.Language
-	15, // 23: mangaplus_api.TitleDetailView.title:type_name -> mangaplus_api.Title
-	18, // 24: mangaplus_api.TitleDetailView.firstChapterList:type_name -> mangaplus_api.Chapter
-	18, // 25: mangaplus_api.TitleDetailView.lastChapterList:type_name -> mangaplus_api.Chapter
-	18, // 26: mangaplus_api.TitleDetailView.chapterListV2:type_name -> mangaplus_api.Chapter
-	20, // 27: mangaplus_api.Page.mangaPage:type_name -> mangaplus_api.Page.MangaPage
-	28, // [28:28] is the sub-list for method output_type
-	28, // [28:28] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	6,  // 3: mangaplus_api.SuccessResult.registerationData:type_name -> mangaplus_api.RegistrationData
+	18, // 4: mangaplus_api.SuccessResult.titleDetailView:type_name -> mangaplus_api.TitleDetailView
+	5,  // 5: mangaplus_api.SuccessResult.mangaViewer:type_name -> mangaplus_api.MangaViewer
+	7,  // 6: mangaplus_api.SuccessResult.searchView:type_name -> mangaplus_api.SearchView
+	20, // 7: mangaplus_api.MangaViewer.pages:type_name -> mangaplus_api.Page
+	14, // 8: mangaplus_api.SearchView.topSearchBanners:type_name -> mangaplus_api.Banner
+	13, // 9: mangaplus_api.SearchView.allTags:type_name -> mangaplus_api.Tag
+	15, // 10: mangaplus_api.SearchView.allTitlesGroup:type_name -> mangaplus_api.AllTitlesGroup
+	8,  // 11: mangaplus_api.SearchView.contents:type_name -> mangaplus_api.Contents
+	14, // 12: mangaplus_api.Contents.banner:type_name -> mangaplus_api.Banner
+	10, // 13: mangaplus_api.Contents.titleList:type_name -> mangaplus_api.TitleList
+	9,  // 14: mangaplus_api.Contents.rankedTitles:type_name -> mangaplus_api.TitleRankingGroup
+	17, // 15: mangaplus_api.Contents.allLabels:type_name -> mangaplus_api.Label
+	11, // 16: mangaplus_api.Contents.chapterPagesList:type_name -> mangaplus_api.ChapterPageList
+	16, // 17: mangaplus_api.TitleRankingGroup.titles:type_name -> mangaplus_api.Title
+	16, // 18: mangaplus_api.TitleList.featuredTitles:type_name -> mangaplus_api.Title
+	12, // 19: mangaplus_api.ChapterPageList.chapterPages:type_name -> mangaplus_api.ChapterPages
+	20, // 20: mangaplus_api.ChapterPages.pages:type_name -> mangaplus_api.Page
+	16, // 21: mangaplus_api.AllTitlesGroup.titles:type_name -> mangaplus_api.Title
+	13, // 22: mangaplus_api.AllTitlesGroup.tags:type_name -> mangaplus_api.Tag
+	17, // 23: mangaplus_api.AllTitlesGroup.label:type_name -> mangaplus_api.Label
+	0,  // 24: mangaplus_api.Title.language:type_name -> mangaplus_api.Language
+	16, // 25: mangaplus_api.TitleDetailView.title:type_name -> mangaplus_api.Title
+	19, // 26: mangaplus_api.TitleDetailView.firstChapterList:type_name -> mangaplus_api.Chapter
+	19, // 27: mangaplus_api.TitleDetailView.lastChapterList:type_name -> mangaplus_api.Chapter
+	19, // 28: mangaplus_api.TitleDetailView.chapterListV2:type_name -> mangaplus_api.Chapter
+	21, // 29: mangaplus_api.Page.mangaPage:type_name -> mangaplus_api.Page.MangaPage
+	30, // [30:30] is the sub-list for method output_type
+	30, // [30:30] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_init() }
@@ -1652,7 +1711,7 @@ func file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDesc), len(file_scraper_internal_adapter_mangapluspb_mangaplus_api_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

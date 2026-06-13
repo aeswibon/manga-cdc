@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aeswibon/manga-cdc/scraper/internal/adapter/httpclient"
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 )
 
@@ -23,7 +24,13 @@ type MangaDexAdapter struct {
 
 func NewMangaDexAdapter() *MangaDexAdapter {
 	return &MangaDexAdapter{
-		client:  &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &httpclient.Transport{
+				Client:          httpclient.New(),
+				UseFlareSolverr: false,
+			},
+		},
 		baseURL: mangadexAPI,
 	}
 }
@@ -482,4 +489,55 @@ func (m *MangaDexAdapter) FetchChapters(ctx context.Context, seriesID string) ([
 	}
 
 	return chapters, nil
+}
+
+func (a *MangaDexAdapter) FetchPages(ctx context.Context, chapterUrl string) ([]string, error) {
+	// Extract chapter ID from URL
+	// Example: https://mangadex.org/chapter/12345-uuid
+	parts := strings.Split(chapterUrl, "/chapter/")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid mangadex chapter url: %s", chapterUrl)
+	}
+	chapterID := parts[1]
+
+	url := fmt.Sprintf("%s/at-home/server/%s", a.baseURL, chapterID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("mangadex: create athome request: %w", err)
+	}
+	setMangaDexHeaders(req)
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("mangadex: fetch athome: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("mangadex: unexpected athome status: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("mangadex: read athome body: %w", err)
+	}
+
+	var atHome struct {
+		BaseUrl string `json:"baseUrl"`
+		Chapter struct {
+			Hash string   `json:"hash"`
+			Data []string `json:"data"`
+		} `json:"chapter"`
+	}
+
+	if err := json.Unmarshal(body, &atHome); err != nil {
+		return nil, fmt.Errorf("mangadex: parse athome: %w", err)
+	}
+
+	var pages []string
+	for _, filename := range atHome.Chapter.Data {
+		pages = append(pages, fmt.Sprintf("%s/data/%s/%s", atHome.BaseUrl, atHome.Chapter.Hash, filename))
+	}
+
+	return pages, nil
 }

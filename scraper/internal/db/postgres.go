@@ -52,12 +52,15 @@ func (d *DB) Ping(ctx context.Context) error {
 func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 	var id string
 	err := d.pool.QueryRow(ctx, `
-		INSERT INTO manga_series (source_id, title, alt_titles, author, artist, description,
+		INSERT INTO manga_series (source_id, title, alt_titles, anilist_id, mal_id, canonical_title, author, artist, description,
 			cover_url, status, source_url, latest_chapter, last_checked, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (source_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			alt_titles = EXCLUDED.alt_titles,
+			anilist_id = EXCLUDED.anilist_id,
+			mal_id = EXCLUDED.mal_id,
+			canonical_title = EXCLUDED.canonical_title,
 			author = EXCLUDED.author,
 			artist = EXCLUDED.artist,
 			description = EXCLUDED.description,
@@ -68,7 +71,7 @@ func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 			is_active = EXCLUDED.is_active,
 			updated_at = NOW()
 		RETURNING id
-	`, s.SourceID, s.Title, s.AltTitles, s.Author, s.Artist, s.Description,
+	`, s.SourceID, s.Title, s.AltTitles, s.AniListID, s.MalID, s.CanonicalTitle, s.Author, s.Artist, s.Description,
 		s.CoverURL, s.Status, s.SourceURL, s.LatestChapter, time.Now(), s.IsActive).Scan(&id)
 
 	if err != nil {
@@ -82,18 +85,21 @@ func (d *DB) UpdateSeries(ctx context.Context, s model.Series) error {
 		UPDATE manga_series SET
 			title = $1,
 			alt_titles = $2,
-			author = $3,
-			artist = $4,
-			description = $5,
-			cover_url = $6,
-			status = $7,
-			source_url = $8,
-			latest_chapter = $9,
+			anilist_id = $3,
+			mal_id = $4,
+			canonical_title = $5,
+			author = $6,
+			artist = $7,
+			description = $8,
+			cover_url = $9,
+			status = $10,
+			source_url = $11,
+			latest_chapter = $12,
 			last_checked = NOW(),
-			is_active = $10,
+			is_active = $13,
 			updated_at = NOW()
-		WHERE id = $11
-	`, s.Title, s.AltTitles, s.Author, s.Artist, s.Description,
+		WHERE id = $14
+	`, s.Title, s.AltTitles, s.AniListID, s.MalID, s.CanonicalTitle, s.Author, s.Artist, s.Description,
 		s.CoverURL, s.Status, s.SourceURL, s.LatestChapter, s.IsActive, s.ID)
 
 	if err != nil {
@@ -105,11 +111,11 @@ func (d *DB) UpdateSeries(ctx context.Context, s model.Series) error {
 func (d *DB) GetSeriesBySourceID(ctx context.Context, sourceID string) (*model.Series, error) {
 	var s model.Series
 	err := d.pool.QueryRow(ctx, `
-		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), author, artist,
+		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), anilist_id, mal_id, canonical_title, author, artist,
 			description, cover_url, status, source_url, latest_chapter, is_active
 		FROM manga_series WHERE source_id = $1
 	`, sourceID).Scan(
-		&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.Author, &s.Artist,
+		&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.AniListID, &s.MalID, &s.CanonicalTitle, &s.Author, &s.Artist,
 		&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive)
 
 	if err != nil {
@@ -124,12 +130,12 @@ func (d *DB) GetSeriesBySourceID(ctx context.Context, sourceID string) (*model.S
 func (d *DB) GetSeriesByTitle(ctx context.Context, title string) (*model.Series, error) {
 	var s model.Series
 	err := d.pool.QueryRow(ctx, `
-		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), author, artist,
+		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), anilist_id, mal_id, canonical_title, author, artist,
 			description, cover_url, status, source_url, latest_chapter, is_active
 		FROM manga_series WHERE LOWER(TRIM(title)) = LOWER(TRIM($1))
 		LIMIT 1
 	`, title).Scan(
-		&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.Author, &s.Artist,
+		&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.AniListID, &s.MalID, &s.CanonicalTitle, &s.Author, &s.Artist,
 		&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive)
 
 	if err != nil {
@@ -222,7 +228,7 @@ func (d *DB) DeleteChaptersForSeries(ctx context.Context, seriesID string) error
 
 func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {
 	rows, err := d.pool.Query(ctx, `
-		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), author, artist,
+		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), anilist_id, mal_id, canonical_title, author, artist,
 			description, cover_url, status, source_url, latest_chapter, is_active
 		FROM manga_series WHERE is_active = true
 	`)
@@ -235,7 +241,7 @@ func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {
 	for rows.Next() {
 		var s model.Series
 		err := rows.Scan(
-			&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.Author, &s.Artist,
+			&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.AniListID, &s.MalID, &s.CanonicalTitle, &s.Author, &s.Artist,
 			&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive)
 		if err != nil {
 			return nil, fmt.Errorf("scan series: %w", err)
@@ -317,4 +323,42 @@ func (d *DB) InsertScrapedReject(ctx context.Context, source, entityType string,
 		return fmt.Errorf("insert scraped reject: %w", err)
 	}
 	return nil
+}
+
+func (d *DB) UpsertCredential(ctx context.Context, source string, payloadJSON []byte, encryptionKey string) error {
+	if encryptionKey == "" {
+		return fmt.Errorf("encryption key cannot be empty")
+	}
+	_, err := d.pool.Exec(ctx, `
+		INSERT INTO source_credentials (source, encrypted_payload)
+		VALUES ($1, pgp_sym_encrypt($2, $3))
+		ON CONFLICT (source) DO UPDATE SET
+			encrypted_payload = EXCLUDED.encrypted_payload,
+			updated_at = NOW()
+	`, source, string(payloadJSON), encryptionKey)
+
+	if err != nil {
+		return fmt.Errorf("upsert credential: %w", err)
+	}
+	return nil
+}
+
+func (d *DB) GetCredential(ctx context.Context, source string, encryptionKey string) ([]byte, error) {
+	if encryptionKey == "" {
+		return nil, fmt.Errorf("encryption key cannot be empty")
+	}
+	var decrypted string
+	err := d.pool.QueryRow(ctx, `
+		SELECT pgp_sym_decrypt(encrypted_payload, $2)
+		FROM source_credentials
+		WHERE source = $1
+	`, source, encryptionKey).Scan(&decrypted)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get credential: %w", err)
+	}
+	return []byte(decrypted), nil
 }
