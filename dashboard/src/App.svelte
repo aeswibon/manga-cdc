@@ -14,6 +14,18 @@
   let activeTab = $state('overview');
   let isDemoMode = $state(false);
   let apiStatus = $state('connecting');
+  let isDarkMode = $state(true);
+
+  function toggleTheme() {
+    isDarkMode = !isDarkMode;
+    if (isDarkMode) {
+      document.documentElement.classList.remove('light');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.add('light');
+      localStorage.setItem('theme', 'light');
+    }
+  }
   
   // Dashboard stats state
   let stats = $state({
@@ -216,6 +228,16 @@
   }
 
   onMount(() => {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+    if (savedTheme === 'light' || (!savedTheme && prefersLight)) {
+      isDarkMode = false;
+      document.documentElement.classList.add('light');
+    } else {
+      isDarkMode = true;
+      document.documentElement.classList.remove('light');
+    }
+
     fetchBackendData();
     const interval = setInterval(fetchBackendData, 30000);
 
@@ -264,34 +286,44 @@
   <!-- Sidebar -->
   <aside class="w-full md:w-64 bg-bg-secondary border-b md:border-b-0 md:border-r border-border-color p-6 flex flex-col justify-between gap-6">
     <div class="flex flex-col gap-6 w-full">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-accent to-amber-600 shadow-[0_0_15px_rgba(139,92,246,0.3)]"></div>
-        <span class="font-heading font-semibold text-lg tracking-wide">Manga-CDC</span>
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-accent to-amber-600 shadow-[0_0_15px_rgba(139,92,246,0.3)]"></div>
+          <span class="font-heading font-semibold text-lg tracking-wide text-gray-100">Manga-CDC</span>
+        </div>
+        <!-- Theme Toggle for Mobile -->
+        <button 
+          onclick={toggleTheme} 
+          class="md:hidden p-1.5 rounded-lg border border-border-color hover:bg-bg-tertiary transition-colors cursor-pointer text-gray-400"
+          aria-label="Toggle theme"
+        >
+          {isDarkMode ? '🌙' : '☀️'}
+        </button>
       </div>
       
       <nav class="flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0">
         <button 
-          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-white"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-gray-50"
           class:bg-bg-tertiary={activeTab === 'overview'}
-          class:text-white={activeTab === 'overview'}
+          class:text-gray-50={activeTab === 'overview'}
           class:text-gray-400={activeTab !== 'overview'}
           onclick={() => activeTab = 'overview'}
         >
           <span>📊</span> Overview
         </button>
         <button 
-          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-white"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-gray-50"
           class:bg-bg-tertiary={activeTab === 'watchlist'}
-          class:text-white={activeTab === 'watchlist'}
+          class:text-gray-50={activeTab === 'watchlist'}
           class:text-gray-400={activeTab !== 'watchlist'}
           onclick={() => activeTab = 'watchlist'}
         >
           <span>📖</span> Watchlist
         </button>
         <button 
-          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-white"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-gray-50"
           class:bg-bg-tertiary={activeTab === 'logs'}
-          class:text-white={activeTab === 'logs'}
+          class:text-gray-50={activeTab === 'logs'}
           class:text-gray-400={activeTab !== 'logs'}
           onclick={() => activeTab = 'logs'}
         >
@@ -301,6 +333,15 @@
     </div>
     
     <div class="hidden md:flex flex-col gap-3 pt-4 border-t border-border-color">
+      <!-- Theme Toggle for Desktop -->
+      <button 
+        onclick={toggleTheme} 
+        class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs font-medium border border-border-color hover:bg-bg-tertiary transition-colors cursor-pointer text-gray-300 hover:text-gray-50 animate-fade-in"
+      >
+        <span>Theme</span>
+        <span>{isDarkMode ? '🌙 Dark' : '☀️ Light'}</span>
+      </button>
+
       <div class="flex items-center gap-2.5">
         <span 
           class="w-2.5 h-2.5 rounded-full" 
