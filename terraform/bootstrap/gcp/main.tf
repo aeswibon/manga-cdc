@@ -35,6 +35,7 @@ locals {
     ],
     var.deployment_target == "serverless" ? [
       "roles/cloudscheduler.admin",
+      "roles/resourcemanager.projectIamAdmin",
       "roles/run.admin",
     ] : [],
     var.deployment_target == "vm" ? [
