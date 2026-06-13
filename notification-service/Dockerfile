@@ -20,7 +20,7 @@ LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.base.name="docker.io/library/alpine:3.20"
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates libc6-compat
 WORKDIR /app
 COPY --from=jlink /jre /jre
 COPY --from=builder /app/target/*.jar app.jar
