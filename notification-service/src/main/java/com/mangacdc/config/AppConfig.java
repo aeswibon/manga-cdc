@@ -17,4 +17,12 @@ public class AppConfig {
             .setReadTimeout(Duration.ofSeconds(30))
             .build();
     }
+
+    @Bean
+    public RestTemplate healthCheckRestTemplate(RestTemplateBuilder builder) {
+        return builder
+            .setConnectTimeout(Duration.ofSeconds(2))
+            .setReadTimeout(Duration.ofSeconds(3))
+            .build();
+    }
 }

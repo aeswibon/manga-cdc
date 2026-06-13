@@ -1,5 +1,6 @@
 package com.mangacdc.controller;
 
+import com.mangacdc.config.MutationGuard;
 import com.mangacdc.model.NotificationLogEntry;
 import com.mangacdc.repository.NotificationLogRepository;
 import com.mangacdc.service.Notifier;
@@ -15,21 +16,27 @@ import java.util.UUID;
 @CrossOrigin(origins = "*")
 public class NotificationLogController {
 
+    private static final int MAX_LOG_LIMIT = 100;
+
     private final NotificationLogRepository notificationLogRepository;
     private final SseEmitterService sseEmitterService;
     private final List<Notifier> notifiers;
+    private final MutationGuard mutationGuard;
 
     public NotificationLogController(NotificationLogRepository notificationLogRepository,
                                      SseEmitterService sseEmitterService,
-                                     List<Notifier> notifiers) {
+                                     List<Notifier> notifiers,
+                                     MutationGuard mutationGuard) {
         this.notificationLogRepository = notificationLogRepository;
         this.sseEmitterService = sseEmitterService;
         this.notifiers = notifiers;
+        this.mutationGuard = mutationGuard;
     }
 
     @GetMapping("/logs")
     public List<NotificationLogEntry> listLogs(@RequestParam(defaultValue = "50") int limit) {
-        return notificationLogRepository.findRecent(limit);
+        int cappedLimit = Math.min(limit, MAX_LOG_LIMIT);
+        return notificationLogRepository.findRecent(cappedLimit);
     }
 
     @GetMapping(value = "/logs/stream", produces = "text/event-stream")
@@ -40,7 +47,10 @@ public class NotificationLogController {
     }
 
     @PostMapping("/logs/{logId}/retry")
-    public NotificationLogEntry retryLog(@PathVariable String logId) {
+    public NotificationLogEntry retryLog(
+            @PathVariable String logId,
+            @RequestHeader(value = "X-Admin-Key", required = false) String adminKey) {
+        mutationGuard.requireMutationAccess(adminKey);
         UUID id = UUID.fromString(logId);
         NotificationLogEntry entry = notificationLogRepository.findById(id);
 

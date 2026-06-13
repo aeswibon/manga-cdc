@@ -1,5 +1,19 @@
 import { expect, test, describe } from "bun:test";
-import { calculateSuccessRate, filterSeries, filterLogs, type Series } from "./utils";
+import {
+  calculateSuccessRate,
+  filterSeries,
+  filterLogs,
+  duplicateTitleKeys,
+  formatRelativeTime,
+  parseSourceDisplay,
+  readOnSourceLabel,
+  seriesStatusLabel,
+  seriesStatusVariant,
+  parsePipelineHealth,
+  healthLabel,
+  healthVariant,
+  type Series,
+} from "./utils";
 
 describe("calculateSuccessRate", () => {
   test("returns 100 when totalLogs is 0", () => {
@@ -121,5 +135,73 @@ describe("filterLogs", () => {
     const result = filterLogs(mockLogs, "", "ALL", "FAILED");
     expect(result.length).toBe(1);
     expect(result[0].status).toBe("FAILED");
+  });
+});
+
+describe("watchlist helpers", () => {
+  test("parseSourceDisplay splits namespaced ids", () => {
+    const parsed = parseSourceDisplay("mangadex:a1c7c817-4e59-43b7-9365-09675a149a6f");
+    expect(parsed.source).toBe("mangadex");
+    expect(parsed.rawId).toBe("a1c7c817-4e59-43b7-9365-09675a149a6f");
+    expect(parsed.shortId).toContain("…");
+  });
+
+  test("duplicateTitleKeys finds repeated titles", () => {
+    const list: Series[] = [
+      { id: "1", sourceId: "mangadex:a", title: "One Piece", author: "", artist: "", description: "", coverUrl: "", status: "ONGOING", sourceUrl: "", latestChapter: 1, lastChecked: "", isActive: true },
+      { id: "2", sourceId: "mangadex:b", title: "one piece", author: "", artist: "", description: "", coverUrl: "", status: "ONGOING", sourceUrl: "", latestChapter: 1, lastChecked: "", isActive: true },
+      { id: "3", sourceId: "mangadex:c", title: "Solo Leveling", author: "", artist: "", description: "", coverUrl: "", status: "ONGOING", sourceUrl: "", latestChapter: 1, lastChecked: "", isActive: true },
+    ];
+    const dupes = duplicateTitleKeys(list);
+    expect(dupes.has("one piece")).toBe(true);
+    expect(dupes.size).toBe(1);
+  });
+
+  test("formatRelativeTime returns human-readable value", () => {
+    const recent = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    expect(formatRelativeTime(recent)).toMatch(/minute|min/i);
+    expect(formatRelativeTime("")).toBe("never");
+  });
+
+  test("readOnSourceLabel maps known sources", () => {
+    expect(readOnSourceLabel("mangadex")).toBe("MangaDex");
+    expect(readOnSourceLabel("custom")).toBe("custom");
+  });
+
+  test("seriesStatusLabel and variant map publication status", () => {
+    expect(seriesStatusLabel("ONGOING")).toBe("Ongoing");
+    expect(seriesStatusLabel("COMPLETED")).toBe("Completed");
+    expect(seriesStatusVariant("ONGOING")).toBe("ongoing");
+    expect(seriesStatusVariant("COMPLETED")).toBe("completed");
+    expect(seriesStatusVariant("HIATUS")).toBe("unknown");
+  });
+});
+
+describe("pipeline health helpers", () => {
+  const sampleHealth = {
+    status: "operational",
+    updatedAt: "2026-06-13T06:36:33.566Z",
+    components: [
+      { name: "notifier", status: "operational", detail: "Notification API responding" },
+      { name: "database", status: "operational", detail: "PostgreSQL reachable" },
+    ],
+  };
+
+  test("healthLabel maps pipeline status values", () => {
+    expect(healthLabel("operational")).toBe("Operational");
+    expect(healthLabel("degraded")).toBe("Degraded");
+    expect(healthLabel("down")).toBe("Down");
+    expect(healthVariant("maintenance")).toBe("maintenance");
+  });
+
+  test("parsePipelineHealth validates payload shape", () => {
+    expect(parsePipelineHealth(sampleHealth)?.status).toBe("operational");
+    expect(parsePipelineHealth({})).toBeNull();
+  });
+
+  test("parsePipelineHealth keeps component details", () => {
+    const parsed = parsePipelineHealth(sampleHealth);
+    expect(parsed?.components).toHaveLength(2);
+    expect(parsed?.components[0].name).toBe("notifier");
   });
 });

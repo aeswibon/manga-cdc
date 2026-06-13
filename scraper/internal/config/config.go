@@ -12,6 +12,9 @@ type Config struct {
 	DBMaxConns               int
 	ScrapeInterval           time.Duration
 	ScrapeDelay              time.Duration
+	WatchlistURL             string
+	WatchlistPath            string
+	WatchlistSyncInterval    time.Duration
 	LogLevel                 string
 	KafkaBrokers             string
 	KafkaTopic               string
@@ -21,6 +24,8 @@ type Config struct {
 	QStashDestination        string
 	AdminDiscordWebhookURL   string
 	ZeroResultAlertThreshold int
+	RejectRateAlertThreshold float64
+	RejectRateMinSample      int
 	RunOnce                  bool
 }
 
@@ -73,6 +78,24 @@ func Load() (*Config, error) {
 		threshold = parsed
 	}
 
+	rejectRateThreshold := 0.5
+	if v := os.Getenv("REJECT_RATE_ALERT_THRESHOLD"); v != "" {
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid REJECT_RATE_ALERT_THRESHOLD: %w", err)
+		}
+		rejectRateThreshold = parsed
+	}
+
+	rejectRateMinSample := 5
+	if v := os.Getenv("REJECT_RATE_MIN_SAMPLE"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid REJECT_RATE_MIN_SAMPLE: %w", err)
+		}
+		rejectRateMinSample = parsed
+	}
+
 	scrapeDelay := 500 * time.Millisecond
 	if v := os.Getenv("SCRAPE_DELAY_MS"); v != "" {
 		ms, err := strconv.Atoi(v)
@@ -89,11 +112,28 @@ func Load() (*Config, error) {
 		}
 	}
 
+	watchlistSyncInterval := 24 * time.Hour
+	if v := os.Getenv("WATCHLIST_SYNC_INTERVAL"); v != "" {
+		parsed, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid WATCHLIST_SYNC_INTERVAL: %w", err)
+		}
+		watchlistSyncInterval = parsed
+	}
+
+	watchlistPath := os.Getenv("WATCHLIST_PATH")
+	if watchlistPath == "" {
+		watchlistPath = "data/watchlist.yaml"
+	}
+
 	return &Config{
 		DatabaseURL:              dbURL,
 		DBMaxConns:               dbMaxConns,
 		ScrapeInterval:           interval,
 		ScrapeDelay:              scrapeDelay,
+		WatchlistURL:             os.Getenv("WATCHLIST_URL"),
+		WatchlistPath:            watchlistPath,
+		WatchlistSyncInterval:    watchlistSyncInterval,
 		LogLevel:                 logLevel,
 		KafkaBrokers:             os.Getenv("KAFKA_BROKERS"),
 		KafkaTopic:               getEnv("KAFKA_TOPIC", "mangacdc.public.chapters"),
@@ -103,6 +143,8 @@ func Load() (*Config, error) {
 		QStashDestination:        os.Getenv("QSTASH_DESTINATION_URL"),
 		AdminDiscordWebhookURL:   adminWebhook,
 		ZeroResultAlertThreshold: threshold,
+		RejectRateAlertThreshold: rejectRateThreshold,
+		RejectRateMinSample:      rejectRateMinSample,
 		RunOnce:                  runOnce,
 	}, nil
 }

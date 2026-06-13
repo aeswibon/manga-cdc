@@ -1,6 +1,8 @@
 # Build stage
 FROM oven/bun:1-alpine AS build
 WORKDIR /app
+ARG VITE_STATUS_PAGE_URL=http://localhost:3001
+ENV VITE_STATUS_PAGE_URL=$VITE_STATUS_PAGE_URL
 COPY package.json bun.lock* ./
 RUN bun install
 COPY . .

@@ -1,0 +1,14 @@
+{
+  "name": "manga-cdc-status-page",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "node serve-local.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "@vercel/node": "^5.5.15",
+    "typescript": "~6.0.2"
+  }
+}

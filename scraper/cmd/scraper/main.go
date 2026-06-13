@@ -17,8 +17,10 @@ import (
 	"github.com/aeswibon/manga-cdc/scraper/internal/health"
 	"github.com/aeswibon/manga-cdc/scraper/internal/kafka"
 	"github.com/aeswibon/manga-cdc/scraper/internal/migrate"
+	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 	"github.com/aeswibon/manga-cdc/scraper/internal/qstash"
 	"github.com/aeswibon/manga-cdc/scraper/internal/version"
+	"github.com/aeswibon/manga-cdc/scraper/internal/watchlist"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -97,9 +99,16 @@ func main() {
 		log.Info("QStash publisher enabled", "destination", cfg.QStashDestination)
 	}
 
-	zeroMonitor := alert.New(log, cfg.AdminDiscordWebhookURL, cfg.ZeroResultAlertThreshold)
+	zeroMonitor := alert.New(log, cfg.AdminDiscordWebhookURL, alert.Config{
+		ZeroResultThreshold:   cfg.ZeroResultAlertThreshold,
+		RejectRateThreshold:   cfg.RejectRateAlertThreshold,
+		RejectRateMinSample:   cfg.RejectRateMinSample,
+	})
 	if cfg.AdminDiscordWebhookURL != "" {
-		log.Info("zero-result alerts enabled", "threshold", cfg.ZeroResultAlertThreshold)
+		log.Info("scraper alerts enabled",
+			"zero_result_threshold", cfg.ZeroResultAlertThreshold,
+			"reject_rate_threshold", cfg.RejectRateAlertThreshold,
+			"reject_rate_min_sample", cfg.RejectRateMinSample)
 	}
 
 	mux := http.NewServeMux()
@@ -113,28 +122,36 @@ func main() {
 		}
 	}()
 
-	sources := []adapter.SourceAdapter{
-		adapter.NewMangaDexAdapter(),
-		adapter.NewMangaFireAdapter(),
-		adapter.NewAsuraScansAdapter(),
-		adapter.NewMangaPlusAdapter(),
-		adapter.NewMangaTownAdapter(),
-		adapter.NewMangaPillAdapter(),
+	sourceRegistry := map[string]adapter.SourceAdapter{
+		"mangadex":   adapter.NewMangaDexAdapter(),
+		"mangafire":  adapter.NewMangaFireAdapter(),
+		"asurascans": adapter.NewAsuraScansAdapter(),
+		"mangaplus":  adapter.NewMangaPlusAdapter(),
+		"mangatown":  adapter.NewMangaTownAdapter(),
+		"mangapill":  adapter.NewMangaPillAdapter(),
 	}
 
-	log.Info("scraper started", "version", version.Version, "sources", len(sources), "interval", cfg.ScrapeInterval)
+	log.Info("scraper started",
+		"version", version.Version,
+		"sources", len(sourceRegistry),
+		"scrape_interval", cfg.ScrapeInterval,
+		"watchlist_sync_interval", cfg.WatchlistSyncInterval,
+		"watchlist_url", cfg.WatchlistURL,
+		"watchlist_path", cfg.WatchlistPath)
 
-	ticker := time.NewTicker(cfg.ScrapeInterval)
-	defer ticker.Stop()
+	syncWatchlist(ctx, log, engine, cfg)
 
-	for _, source := range sources {
-		scrapeSource(ctx, log, engine, zeroMonitor, source, kafkaProducer, qstashPublisher)
-	}
+	scrapeActiveSeries(ctx, log, engine, zeroMonitor, database, sourceRegistry, kafkaProducer, qstashPublisher)
 
 	if cfg.RunOnce {
 		log.Info("run_once enabled, exiting scrape run")
 		return
 	}
+
+	watchlistTicker := time.NewTicker(cfg.WatchlistSyncInterval)
+	defer watchlistTicker.Stop()
+	scrapeTicker := time.NewTicker(cfg.ScrapeInterval)
+	defer scrapeTicker.Stop()
 
 	for {
 		select {
@@ -145,13 +162,70 @@ func main() {
 			metricsServer.Shutdown(shutdownCtx)
 			cancel()
 			return
-		case <-ticker.C:
-		}
-
-		for _, source := range sources {
-			scrapeSource(ctx, log, engine, zeroMonitor, source, kafkaProducer, qstashPublisher)
+		case <-watchlistTicker.C:
+			syncWatchlist(ctx, log, engine, cfg)
+		case <-scrapeTicker.C:
+			scrapeActiveSeries(ctx, log, engine, zeroMonitor, database, sourceRegistry, kafkaProducer, qstashPublisher)
 		}
 	}
+}
+
+func loadWatchlistEntries(ctx context.Context, cfg *config.Config) ([]watchlist.Entry, error) {
+	if cfg.WatchlistURL != "" {
+		return watchlist.LoadFromURL(ctx, cfg.WatchlistURL)
+	}
+	return watchlist.LoadFromFile(cfg.WatchlistPath)
+}
+
+func syncWatchlist(ctx context.Context, log *slog.Logger, engine *diff.Engine, cfg *config.Config) {
+	entries, err := loadWatchlistEntries(ctx, cfg)
+	if err != nil {
+		log.Error("watchlist sync failed", "error", err)
+		return
+	}
+
+	added, rejected, removed, err := engine.SyncWatchlist(ctx, entries)
+	if err != nil {
+		log.Error("watchlist sync failed", "error", err)
+		return
+	}
+	log.Info("watchlist sync complete", "entries", len(entries), "added", added, "rejected", rejected, "removed", removed)
+}
+
+func scrapeActiveSeries(
+	ctx context.Context,
+	log *slog.Logger,
+	engine *diff.Engine,
+	zeroMonitor *alert.Monitor,
+	database *db.DB,
+	sourceRegistry map[string]adapter.SourceAdapter,
+	kafkaProducer *kafka.Producer,
+	qstashPublisher *qstash.Publisher,
+) {
+	activeSeries, err := database.GetActiveSeries(ctx)
+	if err != nil {
+		log.Error("failed to load active series", "error", err)
+		return
+	}
+
+	bySource := groupActiveSeriesBySource(activeSeries)
+
+	for name, source := range sourceRegistry {
+		seriesForSource := bySource[name]
+		scrapeSource(ctx, log, engine, zeroMonitor, source, seriesForSource, kafkaProducer, qstashPublisher)
+	}
+}
+
+func groupActiveSeriesBySource(series []model.Series) map[string][]model.Series {
+	grouped := make(map[string][]model.Series)
+	for _, s := range series {
+		source, _, err := watchlist.ParseRawSourceID(s.SourceID)
+		if err != nil {
+			continue
+		}
+		grouped[source] = append(grouped[source], s)
+	}
+	return grouped
 }
 
 func scrapeSource(
@@ -160,11 +234,12 @@ func scrapeSource(
 	engine *diff.Engine,
 	zeroMonitor *alert.Monitor,
 	source adapter.SourceAdapter,
+	activeSeries []model.Series,
 	kafkaProducer *kafka.Producer,
 	qstashPublisher *qstash.Publisher,
 ) {
 	start := time.Now()
-	run, err := engine.ProcessSource(ctx, source)
+	run, err := engine.ProcessActiveSeries(ctx, source, activeSeries)
 	duration := time.Since(start).Seconds()
 
 	if err != nil {
@@ -175,6 +250,7 @@ func scrapeSource(
 
 	scrapeDuration.WithLabelValues(source.Name()).Observe(duration)
 	zeroMonitor.RecordScrape(ctx, source.Name(), run.SeriesFetched)
+	zeroMonitor.RecordValidation(ctx, source.Name(), run.SeriesFetched, run.SeriesRejected)
 
 	for _, r := range run.Results {
 		chaptersDetected.Add(float64(r.NewChapters))
@@ -210,5 +286,11 @@ func scrapeSource(
 				chaptersPublished.Inc()
 			}
 		}
+	}
+
+	if len(activeSeries) == 0 {
+		log.Debug("no active series for source", "source", source.Name())
+	} else if len(run.Results) == 0 {
+		log.Debug("no new chapters", "source", source.Name(), "series_polled", len(activeSeries))
 	}
 }

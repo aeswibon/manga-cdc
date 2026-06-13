@@ -1,11 +1,14 @@
 package com.mangacdc.controller;
 
+import com.mangacdc.config.MutationConfig;
+import com.mangacdc.config.MutationGuard;
 import com.mangacdc.model.NotificationLogEntry;
 import com.mangacdc.repository.NotificationLogRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -21,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(NotificationLogController.class)
+@Import({MutationConfig.class, MutationGuard.class})
 class NotificationLogControllerTest {
 
     @Autowired
@@ -71,5 +75,15 @@ class NotificationLogControllerTest {
                 .andExpect(status().isOk());
 
         verify(notificationLogRepository).findRecent(eq(10));
+    }
+
+    @Test
+    void listLogs_capsLimitAt100() throws Exception {
+        when(notificationLogRepository.findRecent(100)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/logs").param("limit", "500"))
+                .andExpect(status().isOk());
+
+        verify(notificationLogRepository).findRecent(eq(100));
     }
 }

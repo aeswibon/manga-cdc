@@ -13,6 +13,11 @@ type SourceAdapter interface {
 	FetchChapters(ctx context.Context, seriesID string) ([]model.Chapter, error)
 }
 
+// SeriesMetadataFetcher is implemented by adapters that can load series details by source ID.
+type SeriesMetadataFetcher interface {
+	FetchSeries(ctx context.Context, seriesID string) (model.Series, error)
+}
+
 type SeriesUpdate struct {
 	Series    model.Series
 	Chapters  []model.Chapter

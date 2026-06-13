@@ -1,0 +1,12 @@
+# Community watchlist — add series via pull request.
+# See CONTRIBUTING.md for field descriptions and valid sources.
+
+- source: mangadex
+  source_id: a1c7c817-4e59-43b7-9365-09675a149a6f
+  title: One Piece
+  source_url: https://mangadex.org/title/a1c7c817-4e59-43b7-9365-09675a149a6f/one-piece
+
+- source: mangadex
+  source_id: 32d76d19-8a05-4db0-9fc2-e0b0648fe9d0
+  title: Solo Leveling
+  source_url: https://mangadex.org/title/32d76d19-8a05-4db0-9fc2-e0b0648fe9d0/na-honjaman-level-up

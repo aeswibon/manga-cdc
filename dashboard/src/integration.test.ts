@@ -43,28 +43,4 @@ describe("Integration Workflows: API Endpoints and Status Syncing", () => {
     expect(logs.length).toBe(1);
   });
 
-  test("updates series status on the backend on user toggle action", async () => {
-    let putCalled = false;
-    let putActive = "";
-
-    global.fetch = mock((url: string, options?: RequestInit) => {
-      if (url.includes("/api/series/1/status") && options?.method === "PUT") {
-        putCalled = true;
-        const parsedUrl = new URL(url);
-        putActive = parsedUrl.searchParams.get("active") || "";
-        return Promise.resolve(new Response(JSON.stringify({ success: true })));
-      }
-      return Promise.reject(new Error("Unknown route: " + url));
-    }) as any;
-
-    const seriesId = "1";
-    const newActiveState = true;
-    const res = await fetch(`http://localhost:8080/api/series/${seriesId}/status?active=${newActiveState}`, {
-      method: "PUT"
-    });
-
-    expect(res.ok).toBe(true);
-    expect(putCalled).toBe(true);
-    expect(putActive).toBe("true");
-  });
 });

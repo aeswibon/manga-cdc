@@ -77,6 +77,31 @@ func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 	return id, nil
 }
 
+func (d *DB) UpdateSeries(ctx context.Context, s model.Series) error {
+	_, err := d.pool.Exec(ctx, `
+		UPDATE manga_series SET
+			title = $1,
+			alt_titles = $2,
+			author = $3,
+			artist = $4,
+			description = $5,
+			cover_url = $6,
+			status = $7,
+			source_url = $8,
+			latest_chapter = $9,
+			last_checked = NOW(),
+			is_active = $10,
+			updated_at = NOW()
+		WHERE id = $11
+	`, s.Title, s.AltTitles, s.Author, s.Artist, s.Description,
+		s.CoverURL, s.Status, s.SourceURL, s.LatestChapter, s.IsActive, s.ID)
+
+	if err != nil {
+		return fmt.Errorf("update series: %w", err)
+	}
+	return nil
+}
+
 func (d *DB) GetSeriesBySourceID(ctx context.Context, sourceID string) (*model.Series, error) {
 	var s model.Series
 	err := d.pool.QueryRow(ctx, `
@@ -88,7 +113,30 @@ func (d *DB) GetSeriesBySourceID(ctx context.Context, sourceID string) (*model.S
 		&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("get series by source id: %w", err)
+	}
+	return &s, nil
+}
+
+func (d *DB) GetSeriesByTitle(ctx context.Context, title string) (*model.Series, error) {
+	var s model.Series
+	err := d.pool.QueryRow(ctx, `
+		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), author, artist,
+			description, cover_url, status, source_url, latest_chapter, is_active
+		FROM manga_series WHERE LOWER(TRIM(title)) = LOWER(TRIM($1))
+		LIMIT 1
+	`, title).Scan(
+		&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.Author, &s.Artist,
+		&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get series by title: %w", err)
 	}
 	return &s, nil
 }
@@ -192,6 +240,21 @@ func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {
 	return series, nil
 }
 
+func (d *DB) DeleteSeriesExceptSourceIDs(ctx context.Context, keepSourceIDs []string) (int64, error) {
+	if len(keepSourceIDs) == 0 {
+		return 0, nil
+	}
+
+	tag, err := d.pool.Exec(ctx, `
+		DELETE FROM manga_series
+		WHERE NOT (source_id = ANY($1))
+	`, keepSourceIDs)
+	if err != nil {
+		return 0, fmt.Errorf("delete series not in watchlist: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (d *DB) GetNewChapters(ctx context.Context) ([]model.Chapter, error) {
 	rows, err := d.pool.Query(ctx, `
 		SELECT c.id, c.series_id, c.chapter_num, c.title, c.url, c.release_date, c.is_new
@@ -233,6 +296,17 @@ func (d *DB) InsertNotificationLog(ctx context.Context, chapterID, status, chann
 	`, chapterID, status, channel, errorMsg)
 	if err != nil {
 		return fmt.Errorf("insert notification log: %w", err)
+	}
+	return nil
+}
+
+func (d *DB) InsertScrapedReject(ctx context.Context, source, entityType string, payloadJSON, reasonsJSON []byte) error {
+	_, err := d.pool.Exec(ctx, `
+		INSERT INTO scraped_rejects (source, entity_type, payload, reasons)
+		VALUES ($1, $2, $3, $4)
+	`, source, entityType, payloadJSON, reasonsJSON)
+	if err != nil {
+		return fmt.Errorf("insert scraped reject: %w", err)
 	}
 	return nil
 }
