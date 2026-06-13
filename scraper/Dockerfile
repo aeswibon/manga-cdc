@@ -3,7 +3,9 @@ WORKDIR /app
 COPY scraper/go.mod scraper/go.sum ./
 RUN go mod download
 COPY scraper/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /scraper ./cmd/scraper
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /scraper ./cmd/scraper
 
 FROM alpine:3.20
 
