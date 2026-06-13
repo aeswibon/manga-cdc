@@ -10,7 +10,7 @@ RUN jlink --add-modules java.base,java.desktop,java.logging,java.sql,java.xml,ja
           --strip-debug --no-man-pages --no-header-files --compress=2 \
           --output /jre
 
-FROM debian:bookworm-slim
+FROM busybox:glibc
 
 ARG APP_VERSION=0.3.7
 LABEL org.opencontainers.image.title="manga-cdc notification-service" \
@@ -18,11 +18,11 @@ LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
       org.opencontainers.image.vendor="aeswibon" \
       org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.base.name="docker.io/library/debian:bookworm-slim"
+      org.opencontainers.image.base.name="docker.io/library/busybox:glibc"
 
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
+COPY --from=jlink /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=jlink /jre /jre
-COPY --from=builder /app/target/*.jar app.jar
+COPY --from=builder /app/target/*.jar /app.jar
+WORKDIR /app
 EXPOSE 8080
-CMD ["/jre/bin/java", "-jar", "app.jar"]
+CMD ["/jre/bin/java", "-jar", "/app.jar"]
