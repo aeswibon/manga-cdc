@@ -243,10 +243,19 @@ jobs:
         run: |
           gcloud run services update manga-cdc-notifier-prod \
             --image=${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }} \
-            --region=${{ env.GCP_REGION }}
+            --region=${{ env.GCP_REGION }} \
+            --memory=512Mi \
+            --cpu=1 \
+            --cpu-throttling \
+            --concurrency=80 \
+            --min-instances=0 \
+            --max-instances=2 \
+            --update-env-vars=CDC_ENABLED=false,DB_MAX_POOL_SIZE=3,DB_MIN_IDLE=0,SPRING_AUTOCONFIGURE_EXCLUDE=org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
           gcloud run jobs update manga-cdc-scraper-job-prod \
             --image=${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }} \
-            --region=${{ env.GCP_REGION }}
+            --region=${{ env.GCP_REGION }} \
+            --memory=512Mi \
+            --cpu=1
 
       - uses: docker/setup-buildx-action@v4
         if: env.DEPLOY_METHOD == 'terraform'

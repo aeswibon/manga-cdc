@@ -44,6 +44,12 @@ describe("notifierApiUrl", () => {
       "/api/notifier/series/abc/chapters",
     );
   });
+
+  test("keeps /api prefix for absolute backend URLs", () => {
+    expect(notifierApiUrl("/api/stats", "https://notifier.example.run.app")).toBe(
+      "https://notifier.example.run.app/api/stats",
+    );
+  });
 });
 
 describe("filterSeries", () => {

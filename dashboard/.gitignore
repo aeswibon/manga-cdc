@@ -12,6 +12,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.env.production
+.env.vercel.local
 
 # Editor directories and files
 .vscode/*
@@ -24,3 +26,5 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+api/**/*.js
+!api/**/*.config.js

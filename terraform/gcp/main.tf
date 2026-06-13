@@ -321,23 +321,30 @@ resource "helm_release" "manga_cdc" {
 # TARGET: Cloud Run + Cloud Scheduler Deployment (Serverless)
 # -----------------------------------------------------------------------------
 locals {
+  kafka_env = var.cdc_enabled ? {
+    KAFKA_BROKERS                  = var.kafka_brokers
+    SPRING_KAFKA_BOOTSTRAP_SERVERS = var.kafka_brokers
+    SPRING_KAFKA_SASL_MECHANISM    = "SCRAM-SHA-256"
+    SPRING_KAFKA_SASL_JAAS_CONFIG  = "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"${var.kafka_username}\" password=\"${var.kafka_password}\";"
+    SPRING_KAFKA_SECURITY_PROTOCOL = "SASL_SSL"
+    KAFKA_TOPIC                    = "mangacdc.public.chapters"
+    KAFKA_USERNAME                 = var.kafka_username
+    KAFKA_PASSWORD                 = var.kafka_password
+  } : {
+    SPRING_AUTOCONFIGURE_EXCLUDE = "org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration"
+  }
+
   # tomap() is required: a keyed literal with a for expression is typed as object,
   # but dynamic for_each only accepts map/set.
   cloud_run_env = tomap({
-    for k, v in {
+    for k, v in merge({
       DATABASE_URL                   = var.database_url
       SPRING_DATASOURCE_URL          = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
       SPRING_DATASOURCE_USERNAME     = local.db_user
       SPRING_DATASOURCE_PASSWORD     = local.db_pass
-      KAFKA_BROKERS                  = var.kafka_brokers
-      SPRING_KAFKA_BOOTSTRAP_SERVERS = var.kafka_brokers
-      SPRING_KAFKA_SASL_MECHANISM    = "SCRAM-SHA-256"
-      SPRING_KAFKA_SASL_JAAS_CONFIG  = "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"${var.kafka_username}\" password=\"${var.kafka_password}\";"
-      SPRING_KAFKA_SECURITY_PROTOCOL = "SASL_SSL"
-      KAFKA_TOPIC                    = "mangacdc.public.chapters"
-      KAFKA_USERNAME                 = var.kafka_username
-      KAFKA_PASSWORD                 = var.kafka_password
-      CDC_ENABLED                    = "true"
+      CDC_ENABLED                    = var.cdc_enabled ? "true" : "false"
+      DB_MAX_POOL_SIZE               = "3"
+      DB_MIN_IDLE                    = "0"
       ADMIN_MUTATIONS_ENABLED        = "false"
       SECURITY_REQUIRE_API_KEY       = "true"
       SECURITY_REQUIRE_WEBHOOK_AUTH  = "true"
@@ -356,7 +363,7 @@ locals {
       GRAFANA_CLOUD_API_KEY          = var.grafana_cloud_api_key
       GRAFANA_CLOUD_STACK_URL        = var.grafana_cloud_stack_url
       QSTASH_TOKEN                   = var.qstash_token
-    } : k => v if v != ""
+    }, local.kafka_env) : k => v if v != ""
   })
 }
 
@@ -371,8 +378,8 @@ resource "google_cloud_run_v2_job" "scraper_job" {
         image = var.scraper_image
         resources {
           limits = {
-            memory = "1Gi"
-            cpu    = "1000m"
+            memory = var.cloud_run_scraper_memory
+            cpu    = var.cloud_run_scraper_cpu
           }
         }
         dynamic "env" {
@@ -401,13 +408,20 @@ resource "google_cloud_run_v2_service" "notification_service" {
   location = var.region
 
   template {
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 2
+    }
+
     containers {
       image = var.notification_image
       resources {
         limits = {
-          memory = "1Gi"
-          cpu    = "1000m"
+          memory = var.cloud_run_notifier_memory
+          cpu    = var.cloud_run_notifier_cpu
         }
+        cpu_idle          = true
+        startup_cpu_boost = true
       }
       ports {
         container_port = 8080

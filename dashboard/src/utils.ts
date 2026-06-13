@@ -269,9 +269,17 @@ export function filterLogs(
 /** Build a notifier API URL for direct backend or the Vercel /api/notifier proxy. */
 export function notifierApiUrl(path: string, apiBase = ''): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;
+  const apiPath = normalized.startsWith('/api/') ? normalized : `/api${normalized}`;
+
   if (!apiBase) {
-    return normalized.startsWith('/api/') ? normalized : `/api${normalized}`;
+    return apiPath;
   }
-  const suffix = normalized.replace(/^\/api(?=\/|$)/, '');
-  return `${apiBase.replace(/\/$/, '')}${suffix}`;
+
+  const base = apiBase.replace(/\/$/, '');
+  if (/^https?:\/\//i.test(base)) {
+    return `${base}${apiPath}`;
+  }
+
+  const suffix = apiPath.replace(/^\/api(?=\/|$)/, '');
+  return `${base}${suffix}`;
 }

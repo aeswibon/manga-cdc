@@ -29,8 +29,26 @@ const ALLOWED_GET = new Set([
 ]);
 
 function buildTargetPath(segments: string | string[] | undefined): string {
-  const pathParts = Array.isArray(segments) ? segments : segments ? [segments] : [];
+  const pathParts = Array.isArray(segments)
+    ? segments
+    : typeof segments === 'string' && segments.length > 0
+      ? segments.split('/').filter(Boolean)
+      : [];
   return `/api/${pathParts.map(encodeURIComponent).join('/')}`.replace(/\/+$/, '') || '/api';
+}
+
+function proxySegments(req: VercelRequest): string | string[] | undefined {
+  const pathname = (req.url ?? '').split('?')[0];
+  const prefix = '/api/notifier/';
+  if (pathname.startsWith(prefix)) {
+    const remainder = pathname.slice(prefix.length);
+    if (remainder.length > 0) {
+      return remainder.split('/').filter(Boolean);
+    }
+  }
+
+  const queryPath = req.query.path ?? req.query['...path'];
+  return Array.isArray(queryPath) ? queryPath : typeof queryPath === 'string' ? queryPath : undefined;
 }
 
 function isAllowedGetPath(path: string): boolean {
@@ -58,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const targetPath = buildTargetPath(req.query.path);
+  const targetPath = buildTargetPath(proxySegments(req));
   if (!isAllowedGetPath(targetPath)) {
     res.status(404).json({ error: 'Not found' });
     return;

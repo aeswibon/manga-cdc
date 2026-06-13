@@ -27,10 +27,12 @@ LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.base.name="docker.io/library/busybox:glibc"
 
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC"
+
 COPY --from=jlink /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=libs /out/lib /lib
 COPY --from=jlink /jre /jre
 COPY --from=builder /app/target/*.jar /app.jar
 WORKDIR /app
 EXPOSE 8080
-CMD ["/jre/bin/java", "-jar", "/app.jar"]
+CMD ["/bin/sh", "-c", "exec /jre/bin/java $JAVA_OPTS -jar /app.jar"]

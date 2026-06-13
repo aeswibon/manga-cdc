@@ -32,9 +32,39 @@ variable "deployment_target" {
 }
 
 variable "cloud_run_scheduler_schedule" {
-  description = "Cron schedule for the Cloud Scheduler to trigger the scraper (e.g. every 15 mins)"
+  description = "Cron schedule for the Cloud Scheduler to trigger the scraper (e.g. every 30 mins)"
   type        = string
-  default     = "*/15 * * * *"
+  default     = "*/30 * * * *"
+}
+
+variable "cdc_enabled" {
+  description = "Enable Kafka CDC consumption on the notifier (keep false on serverless to reduce Cloud Run cost)"
+  type        = bool
+  default     = false
+}
+
+variable "cloud_run_notifier_memory" {
+  description = "Memory limit for the notifier Cloud Run service"
+  type        = string
+  default     = "512Mi"
+}
+
+variable "cloud_run_notifier_cpu" {
+  description = "CPU limit for the notifier Cloud Run service"
+  type        = string
+  default     = "1"
+}
+
+variable "cloud_run_scraper_memory" {
+  description = "Memory limit for the scraper Cloud Run job"
+  type        = string
+  default     = "512Mi"
+}
+
+variable "cloud_run_scraper_cpu" {
+  description = "CPU limit for the scraper Cloud Run job"
+  type        = string
+  default     = "1"
 }
 
 variable "machine_type" {

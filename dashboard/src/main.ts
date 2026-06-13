@@ -1,11 +1,6 @@
 import { mount } from 'svelte'
-import { inject } from '@vercel/analytics'
-import { injectSpeedInsights } from '@vercel/speed-insights'
 import './app.css'
 import App from './App.svelte'
-
-inject()
-injectSpeedInsights()
 
 const app = mount(App, {
   target: document.getElementById('app')!,
@@ -16,5 +11,10 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {})
   })
 }
+
+window.addEventListener('load', () => {
+  void import('@vercel/analytics').then(({ inject }) => inject())
+  void import('@vercel/speed-insights').then(({ injectSpeedInsights }) => injectSpeedInsights())
+})
 
 export default app

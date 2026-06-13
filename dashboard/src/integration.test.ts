@@ -17,6 +17,13 @@ describe("Integration Workflows: API Endpoints and Status Syncing", () => {
 
     // Mock fetch to simulate successful backend API responses
     global.fetch = mock((url: string) => {
+      if (url.includes("/api/bootstrap")) {
+        return Promise.resolve(new Response(JSON.stringify({
+          stats: mockStats,
+          series: mockSeriesList,
+          logs: mockLogs,
+        })));
+      }
       if (url.includes("/api/stats")) {
         return Promise.resolve(new Response(JSON.stringify(mockStats)));
       }

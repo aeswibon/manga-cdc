@@ -24,8 +24,11 @@
     notifierApiUrl,
   } from './utils';
 
-  const API_BASE = import.meta.env.VITE_API_URL
-    ?? (import.meta.env.PROD ? '/api/notifier' : '');
+  const API_BASE = import.meta.env.VITE_API_URL?.trim()
+    || (import.meta.env.PROD ? '/api/notifier' : '');
+
+  const DATA_REFRESH_MS = 60_000;
+  const USE_SSE = import.meta.env.DEV;
 
   // State Management (Svelte 5 runes)
   let activeTab = $state('overview');
@@ -202,18 +205,45 @@
   async function fetchBackendData() {
     try {
       apiStatus = 'connecting';
-      const statsRes = await fetch(notifierApiUrl('/api/stats', API_BASE));
+
+      const useBootstrap = import.meta.env.PROD || API_BASE.startsWith('/api/notifier');
+      if (useBootstrap) {
+        const bootstrapRes = await fetch(notifierApiUrl('/api/bootstrap', API_BASE), { cache: 'no-store' });
+        if (bootstrapRes.ok) {
+          const payload = await bootstrapRes.json() as {
+            stats: typeof stats;
+            series: Series[];
+            logs: LogEntry[];
+          };
+          stats = payload.stats;
+          seriesList = payload.series;
+          logList = payload.logs;
+          apiOffline = false;
+          apiErrorModal = null;
+          apiStatus = 'online';
+          return;
+        }
+      }
+
+      const [statsRes, seriesRes, logsRes] = await Promise.all([
+        fetch(notifierApiUrl('/api/stats', API_BASE)),
+        fetch(notifierApiUrl('/api/series', API_BASE)),
+        fetch(notifierApiUrl('/api/logs?limit=20', API_BASE)),
+      ]);
+
       if (!statsRes.ok) throw new Error(`Stats API returned HTTP ${statsRes.status}`);
-
-      const seriesRes = await fetch(notifierApiUrl('/api/series', API_BASE));
       if (!seriesRes.ok) throw new Error(`Series API returned HTTP ${seriesRes.status}`);
-
-      const logsRes = await fetch(notifierApiUrl('/api/logs?limit=50', API_BASE));
       if (!logsRes.ok) throw new Error(`Logs API returned HTTP ${logsRes.status}`);
 
-      stats = await statsRes.json();
-      seriesList = await seriesRes.json();
-      logList = await logsRes.json();
+      const [statsPayload, seriesPayload, logsPayload] = await Promise.all([
+        statsRes.json(),
+        seriesRes.json(),
+        logsRes.json(),
+      ]);
+
+      stats = statsPayload;
+      seriesList = seriesPayload;
+      logList = logsPayload;
 
       apiOffline = false;
       apiErrorModal = null;
@@ -229,6 +259,15 @@
     }
   }
 
+  function scheduleStatusPageHealth() {
+    const run = () => { void fetchStatusPageHealth(); };
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(run, { timeout: 3000 });
+    } else {
+      setTimeout(run, 250);
+    }
+  }
+
   onMount(() => {
     const savedTheme = localStorage.getItem('theme');
     const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
@@ -240,13 +279,13 @@
       document.documentElement.classList.remove('light');
     }
 
-    fetchBackendData().then(() => {
-      if (!apiOffline) {
+    void fetchBackendData().then(() => {
+      if (!apiOffline && USE_SSE) {
         connectSSE();
       }
     });
-    fetchStatusPageHealth();
-    const interval = setInterval(fetchBackendData, 30000);
+    scheduleStatusPageHealth();
+    const interval = setInterval(fetchBackendData, DATA_REFRESH_MS);
     const statusPageInterval = setInterval(fetchStatusPageHealth, 60000);
 
     let eventSource: EventSource | null = null;
@@ -510,7 +549,7 @@
           >
             <div class="h-44 bg-bg-tertiary relative overflow-hidden">
               {#if series.coverUrl}
-                <img src={series.coverUrl} alt="{series.title} cover" class="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
+                <img src={series.coverUrl} alt="{series.title} cover" loading="lazy" decoding="async" class="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
               {:else}
                 <div class="w-full h-full flex items-center justify-center text-xs text-gray-500 font-semibold">No Cover</div>
               {/if}
