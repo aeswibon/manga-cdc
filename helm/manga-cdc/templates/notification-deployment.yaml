@@ -30,11 +30,11 @@ spec:
             {{- if .Values.eventing.kafka.enabled }}
             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
               value: {{ .Values.eventing.kafka.brokers | quote }}
-            - name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM
+            - name: SPRING_KAFKA_SASL_MECHANISM
               value: SCRAM-SHA-256
-            - name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL
+            - name: SPRING_KAFKA_SECURITY_PROTOCOL
               value: SASL_SSL
-            - name: SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG
+            - name: SPRING_KAFKA_SASL_JAAS_CONFIG
               valueFrom:
                 secretKeyRef:
                   name: {{ include "manga-cdc.name" . }}-secrets

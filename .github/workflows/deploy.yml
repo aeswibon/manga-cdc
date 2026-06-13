@@ -287,6 +287,8 @@ jobs:
           GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          QSTASH_TOKEN: ${{ secrets.QSTASH_TOKEN }}
+          QSTASH_DESTINATION_URL: ${{ secrets.QSTASH_DESTINATION_URL }}
         run: bash ./scripts/ci/terraform-apply.sh gcp
 
   deploy-aws:

@@ -85,9 +85,9 @@ func renderComposeProd(m manifest.Manifest) (string, error) {
       KAFKA_PASSWORD: ${KAFKA_PASSWORD:?err}`)
 		data.NotificationEnv = strings.TrimSpace(`
       SPRING_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS:?err}
-      SPRING_KAFKA_PROPERTIES_SASL_MECHANISM: SCRAM-SHA-256
-      SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG: org.apache.kafka.common.security.scram.ScramLoginModule required username="${KAFKA_USERNAME}" password="${KAFKA_PASSWORD}";
-      SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL: SASL_SSL
+      SPRING_KAFKA_SASL_MECHANISM: SCRAM-SHA-256
+      SPRING_KAFKA_SASL_JAAS_CONFIG: org.apache.kafka.common.security.scram.ScramLoginModule required username="${KAFKA_USERNAME}" password="${KAFKA_PASSWORD}";
+      SPRING_KAFKA_SECURITY_PROTOCOL: SASL_SSL
       CDC_ENABLED: "true"`)
 	case manifest.EventingQStash:
 		data.IncludeCaddy = true

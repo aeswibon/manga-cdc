@@ -86,4 +86,6 @@ terraform apply -auto-approve \
   -var="grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL:-}" \
   -var="grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER:-}" \
   -var="grafana_cloud_api_key=${GRAFANA_CLOUD_API_KEY:-}" \
-  -var="grafana_cloud_stack_url=${GRAFANA_CLOUD_STACK_URL:-}"
+  -var="grafana_cloud_stack_url=${GRAFANA_CLOUD_STACK_URL:-}" \
+  -var="qstash_token=${QSTASH_TOKEN:-}" \
+  -var="qstash_destination_url=${QSTASH_DESTINATION_URL:-}"
