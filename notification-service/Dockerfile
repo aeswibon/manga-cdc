@@ -21,6 +21,12 @@ LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.base.name="docker.io/library/busybox:glibc"
 
 COPY --from=jlink /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=jlink /usr/lib/x86_64-linux-gnu/libdl.so.2 /lib/
+COPY --from=jlink /usr/lib/x86_64-linux-gnu/libz.so.1.3.1 /lib/libz.so.1
+COPY --from=jlink /usr/lib/x86_64-linux-gnu/librt.so.1 /lib/
+COPY --from=jlink /usr/lib/x86_64-linux-gnu/libnsl.so.1 /lib/
+COPY --from=jlink /usr/lib/x86_64-linux-gnu/libthread_db.so.1 /lib/
+COPY --from=jlink /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /lib/
 COPY --from=jlink /jre /jre
 COPY --from=builder /app/target/*.jar /app.jar
 WORKDIR /app
