@@ -312,6 +312,12 @@ resource "google_cloud_run_v2_job" "scraper_job" {
     template {
       containers {
         image = var.scraper_image
+        resources {
+          limits = {
+            memory = "1Gi"
+            cpu    = "1000m"
+          }
+        }
         dynamic "env" {
           for_each = local.cloud_run_env
           content {
