@@ -26,4 +26,17 @@ public class SeriesRepository {
     public void updateActiveStatus(String id, boolean active) {
         jdbc.update("UPDATE manga_series SET is_active = ?, updated_at = NOW() WHERE id = ?::uuid", active, id);
     }
+
+    public void save(MangaSeries series) {
+        jdbc.update(
+            "INSERT INTO manga_series (source_id, title, author, artist, description, cover_url, status, source_url, is_active) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            series.sourceId(), series.title(), series.author(), series.artist(),
+            series.description(), series.coverUrl(), series.status(), series.sourceUrl(), series.isActive()
+        );
+    }
+
+    public void deleteById(String id) {
+        jdbc.update("DELETE FROM manga_series WHERE id = ?::uuid", id);
+    }
 }

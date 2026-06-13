@@ -42,6 +42,62 @@
   let searchQuery = $state('');
   let statusFilter = $state('ALL');
 
+  let sseEventCount = $state(0);
+  let selectedLogForModal = $state<LogEntry | null>(null);
+  let showAddSeriesModal = $state(false);
+  let newSeries = $state({
+    sourceId: '',
+    title: '',
+    author: '',
+    artist: '',
+    description: '',
+    coverUrl: '',
+    status: 'ONGOING',
+    sourceUrl: '',
+    isActive: true
+  });
+
+  async function handleAddSeries() {
+    try {
+      const res = await fetch(`${API_BASE}/api/series`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSeries)
+      });
+      if (!res.ok) throw new Error('Failed to create series');
+      showAddSeriesModal = false;
+      newSeries = {
+        sourceId: '',
+        title: '',
+        author: '',
+        artist: '',
+        description: '',
+        coverUrl: '',
+        status: 'ONGOING',
+        sourceUrl: '',
+        isActive: true
+      };
+      await fetchBackendData();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to add series');
+    }
+  }
+
+  async function handleDeleteSeries(id: string) {
+    if (!confirm('Are you sure you want to delete this series?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/series/${id}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Failed to delete series');
+      await fetchBackendData();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to delete series');
+    }
+  }
+
   // Logs filters state
   let logSearchQuery = $state('');
   let logChannelFilter = $state('ALL');
@@ -250,6 +306,7 @@
       eventSource.addEventListener('log', (event: MessageEvent) => {
         try {
           const newLog: LogEntry = JSON.parse(event.data);
+          sseEventCount++;
           const idx = logList.findIndex(l => l.id === newLog.id);
           if (idx !== -1) {
             logList[idx] = newLog;
@@ -357,7 +414,15 @@
 
       <!-- OpenStatus Badge -->
       <div class="border-t border-border-color pt-3 flex flex-col gap-1.5">
-        <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Service Status</span>
+        <div class="flex items-center justify-between text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+          <span>Service Status</span>
+          {#if sseEventCount > 0}
+            <span class="flex items-center gap-1 text-[9px] text-accent font-semibold lowercase">
+              <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
+              {sseEventCount} live
+            </span>
+          {/if}
+        </div>
         <a href="https://manga-cdc.openstatus.dev" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity">
           <img src="https://manga-cdc.openstatus.dev/badge/v2?theme={isDarkMode ? 'dark' : 'light'}&size=sm" alt="Pipeline Status" class="h-6" />
         </a>
@@ -375,13 +440,23 @@
         </div>
       {/if}
 
-      <header class="mb-8">
-        <h1 class="font-heading font-bold text-3xl tracking-tight mb-1">
-          {#if activeTab === 'overview'}System Overview{/if}
-          {#if activeTab === 'watchlist'}Manga Watchlist{/if}
-          {#if activeTab === 'logs'}Notification Logs{/if}
-        </h1>
-        <span class="text-xs text-gray-400">Change Data Capture Streaming Pipeline</span>
+      <header class="mb-8 flex items-center justify-between">
+        <div>
+          <h1 class="font-heading font-bold text-3xl tracking-tight mb-1">
+            {#if activeTab === 'overview'}System Overview{/if}
+            {#if activeTab === 'watchlist'}Manga Watchlist{/if}
+            {#if activeTab === 'logs'}Notification Logs{/if}
+          </h1>
+          <span class="text-xs text-gray-400">Change Data Capture Streaming Pipeline</span>
+        </div>
+        {#if activeTab === 'watchlist'}
+          <button 
+            onclick={() => showAddSeriesModal = true}
+            class="bg-accent text-white px-4.5 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-all cursor-pointer shadow-lg shadow-accent/20 flex items-center gap-1.5"
+          >
+            <span>➕</span> Add Series
+          </button>
+        {/if}
       </header>
 
       <!-- OVERVIEW TAB -->
@@ -402,6 +477,61 @@
           <div class="bg-bg-secondary border border-border-color p-6 rounded-xl flex flex-col gap-2 hover:-translate-y-0.5 transition-transform duration-200">
             <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Delivery Success</span>
             <span class="font-heading font-bold text-3xl text-success">{successRate}%</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8 animate-fade-in">
+          <div class="lg:col-span-2 bg-bg-secondary border border-border-color p-6 rounded-xl">
+            <h3 class="font-heading font-semibold text-lg mb-1">Pipeline Performance</h3>
+            <p class="text-xs text-gray-400 mb-6">Real-time statistics of successful vs failed notifications.</p>
+            <div class="h-48 flex items-end justify-between gap-4 pt-4 border-b border-border-color pb-1">
+              <!-- Success Bar -->
+              <div class="flex-grow flex flex-col items-center gap-2">
+                <span class="text-xs font-semibold text-success">{stats.successful_deliveries}</span>
+                <div class="w-full max-w-[80px] bg-success/20 rounded-t-lg transition-all duration-500" style="height: {stats.total_logs > 0 ? (stats.successful_deliveries / stats.total_logs) * 120 : 0}px"></div>
+                <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Sent</span>
+              </div>
+              <!-- Failed Bar -->
+              <div class="flex-grow flex flex-col items-center gap-2">
+                <span class="text-xs font-semibold text-error">{stats.failed_deliveries}</span>
+                <div class="w-full max-w-[80px] bg-error/20 rounded-t-lg transition-all duration-500" style="height: {stats.total_logs > 0 ? (stats.failed_deliveries / stats.total_logs) * 120 : 0}px"></div>
+                <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Failed</span>
+              </div>
+              <!-- Success Rate Ring -->
+              <div class="w-44 flex flex-col items-center justify-center gap-2 border-l border-border-color/60 pl-4 relative">
+                <div class="relative w-24 h-24 flex items-center justify-center">
+                  <svg class="w-full h-full transform -rotate-90">
+                    <circle cx="48" cy="48" r="38" class="stroke-bg-primary" stroke-width="8" fill="transparent" />
+                    <circle cx="48" cy="48" r="38" class="stroke-success transition-all duration-500" stroke-width="8" fill="transparent"
+                      stroke-dasharray={2 * Math.PI * 38}
+                      stroke-dashoffset={2 * Math.PI * 38 * (1 - successRate / 100)} />
+                  </svg>
+                  <span class="absolute text-sm font-bold font-heading text-gray-100">{successRate}%</span>
+                </div>
+                <span class="text-[10px] text-gray-400 uppercase font-medium tracking-wider">Overall Rate</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-bg-secondary border border-border-color p-6 rounded-xl flex flex-col justify-between">
+            <div>
+              <h3 class="font-heading font-semibold text-base mb-1">Scraper Activity</h3>
+              <p class="text-xs text-gray-400">Status of the background worker.</p>
+            </div>
+            <div class="flex flex-col gap-4 my-4">
+              <div class="flex justify-between items-center bg-bg-primary p-3 rounded border border-border-color">
+                <span class="text-xs text-gray-400">CDC Stream Status</span>
+                <span class="text-xs text-success font-semibold flex items-center gap-1.5">
+                  <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span>
+                  Active
+                </span>
+              </div>
+              <div class="flex justify-between items-center bg-bg-primary p-3 rounded border border-border-color">
+                <span class="text-xs text-gray-400">Total Crawls</span>
+                <span class="text-xs text-gray-200 font-semibold">{stats.total_chapters}</span>
+              </div>
+            </div>
+            <span class="text-[10px] text-gray-500 leading-normal">System continuously parses MangaDex and Asura RSS feeds, updating internal state in Redpanda.</span>
           </div>
         </div>
 
@@ -506,16 +636,25 @@
               
               <div class="flex justify-between items-center border-t border-border-color/60 pt-4 mt-auto">
                 <span class="text-xs font-semibold text-gray-200">Latest: Ch. {series.latestChapter}</span>
-                <label class="relative inline-block w-11 h-6 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    class="sr-only peer"
-                    checked={series.isActive} 
-                    onchange={() => toggleSeries(series)}
-                  />
-                  <span class="absolute inset-0 bg-bg-primary rounded-full border border-border-color transition-colors duration-200 peer-checked:bg-accent/15 peer-checked:border-accent"></span>
-                  <span class="absolute left-1 bottom-1 w-4 h-4 rounded-full bg-gray-400 transition-transform duration-200 peer-checked:translate-x-5 peer-checked:bg-accent"></span>
-                </label>
+                <div class="flex items-center gap-3">
+                  <button 
+                    onclick={() => handleDeleteSeries(series.id)}
+                    class="text-xs text-error hover:bg-error/10 p-1.5 rounded transition-colors cursor-pointer"
+                    title="Delete Series"
+                  >
+                    🗑️
+                  </button>
+                  <label class="relative inline-block w-11 h-6 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      class="sr-only peer"
+                      checked={series.isActive} 
+                      onchange={() => toggleSeries(series)}
+                    />
+                    <span class="absolute inset-0 bg-bg-primary rounded-full border border-border-color transition-colors duration-200 peer-checked:bg-accent/15 peer-checked:border-accent"></span>
+                    <span class="absolute left-1 bottom-1 w-4 h-4 rounded-full bg-gray-400 transition-transform duration-200 peer-checked:translate-x-5 peer-checked:bg-accent"></span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -583,17 +722,24 @@
                   </td>
                   <td class="py-3.5 text-error font-mono text-[10px] max-w-xs truncate">{log.errorMessage || '—'}</td>
                   <td class="py-3.5">
-                    {#if log.status === 'FAILED'}
+                    <div class="flex items-center gap-2">
                       <button 
-                        onclick={() => retryNotification(log)} 
-                        disabled={retryingLogs[log.id]}
-                        class="bg-accent text-white font-semibold text-[10px] px-2.5 py-1 rounded hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        onclick={() => selectedLogForModal = log}
+                        class="bg-bg-tertiary text-gray-300 font-semibold text-[10px] px-2.5 py-1 rounded hover:bg-border-color cursor-pointer"
+                        title="Inspect Log Payload"
                       >
-                        {retryingLogs[log.id] ? 'Retrying...' : '🔁 Retry'}
+                        🔍 Inspect
                       </button>
-                    {:else}
-                      <span class="text-gray-500">—</span>
-                    {/if}
+                      {#if log.status === 'FAILED'}
+                        <button 
+                          onclick={() => retryNotification(log)} 
+                          disabled={retryingLogs[log.id]}
+                          class="bg-accent text-white font-semibold text-[10px] px-2.5 py-1 rounded hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {retryingLogs[log.id] ? 'Retrying...' : '🔁 Retry'}
+                        </button>
+                      {/if}
+                    </div>
                   </td>
                 </tr>
               {/each}
@@ -605,4 +751,128 @@
     </div>
   </main>
 </div>
+
+<!-- ADD SERIES MODAL -->
+{#if showAddSeriesModal}
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+    <div class="bg-bg-secondary border border-border-color rounded-xl w-full max-w-lg p-6 shadow-2xl flex flex-col gap-4">
+      <div class="flex justify-between items-center pb-2 border-b border-border-color">
+        <h3 class="font-heading font-semibold text-lg text-gray-100">Add Tracked Manga</h3>
+        <button onclick={() => showAddSeriesModal = false} class="text-gray-400 hover:text-gray-200 text-lg cursor-pointer">✕</button>
+      </div>
+      <form onsubmit={(e) => { e.preventDefault(); handleAddSeries(); }} class="flex flex-col gap-3.5">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-[10px] uppercase font-semibold text-gray-400">Source ID</label>
+            <input type="text" bind:value={newSeries.sourceId} placeholder="e.g. md-10" required class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-[10px] uppercase font-semibold text-gray-400">Status</label>
+            <select bind:value={newSeries.status} class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3 py-2 rounded focus:outline-none cursor-pointer">
+              <option value="ONGOING">Ongoing</option>
+              <option value="COMPLETED">Completed</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[10px] uppercase font-semibold text-gray-400">Title</label>
+          <input type="text" bind:value={newSeries.title} placeholder="e.g. Frieren: Beyond Journey's End" required class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-[10px] uppercase font-semibold text-gray-400">Author</label>
+            <input type="text" bind:value={newSeries.author} placeholder="e.g. Kanehito Yamada" class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-[10px] uppercase font-semibold text-gray-400">Artist</label>
+            <input type="text" bind:value={newSeries.artist} placeholder="e.g. Tsukasa Abe" class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
+          </div>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[10px] uppercase font-semibold text-gray-400">Source URL</label>
+          <input type="url" bind:value={newSeries.sourceUrl} placeholder="e.g. https://mangadex.org/title/..." required class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[10px] uppercase font-semibold text-gray-400">Cover Image URL</label>
+          <input type="url" bind:value={newSeries.coverUrl} placeholder="e.g. https://mangadex.org/covers/..." class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[10px] uppercase font-semibold text-gray-400">Description</label>
+          <textarea bind:value={newSeries.description} placeholder="Short synopsis..." rows="3" class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent resize-none"></textarea>
+        </div>
+        <div class="flex items-center gap-2 mt-1">
+          <input type="checkbox" id="isActiveCheck" bind:checked={newSeries.isActive} class="accent-accent" />
+          <label for="isActiveCheck" class="text-xs text-gray-300 cursor-pointer">Activate tracker immediately</label>
+        </div>
+        <div class="flex justify-end gap-3 mt-3">
+          <button type="button" onclick={() => showAddSeriesModal = false} class="px-4 py-2 border border-border-color rounded text-xs text-gray-300 hover:bg-bg-tertiary cursor-pointer">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-accent text-white font-semibold rounded text-xs hover:opacity-90 transition-opacity cursor-pointer">Create Tracker</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
+<!-- LOG DETAILS MODAL -->
+{#if selectedLogForModal}
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+    <div class="bg-bg-secondary border border-border-color rounded-xl w-full max-w-lg p-6 shadow-2xl flex flex-col gap-4">
+      <div class="flex justify-between items-center pb-2 border-b border-border-color">
+        <h3 class="font-heading font-semibold text-lg text-gray-100">Notification Dispatch Details</h3>
+        <button onclick={() => selectedLogForModal = null} class="text-gray-400 hover:text-gray-200 text-lg cursor-pointer">✕</button>
+      </div>
+      <div class="flex flex-col gap-3">
+        <div class="grid grid-cols-2 gap-4 bg-bg-primary p-4 rounded border border-border-color text-xs">
+          <div class="flex flex-col gap-0.5">
+            <span class="text-gray-500 font-semibold">Manga Series</span>
+            <span class="text-gray-200 font-medium">{selectedLogForModal.seriesTitle}</span>
+          </div>
+          <div class="flex flex-col gap-0.5">
+            <span class="text-gray-500 font-semibold">Chapter Number</span>
+            <span class="text-gray-200 font-medium">Ch. {selectedLogForModal.chapterNum}</span>
+          </div>
+          <div class="flex flex-col gap-0.5 mt-2">
+            <span class="text-gray-500 font-semibold">Target Channel</span>
+            <span class="text-gray-200 font-medium uppercase">{selectedLogForModal.channel}</span>
+          </div>
+          <div class="flex flex-col gap-0.5 mt-2">
+            <span class="text-gray-500 font-semibold">Delivery Status</span>
+            <span class="font-bold uppercase {selectedLogForModal.status === 'SENT' ? 'text-success' : 'text-error'}">{selectedLogForModal.status}</span>
+          </div>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-[10px] uppercase font-semibold text-gray-400">Timestamp</label>
+          <div class="bg-bg-primary border border-border-color p-2.5 rounded text-xs text-gray-300 font-mono">
+            {new Date(selectedLogForModal.createdAt).toString()}
+          </div>
+        </div>
+        {#if selectedLogForModal.errorMessage}
+          <div class="flex flex-col gap-1.5">
+            <label class="text-[10px] uppercase font-semibold text-gray-400">Error Payload</label>
+            <div class="bg-bg-primary border border-border-color p-3 rounded text-xs text-error font-mono overflow-x-auto whitespace-pre-wrap max-h-40">
+              {selectedLogForModal.errorMessage}
+            </div>
+          </div>
+        {/if}
+        <div class="flex justify-end gap-3 mt-3">
+          <button onclick={() => selectedLogForModal = null} class="px-5.5 py-2 bg-bg-tertiary border border-border-color rounded text-xs text-gray-300 hover:text-gray-100 cursor-pointer">Close</button>
+          {#if selectedLogForModal.status === 'FAILED'}
+            <button 
+              onclick={() => { 
+                if (selectedLogForModal) {
+                  retryNotification(selectedLogForModal); 
+                  selectedLogForModal = null; 
+                }
+              }} 
+              disabled={retryingLogs[selectedLogForModal.id]}
+              class="px-5.5 py-2 bg-accent text-white font-semibold rounded text-xs hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+            >
+              Retry Dispatch
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
