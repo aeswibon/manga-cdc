@@ -23,6 +23,16 @@ public class ChapterRepository {
             DataClassRowMapper.newInstance(Chapter.class));
     }
 
+    public List<Chapter> findBySeriesId(String seriesId, int limit) {
+        int capped = Math.min(Math.max(limit, 1), 100);
+        return jdbc.query(
+            "SELECT id, series_id, chapter_num, title, url, release_date, is_new " +
+            "FROM chapters WHERE series_id = ?::uuid ORDER BY chapter_num DESC LIMIT ?",
+            DataClassRowMapper.newInstance(Chapter.class),
+            seriesId,
+            capped);
+    }
+
     public void markNotified(String chapterId) {
         jdbc.update("UPDATE chapters SET is_new = false WHERE id = ?::uuid", chapterId);
     }

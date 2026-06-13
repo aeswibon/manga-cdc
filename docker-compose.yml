@@ -63,6 +63,9 @@ services:
       LOG_LEVEL: info
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: mangacdc.public.chapters
+      WATCHLIST_PATH: /data/watchlist.yaml
+    volumes:
+      - ./data/watchlist.yaml:/data/watchlist.yaml:ro
     ports:
       - "2112:2112"
 
@@ -83,10 +86,13 @@ services:
       SPRING_DATASOURCE_PASSWORD: mangacdc
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       CDC_ENABLED: "true"
+      ADMIN_MUTATIONS_ENABLED: "false"
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      PIPELINE_SCRAPER_HEALTH_URL: http://scraper:2112/healthz
+      PIPELINE_SCRAPER_READY_URL: http://scraper:2112/readyz
     ports:
       - "8080:8080"
 
@@ -95,11 +101,29 @@ services:
     build:
       context: ./dashboard
       dockerfile: Dockerfile
+      args:
+        VITE_STATUS_PAGE_URL: http://localhost:3001
     restart: unless-stopped
     depends_on:
       - notification-service
+      - status-page
     ports:
       - "80:80"
+
+  status-page:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./status-page:/app
+    command: ["node", "serve-local.mjs"]
+    environment:
+      PIPELINE_HEALTH_URL: http://notification-service:8080/api/pipeline/health
+      PORT: "3001"
+    depends_on:
+      - notification-service
+    ports:
+      - "3001:3001"
 
   prometheus:
     image: prom/prometheus:v2.53.0

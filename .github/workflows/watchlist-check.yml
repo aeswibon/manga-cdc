@@ -1,0 +1,32 @@
+name: Watchlist validation
+
+on:
+  pull_request:
+    paths:
+      - "data/watchlist.yaml"
+      - "scripts/validate-watchlist.py"
+      - ".github/workflows/watchlist-check.yml"
+  push:
+    branches: [master]
+    paths:
+      - "data/watchlist.yaml"
+      - "scripts/validate-watchlist.py"
+      - ".github/workflows/watchlist-check.yml"
+
+jobs:
+  validate-watchlist:
+    name: Validate watchlist.yaml
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate data/watchlist.yaml
+        run: python scripts/validate-watchlist.py

@@ -38,6 +38,13 @@ cdc:
   enabled: ${CDC_ENABLED:false}
   topic-pattern: mangacdc.public.chapters
 
+pipeline:
+  scraper-health-url: ${PIPELINE_SCRAPER_HEALTH_URL:}
+  scraper-ready-url: ${PIPELINE_SCRAPER_READY_URL:}
+
+# Write endpoints (POST/PUT/DELETE /api/series, POST /api/logs/{id}/retry) are disabled by default.
+# Set ADMIN_MUTATIONS_ENABLED=true to allow mutations; optionally set ADMIN_API_KEY to require X-Admin-Key.
+
 management:
   endpoints:
     web:

@@ -208,6 +208,7 @@ func (m *MangaPlusAdapter) FetchLatest(ctx context.Context) ([]model.Series, err
 				Title:     t.GetName(),
 				Author:    t.GetAuthor(),
 				CoverURL:  t.GetPortraitImageUrl(),
+				SourceURL: fmt.Sprintf("https://mangaplus.shueisha.co.jp/titles/%d", t.GetTitleId()),
 				Status:    "ONGOING",
 				IsActive:  true,
 			})

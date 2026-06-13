@@ -3,12 +3,25 @@
   import { 
     type Series, 
     type LogEntry,
+    type Chapter,
     filterSeries, 
     filterLogs,
-    calculateSuccessRate 
+    calculateSuccessRate,
+    WATCHLIST_GITHUB_URL,
+    STATUS_PAGE_URL,
+    parseSourceDisplay,
+    duplicateTitleKeys,
+    formatRelativeTime,
+    readOnSourceLabel,
+    seriesStatusLabel,
+    seriesStatusVariant,
+    parsePipelineHealth,
+    healthLabel,
+    healthVariant,
+    type PipelineHealth,
   } from './utils';
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+  const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
   // State Management (Svelte 5 runes)
   let activeTab = $state('overview');
@@ -44,65 +57,29 @@
 
   let sseEventCount = $state(0);
   let selectedLogForModal = $state<LogEntry | null>(null);
-  let showAddSeriesModal = $state(false);
-  let newSeries = $state({
-    sourceId: '',
-    title: '',
-    author: '',
-    artist: '',
-    description: '',
-    coverUrl: '',
-    status: 'ONGOING',
-    sourceUrl: '',
-    isActive: true
-  });
-
-  async function handleAddSeries() {
-    try {
-      const res = await fetch(`${API_BASE}/api/series`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSeries)
-      });
-      if (!res.ok) throw new Error('Failed to create series');
-      showAddSeriesModal = false;
-      newSeries = {
-        sourceId: '',
-        title: '',
-        author: '',
-        artist: '',
-        description: '',
-        coverUrl: '',
-        status: 'ONGOING',
-        sourceUrl: '',
-        isActive: true
-      };
-      await fetchBackendData();
-    } catch (e) {
-      console.error(e);
-      alert('Failed to add series');
-    }
-  }
-
-  async function handleDeleteSeries(id: string) {
-    if (!confirm('Are you sure you want to delete this series?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/series/${id}`, {
-        method: 'DELETE'
-      });
-      if (!res.ok) throw new Error('Failed to delete series');
-      await fetchBackendData();
-    } catch (e) {
-      console.error(e);
-      alert('Failed to delete series');
-    }
-  }
 
   // Logs filters state
   let logSearchQuery = $state('');
   let logChannelFilter = $state('ALL');
   let logStatusFilter = $state('ALL');
-  let retryingLogs = $state<Record<string, boolean>>({});
+
+  let expandedSeriesId = $state<string | null>(null);
+  let chaptersBySeries = $state<Record<string, Chapter[]>>({});
+  let chaptersLoadingId = $state<string | null>(null);
+
+  let pipelineHealth = $state<PipelineHealth | null>(null);
+  let pipelineHealthState = $state<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  let pipelineHealthPolledAt = $state('');
+
+  let duplicateTitles = $derived(duplicateTitleKeys(seriesList));
+  let pipelineOverallVariant = $derived(healthVariant(pipelineHealth?.status ?? 'unknown'));
+  let pipelineOverallLabel = $derived(healthLabel(pipelineHealth?.status ?? 'unknown'));
+
+  const NAV_TABS = [
+    { id: 'overview', label: 'Overview', shortLabel: 'Overview', emoji: '📊' },
+    { id: 'watchlist', label: 'Community Watchlist', shortLabel: 'Watchlist', emoji: '📖' },
+    { id: 'logs', label: 'Activity Logs', shortLabel: 'Logs', emoji: '🔔' },
+  ] as const;
 
   // Computed state (Svelte 5 runes)
   let currentPage = $state(1);
@@ -120,6 +97,13 @@
     searchQuery;
     statusFilter;
     currentPage = 1;
+  });
+
+  $effect(() => {
+    // Auto-scroll to top when page or active tab changes
+    if (currentPage || activeTab) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   });
 
   // Mock data definitions
@@ -201,17 +185,115 @@
       seriesTitle: "Solo Leveling",
       chapterNum: 200.0,
       chapterTitle: "Epilogue — The Eternal Monarch"
-    }
+    },
+    {
+      id: "l4",
+      chapterId: "c4",
+      status: "SENT",
+      channel: "discord",
+      errorMessage: "",
+      createdAt: new Date(Date.now() - 3 * 3600000).toISOString(),
+      seriesTitle: "Chainsaw Man",
+      chapterNum: 182.0,
+      chapterTitle: "A Way Back"
+    },
+    {
+      id: "l5",
+      chapterId: "c5",
+      status: "SENT",
+      channel: "slack",
+      errorMessage: "",
+      createdAt: new Date(Date.now() - 6 * 3600000).toISOString(),
+      seriesTitle: "Jujutsu Kaisen",
+      chapterNum: 271.0,
+      chapterTitle: "Hidden Inventory, Part 4"
+    },
+    {
+      id: "l6",
+      chapterId: "c6",
+      status: "FAILED",
+      channel: "telegram",
+      errorMessage: "Bot token unauthorized: chat_id not found",
+      createdAt: new Date(Date.now() - 9 * 3600000).toISOString(),
+      seriesTitle: "Blue Lock",
+      chapterNum: 298.0,
+      chapterTitle: "World's Best Striker"
+    },
+    {
+      id: "l7",
+      chapterId: "c7",
+      status: "SENT",
+      channel: "telegram",
+      errorMessage: "",
+      createdAt: new Date(Date.now() - 24 * 3600000).toISOString(),
+      seriesTitle: "One Piece",
+      chapterNum: 1114.0,
+      chapterTitle: "The Wings of Icarus"
+    },
+    {
+      id: "l8",
+      chapterId: "c8",
+      status: "FAILED",
+      channel: "discord",
+      errorMessage: "Rate limited: retry after 30s",
+      createdAt: new Date(Date.now() - 36 * 3600000).toISOString(),
+      seriesTitle: "The Beginning After the End",
+      chapterNum: 184.0,
+      chapterTitle: "A New Horizon"
+    },
   ];
 
   const MOCK_STATS = {
     total_series: 3,
     active_series: 2,
     total_chapters: 1500,
-    total_logs: 3,
-    successful_deliveries: 2,
-    failed_deliveries: 1
+    total_logs: 8,
+    successful_deliveries: 5,
+    failed_deliveries: 3
   };
+
+  async function toggleChapterHistory(series: Series) {
+    if (expandedSeriesId === series.id) {
+      expandedSeriesId = null;
+      return;
+    }
+    expandedSeriesId = series.id;
+    if (chaptersBySeries[series.id]) return;
+
+    chaptersLoadingId = series.id;
+    try {
+      const res = await fetch(`${API_BASE}/api/series/${series.id}/chapters?limit=15`);
+      if (!res.ok) throw new Error(`chapters fetch failed: ${res.status}`);
+      const chapters = await res.json() as Chapter[];
+      chaptersBySeries = { ...chaptersBySeries, [series.id]: chapters };
+    } catch (err) {
+      console.warn('Failed to load chapter history', err);
+      chaptersBySeries = { ...chaptersBySeries, [series.id]: [] };
+    } finally {
+      chaptersLoadingId = null;
+    }
+  }
+
+  async function fetchPipelineHealth() {
+    if (isDemoMode) {
+      pipelineHealth = null;
+      pipelineHealthState = 'error';
+      return;
+    }
+    try {
+      pipelineHealthState = 'loading';
+      const res = await fetch(`${API_BASE}/api/pipeline/health`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`pipeline health ${res.status}`);
+      const parsed = parsePipelineHealth(await res.json());
+      if (!parsed) throw new Error('Invalid pipeline health payload');
+      pipelineHealth = parsed;
+      pipelineHealthPolledAt = new Date().toISOString();
+      pipelineHealthState = 'ok';
+    } catch (err) {
+      console.warn('Pipeline health unavailable.', err);
+      pipelineHealthState = 'error';
+    }
+  }
 
   async function fetchBackendData() {
     try {
@@ -228,71 +310,16 @@
 
       isDemoMode = false;
       apiStatus = 'online';
+      await fetchPipelineHealth();
     } catch (err) {
-      console.warn("Backend API offline. Falling back to Demo Mode.");
+      console.warn("Backend API offline.", err);
       isDemoMode = true;
       apiStatus = 'offline';
-      stats = MOCK_STATS;
-      seriesList = MOCK_SERIES;
-      logList = MOCK_LOGS;
-    }
-  }
-
-  async function toggleSeries(series: Series) {
-    const updatedStatus = !series.isActive;
-    series.isActive = updatedStatus;
-    
-    if (updatedStatus) {
-      stats.active_series++;
-    } else {
-      stats.active_series--;
-    }
-
-    if (!isDemoMode) {
-      try {
-        const res = await fetch(`${API_BASE}/api/series/${series.id}/status?active=${updatedStatus}`, {
-          method: 'PUT'
-        });
-        if (!res.ok) throw new Error('Failed to update status');
-      } catch (err) {
-        console.error("Failed to update status on server:", err);
-        series.isActive = !updatedStatus;
-        if (updatedStatus) {
-          stats.active_series--;
-        } else {
-          stats.active_series++;
-        }
-      }
-    }
-  }
-
-  async function retryNotification(logEntry: LogEntry) {
-    if (retryingLogs[logEntry.id]) return;
-    retryingLogs[logEntry.id] = true;
-
-    try {
-      const res = await fetch(`${API_BASE}/api/logs/${logEntry.id}/retry`, {
-        method: 'POST'
-      });
-      if (!res.ok) throw new Error('Retry request failed');
-      const updated: LogEntry = await res.json();
-
-      // Update in logList
-      const idx = logList.findIndex(l => l.id === updated.id);
-      if (idx !== -1) {
-        logList[idx] = updated;
-      }
-
-      // Refresh stats
-      const statsRes = await fetch(`${API_BASE}/api/stats`);
-      if (statsRes.ok) {
-        stats = await statsRes.json();
-      }
-    } catch (err) {
-      console.error("Failed to retry notification:", err);
-      alert("Failed to retry notification. Check backend integration.");
-    } finally {
-      retryingLogs[logEntry.id] = false;
+      stats = { ...MOCK_STATS };
+      seriesList = [...MOCK_SERIES];
+      logList = [...MOCK_LOGS];
+      pipelineHealth = null;
+      pipelineHealthState = 'error';
     }
   }
 
@@ -307,13 +334,19 @@
       document.documentElement.classList.remove('light');
     }
 
-    fetchBackendData();
+    fetchBackendData().then(() => {
+      if (!isDemoMode) {
+        connectSSE();
+      }
+    });
     const interval = setInterval(fetchBackendData, 30000);
+    const pipelineHealthInterval = setInterval(fetchPipelineHealth, 60000);
 
     let eventSource: EventSource | null = null;
 
     function connectSSE() {
       if (isDemoMode) return;
+      eventSource?.close();
       eventSource = new EventSource(`${API_BASE}/api/logs/stream`);
 
       eventSource.addEventListener('log', (event: MessageEvent) => {
@@ -343,358 +376,345 @@
       };
     }
 
-    connectSSE();
-
     return () => {
       clearInterval(interval);
+      clearInterval(pipelineHealthInterval);
       eventSource?.close();
     };
   });</script>
 
-<div class="min-h-screen flex flex-col md:flex-row bg-bg-primary text-gray-100 font-sans">
-  
-  <!-- Sidebar -->
-  <aside class="w-full md:w-64 bg-bg-secondary border-b md:border-b-0 md:border-r border-border-color p-6 flex flex-col justify-between gap-6">
-    <div class="flex flex-col gap-6 w-full">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-accent to-amber-600 shadow-[0_0_15px_rgba(139,92,246,0.3)]"></div>
-          <span class="font-heading font-semibold text-lg tracking-wide text-gray-100">Manga-CDC</span>
-        </div>
-        <!-- Theme Toggle for Mobile -->
-        <button 
-          onclick={toggleTheme} 
-          class="md:hidden p-1.5 rounded-lg border border-border-color hover:bg-bg-tertiary transition-colors cursor-pointer text-gray-400"
-          aria-label="Toggle theme"
-        >
-          {isDarkMode ? '🌙' : '☀️'}
-        </button>
-      </div>
-      
-      <nav class="flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0">
-        <button 
-          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-gray-50"
-          class:bg-bg-tertiary={activeTab === 'overview'}
-          class:text-gray-50={activeTab === 'overview'}
-          class:text-gray-400={activeTab !== 'overview'}
-          onclick={() => activeTab = 'overview'}
-        >
-          <span>📊</span> Overview
-        </button>
-        <button 
-          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-gray-50"
-          class:bg-bg-tertiary={activeTab === 'watchlist'}
-          class:text-gray-50={activeTab === 'watchlist'}
-          class:text-gray-400={activeTab !== 'watchlist'}
-          onclick={() => activeTab = 'watchlist'}
-        >
-          <span>📖</span> Watchlist
-        </button>
-        <button 
-          class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all whitespace-nowrap cursor-pointer hover:bg-bg-tertiary hover:text-gray-50"
-          class:bg-bg-tertiary={activeTab === 'logs'}
-          class:text-gray-50={activeTab === 'logs'}
-          class:text-gray-400={activeTab !== 'logs'}
-          onclick={() => activeTab = 'logs'}
-        >
-          <span>🔔</span> Activity Logs
-        </button>
-      </nav>
-    </div>
-    
-    <div class="hidden md:flex flex-col gap-3 pt-4 border-t border-border-color">
-      <!-- Theme Toggle for Desktop -->
-      <button 
-        onclick={toggleTheme} 
-        class="flex items-center justify-between w-full px-3 py-2 rounded-lg text-xs font-medium border border-border-color hover:bg-bg-tertiary transition-colors cursor-pointer text-gray-300 hover:text-gray-50 animate-fade-in"
-      >
-        <span>Theme</span>
-        <span>{isDarkMode ? '🌙 Dark' : '☀️ Light'}</span>
-      </button>
+<div class="app-shell min-h-screen flex flex-col bg-bg-primary text-gray-100 font-sans">
 
-      <div class="flex items-center gap-2.5">
-        <span 
-          class="w-2.5 h-2.5 rounded-full" 
-          class:bg-success={apiStatus === 'online'} 
-          class:bg-warning={apiStatus === 'connecting'} 
-          class:bg-error={apiStatus === 'offline'}
-        ></span>
-        <span class="text-xs text-gray-400">Backend: {apiStatus}</span>
-      </div>
+  <header class="app-topbar">
+    <div class="app-topbar__brand">
+      <img src="/logo.svg" alt="" class="app-topbar__logo" width="32" height="32" />
+      <span class="app-topbar__title">Manga-CDC</span>
+    </div>
+    <div class="app-topbar__actions">
       {#if isDemoMode}
-        <span class="text-[10px] text-warning bg-warning/10 px-2 py-0.5 rounded border border-warning/20 self-start font-semibold">Demo Mode</span>
-      {/if}
-
-      <!-- OpenStatus Badge -->
-      <div class="border-t border-border-color pt-3 flex flex-col gap-1.5">
-        <div class="flex items-center justify-between text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-          <span>Service Status</span>
-          {#if sseEventCount > 0}
-            <span class="flex items-center gap-1 text-[9px] text-accent font-semibold lowercase">
-              <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
-              {sseEventCount} live
-            </span>
-          {/if}
+        <span class="app-topbar__demo">Demo</span>
+      {:else}
+        <div class="app-topbar__status-wrap" title={pipelineHealth ? pipelineOverallLabel : apiStatus}>
+          <span
+            class="app-topbar__status"
+            class:app-topbar__status--ok={pipelineHealth ? pipelineOverallVariant === 'operational' : apiStatus === 'online'}
+            class:app-topbar__status--warn={pipelineHealth ? pipelineOverallVariant === 'degraded' : apiStatus === 'connecting'}
+            class:app-topbar__status--down={pipelineHealth ? pipelineOverallVariant === 'down' || pipelineOverallVariant === 'unknown' : apiStatus === 'offline'}
+            aria-hidden="true"
+          ></span>
+          <span class="app-topbar__status-label hidden sm:inline">
+            {#if pipelineHealth}
+              {pipelineOverallLabel}
+            {:else if pipelineHealthState === 'loading'}
+              Checking…
+            {:else}
+              {apiStatus}
+            {/if}
+          </span>
         </div>
-        <a href="https://manga-cdc.openstatus.dev" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity">
-          <img src="https://manga-cdc.openstatus.dev/badge/v2?theme={isDarkMode ? 'dark' : 'light'}&size=sm" alt="Pipeline Status" class="h-6" />
-        </a>
-      </div>
+      {/if}
+      <button
+        onclick={toggleTheme}
+        class="app-topbar__theme"
+        aria-label="Toggle theme"
+      >
+        {isDarkMode ? '🌙' : '☀️'}
+      </button>
     </div>
-  </aside>
+  </header>
 
   <!-- Main Content -->
-  <main class="flex-grow p-6 md:p-10 overflow-y-auto">
+  <main class="app-main flex-grow p-5 md:p-10 pb-[calc(6.75rem+env(safe-area-inset-bottom))] overflow-y-auto">
     <div class="max-w-6xl xl:max-w-7xl mx-auto w-full flex flex-col">
       {#if isDemoMode}
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-warning/10 border border-warning/30 text-warning px-5 py-3.5 rounded-lg text-sm mb-6">
+        <div class="demo-banner">
           <span>⚠️ API Connection Offline. Showing sample tracker data.</span>
-          <button onclick={fetchBackendData} class="bg-warning text-black font-semibold text-xs px-3.5 py-1.5 rounded-md hover:opacity-90 transition-opacity cursor-pointer">Retry Connection</button>
+          <button onclick={fetchBackendData} class="demo-banner__action">Retry Connection</button>
         </div>
       {/if}
 
-      <header class="mb-8 flex items-center justify-between">
+      <header class="page-header">
         <div>
-          <h1 class="font-heading font-bold text-3xl tracking-tight mb-1">
+          <h1 class="page-header__title">
             {#if activeTab === 'overview'}System Overview{/if}
-            {#if activeTab === 'watchlist'}Manga Watchlist{/if}
+            {#if activeTab === 'watchlist'}Community Watchlist{/if}
             {#if activeTab === 'logs'}Notification Logs{/if}
           </h1>
-          <span class="text-xs text-gray-400">Change Data Capture Streaming Pipeline</span>
+          {#if activeTab === 'watchlist'}
+            <p class="page-header__subtitle">Community-curated list of tracked manga series.</p>
+            <p class="page-header__hint">
+              To add or remove manga, edit
+              <a href={WATCHLIST_GITHUB_URL} target="_blank" rel="noopener noreferrer">data/watchlist.yaml</a>
+              via pull request.
+            </p>
+          {:else if activeTab === 'logs'}
+            <p class="page-header__subtitle">Delivery history across Discord, Slack, and Telegram.</p>
+          {:else}
+            <p class="page-header__subtitle">Change Data Capture streaming pipeline at a glance.</p>
+          {/if}
         </div>
-        {#if activeTab === 'watchlist'}
-          <button 
-            onclick={() => showAddSeriesModal = true}
-            class="bg-accent text-white px-4.5 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-all cursor-pointer shadow-lg shadow-accent/20 flex items-center gap-1.5"
-          >
-            <span>➕</span> Add Series
-          </button>
-        {/if}
       </header>
 
       <!-- OVERVIEW TAB -->
       {#if activeTab === 'overview'}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          <div class="bg-bg-secondary border border-border-color p-6 rounded-xl flex flex-col gap-2 hover:-translate-y-0.5 transition-transform duration-200">
-            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Tracked Series</span>
-            <span class="font-heading font-bold text-3xl">{stats.total_series}</span>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span class="stat-card__label">Tracked Series</span>
+            <span class="stat-card__value">{stats.total_series}</span>
           </div>
-          <div class="bg-bg-secondary border border-border-color p-6 rounded-xl flex flex-col gap-2 hover:-translate-y-0.5 transition-transform duration-200">
-            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Active Watchers</span>
-            <span class="font-heading font-bold text-3xl text-accent">{stats.active_series}</span>
+          <div class="stat-card">
+            <span class="stat-card__label">Active Watchers</span>
+            <span class="stat-card__value stat-card__value--accent">{stats.active_series}</span>
           </div>
-          <div class="bg-bg-secondary border border-border-color p-6 rounded-xl flex flex-col gap-2 hover:-translate-y-0.5 transition-transform duration-200">
-            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Chapters Logged</span>
-            <span class="font-heading font-bold text-3xl">{stats.total_chapters}</span>
+          <div class="stat-card">
+            <span class="stat-card__label">Chapters Logged</span>
+            <span class="stat-card__value">{stats.total_chapters}</span>
           </div>
-          <div class="bg-bg-secondary border border-border-color p-6 rounded-xl flex flex-col gap-2 hover:-translate-y-0.5 transition-transform duration-200">
-            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Delivery Success</span>
-            <span class="font-heading font-bold text-3xl text-success">{successRate}%</span>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8 animate-fade-in">
-          <div class="lg:col-span-2 bg-bg-secondary border border-border-color p-6 rounded-xl">
-            <h3 class="font-heading font-semibold text-lg mb-1">Pipeline Performance</h3>
-            <p class="text-xs text-gray-400 mb-6">Real-time statistics of successful vs failed notifications.</p>
-            <div class="h-48 flex items-end justify-between gap-4 pt-4 border-b border-border-color pb-1">
-              <!-- Success Bar -->
-              <div class="flex-grow flex flex-col items-center gap-2">
-                <span class="text-xs font-semibold text-success">{stats.successful_deliveries}</span>
-                <div class="w-full max-w-[80px] bg-success/20 rounded-t-lg transition-all duration-500" style="height: {stats.total_logs > 0 ? (stats.successful_deliveries / stats.total_logs) * 120 : 0}px"></div>
-                <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Sent</span>
-              </div>
-              <!-- Failed Bar -->
-              <div class="flex-grow flex flex-col items-center gap-2">
-                <span class="text-xs font-semibold text-error">{stats.failed_deliveries}</span>
-                <div class="w-full max-w-[80px] bg-error/20 rounded-t-lg transition-all duration-500" style="height: {stats.total_logs > 0 ? (stats.failed_deliveries / stats.total_logs) * 120 : 0}px"></div>
-                <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Failed</span>
-              </div>
-              <!-- Success Rate Ring -->
-              <div class="w-44 flex flex-col items-center justify-center gap-2 border-l border-border-color/60 pl-4 relative">
-                <div class="relative w-24 h-24 flex items-center justify-center">
-                  <svg class="w-full h-full transform -rotate-90">
-                    <circle cx="48" cy="48" r="38" class="stroke-bg-primary" stroke-width="8" fill="transparent" />
-                    <circle cx="48" cy="48" r="38" class="stroke-success transition-all duration-500" stroke-width="8" fill="transparent"
-                      stroke-dasharray={2 * Math.PI * 38}
-                      stroke-dashoffset={2 * Math.PI * 38 * (1 - successRate / 100)} />
-                  </svg>
-                  <span class="absolute text-sm font-bold font-heading text-gray-100">{successRate}%</span>
-                </div>
-                <span class="text-[10px] text-gray-400 uppercase font-medium tracking-wider">Overall Rate</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-bg-secondary border border-border-color p-6 rounded-xl flex flex-col justify-between">
-            <div>
-              <h3 class="font-heading font-semibold text-base mb-1">Scraper Activity</h3>
-              <p class="text-xs text-gray-400">Status of the background worker.</p>
-            </div>
-            <div class="flex flex-col gap-4 my-4">
-              <div class="flex justify-between items-center bg-bg-primary p-3 rounded border border-border-color">
-                <span class="text-xs text-gray-400">CDC Stream Status</span>
-                <span class="text-xs text-success font-semibold flex items-center gap-1.5">
-                  <span class="w-2 h-2 bg-success rounded-full animate-pulse"></span>
-                  Active
-                </span>
-              </div>
-              <div class="flex justify-between items-center bg-bg-primary p-3 rounded border border-border-color">
-                <span class="text-xs text-gray-400">Total Crawls</span>
-                <span class="text-xs text-gray-200 font-semibold">{stats.total_chapters}</span>
-              </div>
-            </div>
-            <span class="text-[10px] text-gray-500 leading-normal">System continuously parses MangaDex and Asura RSS feeds, updating internal state in Redpanda.</span>
+          <div class="stat-card">
+            <span class="stat-card__label">Delivery Success</span>
+            <span class="stat-card__value stat-card__value--success">{successRate}%</span>
           </div>
         </div>
 
-        <div class="bg-bg-secondary border border-border-color p-6 rounded-xl mb-8">
-          <h3 class="font-heading font-semibold text-lg mb-1">CDC Event Flow</h3>
-          <p class="text-xs text-gray-400 mb-6">Visual pipeline representing PostgreSQL logs stream to Slack, Discord, and Telegram hooks.</p>
-          <div class="flex flex-col lg:flex-row items-center justify-between gap-4 bg-bg-primary p-5 rounded-lg border border-border-color">
-            <div class="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-bg-tertiary border border-accent/20 shadow-[0_0_10px_rgba(139,92,246,0.1)] w-full lg:w-44 text-center">
-              <span class="text-2xl">🕸️</span>
-              <span class="text-xs font-medium">Scraper (Go)</span>
-            </div>
-            <span class="text-gray-600 hidden lg:inline">➔</span>
-            <div class="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-bg-tertiary border border-accent/20 shadow-[0_0_10px_rgba(139,92,246,0.1)] w-full lg:w-44 text-center">
-              <span class="text-2xl">🐘</span>
-              <span class="text-xs font-medium">Postgres WAL</span>
-            </div>
-            <span class="text-gray-600 hidden lg:inline">➔</span>
-            <div class="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-bg-tertiary border border-accent/20 shadow-[0_0_10px_rgba(139,92,246,0.1)] w-full lg:w-44 text-center">
-              <span class="text-2xl">⚡</span>
-              <span class="text-xs font-medium">Kafka / QStash</span>
-            </div>
-            <span class="text-gray-600 hidden lg:inline">➔</span>
-            <div class="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-bg-tertiary border border-accent/20 shadow-[0_0_10px_rgba(139,92,246,0.1)] w-full lg:w-44 text-center">
-              <span class="text-2xl">🚀</span>
-              <span class="text-xs font-medium">Notifier (Java)</span>
-            </div>
+        <div class="dash-panel">
+          <div class="dash-panel__header">
+            <h3 class="dash-panel__title">Recent Alerts</h3>
+            <button
+              type="button"
+              onclick={() => activeTab = 'logs'}
+              class="dash-panel__link cursor-pointer"
+            >
+              View all
+            </button>
           </div>
-        </div>
-
-        <div class="bg-bg-secondary border border-border-color p-6 rounded-xl">
-          <h3 class="font-heading font-semibold text-lg mb-4">Recent Alerts</h3>
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr class="border-b border-border-color">
-                  <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Time</th>
-                  <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Series</th>
-                  <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Chapter</th>
-                  <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Channel</th>
-                  <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-border-color/50">
-                {#each logList.slice(0, 5) as log}
+          {#if logList.length === 0}
+            <p class="dash-empty">No notifications yet.</p>
+          {:else}
+            <div class="md:hidden">
+              {#each logList.slice(0, 5) as log}
+                <article class="alert-row">
+                  <div class="alert-row__top">
+                    <span class="alert-row__series">{log.seriesTitle}</span>
+                    <span class="alert-row__time">{new Date(log.createdAt).toLocaleTimeString()}</span>
+                  </div>
+                  <div class="alert-row__meta">
+                    <span class="meta-badge meta-badge--{log.channel}">{log.channel}</span>
+                    <span class="meta-badge meta-badge--{log.status === 'SENT' ? 'sent' : 'failed'}">{log.status}</span>
+                    <span class="text-[11px] text-gray-400">Ch. {log.chapterNum}</span>
+                  </div>
+                </article>
+              {/each}
+            </div>
+            <div class="dash-table-wrap hidden md:block">
+              <table class="dash-table">
+                <thead>
                   <tr>
-                    <td class="py-3.5 text-gray-400">{new Date(log.createdAt).toLocaleTimeString()}</td>
-                    <td class="py-3.5 font-semibold text-white">{log.seriesTitle}</td>
-                    <td class="py-3.5 text-gray-300">Ch. {log.chapterNum}</td>
-                    <td class="py-3.5">
-                      <span class="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase 
-                        {log.channel === 'discord' ? 'bg-blue-500/10 text-blue-400' : ''}
-                        {log.channel === 'slack' ? 'bg-amber-500/10 text-amber-400' : ''}
-                        {log.channel === 'telegram' ? 'bg-sky-500/10 text-sky-400' : ''}"
-                      >{log.channel}</span>
-                    </td>
-                    <td class="py-3.5">
-                      <span class="px-2.5 py-0.5 rounded text-[10px] font-bold
-                        {log.status === 'SENT' ? 'bg-success/10 text-success' : ''}
-                        {log.status === 'FAILED' ? 'bg-error/10 text-error' : ''}"
-                      >{log.status}</span>
-                    </td>
+                    <th>Time</th>
+                    <th>Series</th>
+                    <th>Chapter</th>
+                    <th>Channel</th>
+                    <th>Status</th>
                   </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {#each logList.slice(0, 5) as log}
+                    <tr>
+                      <td class="text-gray-400">{new Date(log.createdAt).toLocaleTimeString()}</td>
+                      <td class="font-semibold text-white">{log.seriesTitle}</td>
+                      <td class="text-gray-300">Ch. {log.chapterNum}</td>
+                      <td>
+                        <span class="meta-badge meta-badge--{log.channel}">{log.channel}</span>
+                      </td>
+                      <td>
+                        <span class="meta-badge meta-badge--{log.status === 'SENT' ? 'sent' : 'failed'}">{log.status}</span>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
         </div>
       {/if}
 
     <!-- WATCHLIST TAB -->
     {#if activeTab === 'watchlist'}
-      <div class="flex flex-col sm:flex-row gap-4 mb-8">
-        <input 
-          type="text" 
-          placeholder="Filter series title..." 
-          bind:value={searchQuery} 
-          class="flex-grow bg-bg-secondary border border-border-color text-sm text-gray-200 px-4 py-3 rounded-lg focus:outline-none focus:border-accent"
-        />
-        <select bind:value={statusFilter} class="bg-bg-secondary border border-border-color text-sm text-gray-200 px-4 py-3 rounded-lg focus:outline-none cursor-pointer">
-          <option value="ALL">All Statuses</option>
-          <option value="ONGOING">Ongoing</option>
-          <option value="COMPLETED">Completed</option>
-        </select>
+      {#if duplicateTitles.size > 0}
+        <div class="mb-6 bg-warning/10 border border-warning/30 text-warning px-4 py-3 rounded-lg text-sm">
+          Duplicate titles detected in the watchlist. Keep one canonical entry per title in <a href={WATCHLIST_GITHUB_URL} target="_blank" rel="noopener noreferrer" class="underline underline-offset-2">watchlist.yaml</a>.
+        </div>
+      {/if}
+
+      <div class="watchlist-toolbar">
+        <label class="watchlist-search">
+          <svg class="watchlist-search__icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M9 3.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z" stroke="currentColor" stroke-width="1.5"/>
+            <path d="m14 14 3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <input
+            class="watchlist-search__input"
+            type="search"
+            placeholder="Search series or author…"
+            bind:value={searchQuery}
+          />
+        </label>
+        <div class="watchlist-segments" role="group" aria-label="Filter by publication status">
+          <button
+            type="button"
+            class="watchlist-segment"
+            class:watchlist-segment--active={statusFilter === 'ALL'}
+            onclick={() => statusFilter = 'ALL'}
+          >All</button>
+          <button
+            type="button"
+            class="watchlist-segment"
+            class:watchlist-segment--active={statusFilter === 'ONGOING'}
+            onclick={() => statusFilter = 'ONGOING'}
+          >
+            <span class="watchlist-segment__dot" aria-hidden="true"></span>
+            Ongoing
+          </button>
+          <button
+            type="button"
+            class="watchlist-segment"
+            class:watchlist-segment--active={statusFilter === 'COMPLETED'}
+            onclick={() => statusFilter = 'COMPLETED'}
+          >
+            <svg class="watchlist-segment__icon" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M2.5 6.2 4.8 8.5 9.5 3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Completed
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {#if paginatedSeries.length === 0}
+          <div class="col-span-full dash-panel dash-empty">
+            {#if isDemoMode}
+              Cannot load watchlist — API is offline. Use Retry Connection above.
+            {:else}
+              No series match your filters, or the watchlist is empty.
+            {/if}
+          </div>
+        {:else}
         {#each paginatedSeries as series}
-          <div class="bg-bg-secondary border border-border-color rounded-xl overflow-hidden flex flex-col transition-all duration-300" class:opacity-50={!series.isActive} class:border-transparent={!series.isActive}>
+          {@const source = parseSourceDisplay(series.sourceId)}
+          {@const isDuplicateTitle = duplicateTitles.has(series.title.trim().toLowerCase())}
+          {@const statusVariant = seriesStatusVariant(series.status)}
+          <div
+            class="bg-bg-secondary border border-border-color rounded-xl overflow-hidden flex flex-col transition-all duration-300 {isDuplicateTitle ? 'border-warning/40' : ''}"
+            class:opacity-50={!series.isActive}
+          >
             <div class="h-44 bg-bg-tertiary relative overflow-hidden">
               {#if series.coverUrl}
                 <img src={series.coverUrl} alt="{series.title} cover" class="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
               {:else}
                 <div class="w-full h-full flex items-center justify-center text-xs text-gray-500 font-semibold">No Cover</div>
               {/if}
-              <span class="absolute top-3 left-3 px-2 py-0.5 rounded text-[9px] font-bold text-black" class:bg-success={series.status === 'ONGOING'} class:bg-accent={series.status === 'COMPLETED'} class:text-white={series.status === 'COMPLETED'}>{series.status}</span>
+              <div class="cover-top-scrim" aria-hidden="true"></div>
+              <span
+                class="series-status-pill"
+                class:series-status-pill--ongoing={statusVariant === 'ongoing'}
+                class:series-status-pill--completed={statusVariant === 'completed'}
+                class:series-status-pill--unknown={statusVariant === 'unknown'}
+              >
+                {#if statusVariant === 'ongoing'}
+                  <span class="series-status-pill__dot" aria-hidden="true"></span>
+                {:else if statusVariant === 'completed'}
+                  <svg class="series-status-pill__icon" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M2.5 6.2 4.8 8.5 9.5 3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                {/if}
+                {seriesStatusLabel(series.status)}
+              </span>
+              {#if isDuplicateTitle}
+                <span class="absolute top-3 right-3 px-2 py-0.5 rounded text-[9px] font-bold bg-warning/90 text-black">Duplicate title</span>
+              {/if}
             </div>
             
             <div class="p-5 flex flex-col gap-2 flex-grow">
               <h3 class="font-heading font-semibold text-base text-white line-clamp-1">{series.title}</h3>
               <p class="text-[11px] text-gray-400">By {series.author || 'Unknown'}</p>
-              <p class="text-xs text-gray-400 leading-relaxed line-clamp-3 my-2">{series.description || 'No description provided.'}</p>
+              <p class="text-xs text-gray-400 leading-relaxed line-clamp-3 my-1">{series.description || 'No description provided.'}</p>
               
-              <div class="flex justify-between items-center border-t border-border-color/60 pt-4 mt-auto">
-                <span class="text-xs font-semibold text-gray-200">Latest: Ch. {series.latestChapter}</span>
-                <div class="flex items-center gap-3">
-                  <button 
-                    onclick={() => handleDeleteSeries(series.id)}
-                    class="text-xs text-error hover:bg-error/10 p-1.5 rounded transition-colors cursor-pointer"
-                    title="Delete Series"
-                  >
-                    🗑️
-                  </button>
-                  <label class="relative inline-block w-11 h-6 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      class="sr-only peer"
-                      checked={series.isActive} 
-                      onchange={() => toggleSeries(series)}
-                    />
-                    <span class="absolute inset-0 bg-bg-primary rounded-full border border-border-color transition-colors duration-200 peer-checked:bg-accent/15 peer-checked:border-accent"></span>
-                    <span class="absolute left-1 bottom-1 w-4 h-4 rounded-full bg-gray-400 transition-transform duration-200 peer-checked:translate-x-5 peer-checked:bg-accent"></span>
-                  </label>
+              <div class="flex flex-wrap items-center justify-between gap-2 border-t border-border-color/60 pt-3 mt-auto">
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-xs font-semibold text-gray-200">Latest: Ch. {series.latestChapter}</span>
+                  <span class="text-[10px] text-gray-500">Polled {formatRelativeTime(series.lastChecked)}</span>
                 </div>
+                <span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase
+                  {series.isActive ? 'bg-success/10 text-success' : 'bg-gray-500/10 text-gray-400'}"
+                >{series.isActive ? 'Active' : 'Inactive'}</span>
               </div>
+
+              <div class="flex flex-wrap gap-2 pt-2">
+                {#if series.sourceUrl}
+                  <a
+                    href={series.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-[11px] font-semibold bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25 transition-colors"
+                  >
+                    Read on {readOnSourceLabel(source.source)}
+                  </a>
+                {/if}
+                <button
+                  type="button"
+                  onclick={() => toggleChapterHistory(series)}
+                  class="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-[11px] font-semibold bg-bg-primary text-gray-300 border border-border-color hover:text-white transition-colors cursor-pointer"
+                >
+                  {expandedSeriesId === series.id ? 'Hide chapters' : 'Chapter history'}
+                </button>
+              </div>
+
+              {#if expandedSeriesId === series.id}
+                <div class="mt-2 border border-border-color rounded-lg bg-bg-primary/60 p-3">
+                  {#if chaptersLoadingId === series.id}
+                    <p class="text-[11px] text-gray-500">Loading chapters…</p>
+                  {:else if (chaptersBySeries[series.id] ?? []).length === 0}
+                    <p class="text-[11px] text-gray-500">No chapters logged yet.</p>
+                  {:else}
+                    <ul class="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
+                      {#each chaptersBySeries[series.id] as chapter}
+                        <li class="flex items-center justify-between gap-2 text-[11px]">
+                          <span class="text-gray-300 font-medium truncate">Ch. {chapter.chapterNum}{chapter.title ? ` — ${chapter.title}` : ''}</span>
+                          {#if chapter.url}
+                            <a href={chapter.url} target="_blank" rel="noopener noreferrer" class="text-accent shrink-0 hover:underline">Open</a>
+                          {/if}
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+                </div>
+              {/if}
             </div>
           </div>
         {/each}
+        {/if}
       </div>
 
       <!-- Pagination Controls -->
       {#if totalPages > 1}
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-border-color/60">
-          <span class="text-xs text-gray-400">
+        <div class="dash-pagination">
+          <span class="dash-pagination__info">
             Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredSeries.length)} of {filteredSeries.length} series
           </span>
-          <div class="flex items-center gap-2">
+          <div class="dash-pagination__controls">
             <button 
               onclick={() => currentPage = Math.max(1, currentPage - 1)} 
               disabled={currentPage === 1}
-              class="px-3.5 py-2 bg-bg-secondary border border-border-color rounded-lg text-xs font-semibold text-gray-300 hover:text-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              class="dash-pagination__btn"
             >
               Previous
             </button>
-            <span class="text-xs font-semibold text-gray-300 px-3">
+            <span class="dash-pagination__page">
               Page {currentPage} of {totalPages}
             </span>
             <button 
               onclick={() => currentPage = Math.min(totalPages, currentPage + 1)} 
               disabled={currentPage === totalPages}
-              class="px-3.5 py-2 bg-bg-secondary border border-border-color rounded-lg text-xs font-semibold text-gray-300 hover:text-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              class="dash-pagination__btn"
             >
               Next
             </button>
@@ -705,162 +725,206 @@
 
     <!-- LOGS TAB -->
     {#if activeTab === 'logs'}
-      <div class="flex flex-col sm:flex-row gap-4 mb-6">
-        <input 
-          type="text" 
-          placeholder="Search logs (series, chapter)..." 
-          bind:value={logSearchQuery} 
-          class="flex-grow bg-bg-secondary border border-border-color text-sm text-gray-200 px-4 py-3 rounded-lg focus:outline-none focus:border-accent"
-        />
-        <select bind:value={logChannelFilter} class="bg-bg-secondary border border-border-color text-sm text-gray-200 px-4 py-3 rounded-lg focus:outline-none cursor-pointer">
-          <option value="ALL">All Channels</option>
-          <option value="discord">Discord</option>
-          <option value="slack">Slack</option>
-          <option value="telegram">Telegram</option>
-        </select>
-        <select bind:value={logStatusFilter} class="bg-bg-secondary border border-border-color text-sm text-gray-200 px-4 py-3 rounded-lg focus:outline-none cursor-pointer">
-          <option value="ALL">All Statuses</option>
-          <option value="SENT">Sent</option>
-          <option value="FAILED">Failed</option>
-        </select>
+      <div class="dash-toolbar">
+        <label class="dash-search">
+          <svg class="dash-search__icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M9 3.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z" stroke="currentColor" stroke-width="1.5"/>
+            <path d="m14 14 3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <input
+            class="dash-search__input"
+            type="search"
+            placeholder="Search logs (series, chapter)…"
+            bind:value={logSearchQuery}
+          />
+        </label>
+        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <div class="dash-segments" role="group" aria-label="Filter by channel">
+            <button
+              type="button"
+              class="dash-segment"
+              class:dash-segment--active={logChannelFilter === 'ALL'}
+              onclick={() => logChannelFilter = 'ALL'}
+            >All</button>
+            <button
+              type="button"
+              class="dash-segment"
+              class:dash-segment--active={logChannelFilter === 'discord'}
+              onclick={() => logChannelFilter = 'discord'}
+            >Discord</button>
+            <button
+              type="button"
+              class="dash-segment"
+              class:dash-segment--active={logChannelFilter === 'slack'}
+              onclick={() => logChannelFilter = 'slack'}
+            >Slack</button>
+            <button
+              type="button"
+              class="dash-segment"
+              class:dash-segment--active={logChannelFilter === 'telegram'}
+              onclick={() => logChannelFilter = 'telegram'}
+            >Telegram</button>
+          </div>
+          <div class="dash-segments" role="group" aria-label="Filter by status">
+            <button
+              type="button"
+              class="dash-segment"
+              class:dash-segment--active={logStatusFilter === 'ALL'}
+              onclick={() => logStatusFilter = 'ALL'}
+            >All</button>
+            <button
+              type="button"
+              class="dash-segment"
+              class:dash-segment--active={logStatusFilter === 'SENT'}
+              onclick={() => logStatusFilter = 'SENT'}
+            >
+              <svg class="dash-segment__icon" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M2.5 6.2 4.8 8.5 9.5 3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Sent
+            </button>
+            <button
+              type="button"
+              class="dash-segment"
+              class:dash-segment--active={logStatusFilter === 'FAILED'}
+              onclick={() => logStatusFilter = 'FAILED'}
+            >Failed</button>
+          </div>
+        </div>
       </div>
 
-      <div class="bg-bg-secondary border border-border-color rounded-xl p-6">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr class="border-b border-border-color">
-                <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Time / Date</th>
-                <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Manga Series</th>
-                <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Chapter</th>
-                <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Channel</th>
-                <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Status</th>
-                <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Error Details</th>
-                <th class="pb-3 text-gray-400 font-semibold uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-border-color/50">
-              {#each filteredLogs as log}
+      <div class="dash-panel">
+        {#if filteredLogs.length === 0}
+          <p class="dash-empty">No logs match your filters.</p>
+        {:else}
+          <div class="lg:hidden">
+            {#each filteredLogs as log}
+              <article class="log-card">
+                <div class="log-card__header">
+                  <div>
+                    <div class="log-card__title">{log.seriesTitle}</div>
+                    <div class="log-card__chapter">Ch. {log.chapterNum}{log.chapterTitle ? ` — ${log.chapterTitle}` : ''}</div>
+                  </div>
+                  <div class="log-card__timestamp">
+                    <div>{new Date(log.createdAt).toLocaleDateString()}</div>
+                    <div>{new Date(log.createdAt).toLocaleTimeString()}</div>
+                  </div>
+                </div>
+                <div class="alert-row__meta">
+                  <span class="meta-badge meta-badge--{log.channel}">{log.channel}</span>
+                  <span class="meta-badge meta-badge--{log.status === 'SENT' ? 'sent' : 'failed'}">{log.status}</span>
+                </div>
+                {#if log.errorMessage}
+                  <p class="log-card__error" title={log.errorMessage}>{log.errorMessage}</p>
+                {/if}
+                <div class="log-card__footer">
+                  <button
+                    type="button"
+                    onclick={() => selectedLogForModal = log}
+                    class="log-card__inspect"
+                  >
+                    Inspect
+                  </button>
+                </div>
+              </article>
+            {/each}
+          </div>
+          <div class="dash-table-wrap hidden lg:block">
+            <table class="dash-table">
+              <thead>
                 <tr>
-                  <td class="py-3.5">
-                    <div class="text-white font-medium">{new Date(log.createdAt).toLocaleDateString()}</div>
-                    <div class="text-[10px] text-gray-500 mt-0.5">{new Date(log.createdAt).toLocaleTimeString()}</div>
-                  </td>
-                  <td class="py-3.5 font-semibold text-white">{log.seriesTitle}</td>
-                  <td class="py-3.5 text-gray-300">Ch. {log.chapterNum}</td>
-                  <td class="py-3.5">
-                    <span class="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase 
-                      {log.channel === 'discord' ? 'bg-blue-500/10 text-blue-400' : ''}
-                      {log.channel === 'slack' ? 'bg-amber-500/10 text-amber-400' : ''}
-                      {log.channel === 'telegram' ? 'bg-sky-500/10 text-sky-400' : ''}"
-                    >{log.channel}</span>
-                  </td>
-                  <td class="py-3.5">
-                    <span class="px-2.5 py-0.5 rounded text-[10px] font-bold
-                      {log.status === 'SENT' ? 'bg-success/10 text-success' : ''}
-                      {log.status === 'FAILED' ? 'bg-error/10 text-error' : ''}"
-                    >{log.status}</span>
-                  </td>
-                  <td class="py-3.5 text-error font-mono text-[10px] max-w-xs truncate">{log.errorMessage || '—'}</td>
-                  <td class="py-3.5">
-                    <div class="flex items-center gap-2">
+                  <th>Time / Date</th>
+                  <th>Manga Series</th>
+                  <th>Chapter</th>
+                  <th>Channel</th>
+                  <th>Status</th>
+                  <th>Error Details</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each filteredLogs as log}
+                  <tr>
+                    <td>
+                      <div class="text-white font-medium">{new Date(log.createdAt).toLocaleDateString()}</div>
+                      <div class="text-[10px] text-gray-500 mt-0.5">{new Date(log.createdAt).toLocaleTimeString()}</div>
+                    </td>
+                    <td class="font-semibold text-white">{log.seriesTitle}</td>
+                    <td class="text-gray-300">Ch. {log.chapterNum}</td>
+                    <td>
+                      <span class="meta-badge meta-badge--{log.channel}">{log.channel}</span>
+                    </td>
+                    <td>
+                      <span class="meta-badge meta-badge--{log.status === 'SENT' ? 'sent' : 'failed'}">{log.status}</span>
+                    </td>
+                    <td class="text-error font-mono text-[10px] max-w-xs truncate">{log.errorMessage || '—'}</td>
+                    <td>
                       <button 
                         onclick={() => selectedLogForModal = log}
-                        class="bg-bg-tertiary text-gray-300 font-semibold text-[10px] px-2.5 py-1 rounded hover:bg-border-color cursor-pointer"
+                        class="log-card__inspect"
                         title="Inspect Log Payload"
                       >
-                        🔍 Inspect
+                        Inspect
                       </button>
-                      {#if log.status === 'FAILED'}
-                        <button 
-                          onclick={() => retryNotification(log)} 
-                          disabled={retryingLogs[log.id]}
-                          class="bg-accent text-white font-semibold text-[10px] px-2.5 py-1 rounded hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {retryingLogs[log.id] ? 'Retrying...' : '🔁 Retry'}
-                        </button>
-                      {/if}
-                    </div>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
       </div>
     {/if}
     </div>
   </main>
-</div>
 
-<!-- ADD SERIES MODAL -->
-{#if showAddSeriesModal}
-  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-    <div class="bg-bg-secondary border border-border-color rounded-xl w-full max-w-lg p-6 shadow-2xl flex flex-col gap-4">
-      <div class="flex justify-between items-center pb-2 border-b border-border-color">
-        <h3 class="font-heading font-semibold text-lg text-gray-100">Add Tracked Manga</h3>
-        <button onclick={() => showAddSeriesModal = false} class="text-gray-400 hover:text-gray-200 text-lg cursor-pointer">✕</button>
-      </div>
-      <form onsubmit={(e) => { e.preventDefault(); handleAddSeries(); }} class="flex flex-col gap-3.5">
-        <div class="grid grid-cols-2 gap-4">
-          <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] uppercase font-semibold text-gray-400">Source ID</label>
-            <input type="text" bind:value={newSeries.sourceId} placeholder="e.g. md-10" required class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] uppercase font-semibold text-gray-400">Status</label>
-            <select bind:value={newSeries.status} class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3 py-2 rounded focus:outline-none cursor-pointer">
-              <option value="ONGOING">Ongoing</option>
-              <option value="COMPLETED">Completed</option>
-            </select>
-          </div>
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <label class="text-[10px] uppercase font-semibold text-gray-400">Title</label>
-          <input type="text" bind:value={newSeries.title} placeholder="e.g. Frieren: Beyond Journey's End" required class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] uppercase font-semibold text-gray-400">Author</label>
-            <input type="text" bind:value={newSeries.author} placeholder="e.g. Kanehito Yamada" class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <label class="text-[10px] uppercase font-semibold text-gray-400">Artist</label>
-            <input type="text" bind:value={newSeries.artist} placeholder="e.g. Tsukasa Abe" class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
-          </div>
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <label class="text-[10px] uppercase font-semibold text-gray-400">Source URL</label>
-          <input type="url" bind:value={newSeries.sourceUrl} placeholder="e.g. https://mangadex.org/title/..." required class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <label class="text-[10px] uppercase font-semibold text-gray-400">Cover Image URL</label>
-          <input type="url" bind:value={newSeries.coverUrl} placeholder="e.g. https://mangadex.org/covers/..." class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent" />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <label class="text-[10px] uppercase font-semibold text-gray-400">Description</label>
-          <textarea bind:value={newSeries.description} placeholder="Short synopsis..." rows="3" class="bg-bg-primary border border-border-color text-xs text-gray-200 px-3.5 py-2 rounded focus:outline-none focus:border-accent resize-none"></textarea>
-        </div>
-        <div class="flex items-center gap-2 mt-1">
-          <input type="checkbox" id="isActiveCheck" bind:checked={newSeries.isActive} class="accent-accent" />
-          <label for="isActiveCheck" class="text-xs text-gray-300 cursor-pointer">Activate tracker immediately</label>
-        </div>
-        <div class="flex justify-end gap-3 mt-3">
-          <button type="button" onclick={() => showAddSeriesModal = false} class="px-4 py-2 border border-border-color rounded text-xs text-gray-300 hover:bg-bg-tertiary cursor-pointer">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-accent text-white font-semibold rounded text-xs hover:opacity-90 transition-opacity cursor-pointer">Create Tracker</button>
-        </div>
-      </form>
+  <!-- Floating bottom navigation (all screen sizes) -->
+  <nav class="app-dock" aria-label="Main navigation">
+    <div class="app-dock__bar" role="tablist">
+      {#each NAV_TABS as tab}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          class="app-dock__item"
+          class:app-dock__item--active={activeTab === tab.id}
+          onclick={() => activeTab = tab.id}
+        >
+          <span class="app-dock__icon" aria-hidden="true">
+            {#if tab.id === 'overview'}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1.75"/>
+                <rect x="14" y="3" width="7" height="7" rx="1.75"/>
+                <rect x="3" y="14" width="7" height="7" rx="1.75"/>
+                <rect x="14" y="14" width="7" height="7" rx="1.75"/>
+              </svg>
+            {:else if tab.id === 'watchlist'}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 4h9.5a2.5 2.5 0 0 1 2.5 2.5V20a2 2 0 0 0-2-2H6V4z"/>
+                <path d="M6 12h12"/>
+              </svg>
+            {:else}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 4.5a4.5 4.5 0 0 1 4.5 4.5v2.8c0 .5.2 1 .5 1.4l.9 1.2H6.1l.9-1.2c.3-.4.5-.9.5-1.4V9a4.5 4.5 0 0 1 4.5-4.5z"/>
+                <path d="M10 18.5a2 2 0 0 0 4 0"/>
+              </svg>
+            {/if}
+          </span>
+          <span class="app-dock__label app-dock__label--short">{tab.shortLabel}</span>
+          <span class="app-dock__label app-dock__label--full">{tab.label}</span>
+        </button>
+      {/each}
     </div>
-  </div>
-{/if}
+  </nav>
+</div>
 
 <!-- LOG DETAILS MODAL -->
 {#if selectedLogForModal}
-  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-    <div class="bg-bg-secondary border border-border-color rounded-xl w-full max-w-lg p-6 shadow-2xl flex flex-col gap-4">
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in">
+    <div class="modal-sheet flex flex-col gap-4">
       <div class="flex justify-between items-center pb-2 border-b border-border-color">
         <h3 class="font-heading font-semibold text-lg text-gray-100">Notification Dispatch Details</h3>
-        <button onclick={() => selectedLogForModal = null} class="text-gray-400 hover:text-gray-200 text-lg cursor-pointer">✕</button>
+        <button onclick={() => selectedLogForModal = null} class="text-gray-400 hover:text-gray-200 text-lg cursor-pointer" aria-label="Close">✕</button>
       </div>
       <div class="flex flex-col gap-3">
         <div class="grid grid-cols-2 gap-4 bg-bg-primary p-4 rounded border border-border-color text-xs">
@@ -897,20 +961,6 @@
         {/if}
         <div class="flex justify-end gap-3 mt-3">
           <button onclick={() => selectedLogForModal = null} class="px-5.5 py-2 bg-bg-tertiary border border-border-color rounded text-xs text-gray-300 hover:text-gray-100 cursor-pointer">Close</button>
-          {#if selectedLogForModal.status === 'FAILED'}
-            <button 
-              onclick={() => { 
-                if (selectedLogForModal) {
-                  retryNotification(selectedLogForModal); 
-                  selectedLogForModal = null; 
-                }
-              }} 
-              disabled={retryingLogs[selectedLogForModal.id]}
-              class="px-5.5 py-2 bg-accent text-white font-semibold rounded text-xs hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
-            >
-              Retry Dispatch
-            </button>
-          {/if}
         </div>
       </div>
     </div>

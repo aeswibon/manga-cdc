@@ -46,6 +46,9 @@ func TestMangaDexAdapter_FetchLatest(t *testing.T) {
 	if series[0].SourceID != "abc-123" || series[0].Title != "Test Manga" {
 		t.Errorf("unexpected first series: %+v", series[0])
 	}
+	if series[0].SourceURL != "https://mangadex.org/title/abc-123" {
+		t.Errorf("expected source URL, got %q", series[0].SourceURL)
+	}
 	if series[0].Status != "ONGOING" {
 		t.Errorf("expected ONGOING, got %s", series[0].Status)
 	}
@@ -108,6 +111,49 @@ func TestMangaDexAdapter_FetchChapters(t *testing.T) {
 	}
 	if chapters[0].IsNew != true || chapters[1].IsNew != true {
 		t.Error("expected IsNew=true for all chapters")
+	}
+}
+
+func TestMangaDexAdapter_FetchSeries(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/manga/abc-123" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"data": {
+				"id": "abc-123",
+				"attributes": {
+					"title": {"en": "Test Manga"},
+					"altTitles": [{"ja": "テスト"}],
+					"description": {"en": "A test manga"},
+					"status": "ongoing"
+				},
+				"relationships": [
+					{"id": "author-1", "type": "author", "attributes": {"name": "Test Author"}},
+					{"id": "cover-1", "type": "cover_art", "attributes": {"fileName": "cover.jpg"}}
+				]
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	adapter := NewMangaDexAdapterWithClient(srv.Client(), srv.URL)
+	series, err := adapter.FetchSeries(context.Background(), "abc-123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if series.Title != "Test Manga" {
+		t.Errorf("unexpected title: %q", series.Title)
+	}
+	if series.Author != "Test Author" {
+		t.Errorf("unexpected author: %q", series.Author)
+	}
+	if series.CoverURL != "https://uploads.mangadex.org/covers/abc-123/cover.jpg" {
+		t.Errorf("unexpected cover: %q", series.CoverURL)
+	}
+	if series.Status != "ONGOING" {
+		t.Errorf("unexpected status: %q", series.Status)
 	}
 }
 
