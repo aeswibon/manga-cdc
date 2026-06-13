@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	DatabaseURL              string
+	DBMaxConns               int
 	ScrapeInterval           time.Duration
 	LogLevel                 string
 	KafkaBrokers             string
@@ -44,6 +45,14 @@ func Load() (*Config, error) {
 		dbURL = "postgres://mangacdc:mangacdc@localhost:5432/mangacdc?sslmode=disable"
 	}
 
+	dbMaxConns := 10
+	if v := os.Getenv("DB_MAX_CONNS"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err == nil && parsed > 0 {
+			dbMaxConns = parsed
+		}
+	}
+
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
 		logLevel = "info"
@@ -73,6 +82,7 @@ func Load() (*Config, error) {
 
 	return &Config{
 		DatabaseURL:              dbURL,
+		DBMaxConns:               dbMaxConns,
 		ScrapeInterval:           interval,
 		LogLevel:                 logLevel,
 		KafkaBrokers:             os.Getenv("KAFKA_BROKERS"),
