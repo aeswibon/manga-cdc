@@ -6,8 +6,8 @@ type CacheEntry = {
 
 const cache = new Map<string, CacheEntry>();
 
-export const UPSTREAM_CACHE_TTL_MS = 5 * 60 * 1000;
-export const UPSTREAM_CACHE_CONTROL = 'private, max-age=300, stale-while-revalidate=600';
+export const UPSTREAM_CACHE_TTL_MS = 10 * 60 * 1000;
+export const UPSTREAM_CACHE_CONTROL = 'public, s-maxage=600, stale-while-revalidate=3600';
 
 export function getCached(key: string): CacheEntry | null {
   const entry = cache.get(key);
