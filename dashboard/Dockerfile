@@ -11,7 +11,7 @@ RUN bun run build
 # Serve stage
 FROM nginx:alpine
 
-ARG APP_VERSION=0.4.5
+ARG APP_VERSION=0.4.6
 LABEL org.opencontainers.image.title="manga-cdc dashboard" \
       org.opencontainers.image.description="Read-only manga watchlist dashboard for manga-cdc" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
