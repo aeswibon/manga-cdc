@@ -51,7 +51,7 @@ env:
 jobs:
   resolve-release:
     name: Resolve release tag
-    if: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')) || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -117,12 +117,12 @@ jobs:
             exit 0
           fi
 
-          # 2. Verify triggering run built docker images
-          summary=$(gh api "/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs" \
-            --jq '[.jobs[] | select(.name == "docker-snapshot" or .name == "Build and push Docker images") | .conclusion] | join(",")')
-          echo "Triggering run: docker-snapshot/build conclusions = [${summary}]"
-          if ! echo "$summary" | grep -qE "success"; then
-            echo "Triggering run did not build images (gated master push); skipping deploy."
+          # 2. Verify triggering run completed a release build (not CI-only master push)
+          build_conclusion=$(gh api "/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs" \
+            --jq '.jobs[] | select(.name == "Build and push Docker images") | .conclusion' | head -1)
+          echo "Triggering run: Build and push Docker images conclusion = ${build_conclusion:-none}"
+          if [ "$build_conclusion" != "success" ]; then
+            echo "Triggering run did not publish release images; skipping deploy."
             echo "should_deploy=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

@@ -5,8 +5,6 @@ on:
     branches: [master]
   push:
     branches: [master]
-    tags:
-      - "v*"
   workflow_dispatch:
 
 env:
@@ -17,8 +15,7 @@ env:
   SNAPSHOT_TAG: ci-${{ github.sha }}
   VITE_STATUS_PAGE_URL: ${{ vars.VITE_STATUS_PAGE_URL || 'http://localhost:3001' }}
 
-# Tag and branch pushes for the same commit use different concurrency groups so a
-# master push cannot cancel an in-flight release (tag) pipeline.
+# Release builds run on master after sync-version retags; PRs use separate groups.
 concurrency:
   group: test-build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -30,21 +27,22 @@ jobs:
     timeout-minutes: 5
     outputs:
       proceed: ${{ steps.check.outputs.proceed }}
+      release: ${{ steps.check.outputs.release }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Skip duplicate master push for tagged releases
+      - name: Detect CI-only vs release build
         id: check
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            git fetch --tags origin
-            if git tag --points-at HEAD | grep -qE '^v[0-9]'; then
-              echo "Commit is tagged for release; the tag push runs the full pipeline."
-              echo "proceed=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+          git fetch --tags origin
+          if git tag --points-at HEAD | grep -qE '^v[0-9]'; then
+            echo "Release commit: version tag points at HEAD."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "CI-only run (no release tag at HEAD)."
+            echo "release=false" >> "$GITHUB_OUTPUT"
           fi
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
@@ -283,7 +281,7 @@ jobs:
 
   docker-snapshot:
     name: Build CI snapshot images
-    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
+    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'))
     needs: [gate, repo-policy, terraform, dashboard-test, status-page-check]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -346,7 +344,7 @@ jobs:
 
   e2e-test:
     name: End-to-end tests
-    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch')
+    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'))
     needs: [gate, terraform, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test, dashboard-test, watchlist-validate, status-page-check]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -365,7 +363,7 @@ jobs:
 
   build:
     name: Build and push Docker images
-    if: needs.gate.outputs.proceed == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'
     needs: [gate, docker-snapshot, e2e-test]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -388,11 +386,19 @@ jobs:
       - name: Resolve release tag
         id: release-tag
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "tag=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          git fetch --tags origin
+          release_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
+          if [ -z "$release_tag" ]; then
+            echo "No release tag at HEAD"
+            exit 1
           fi
+          semver="${release_tag#v}"
+          major="${semver%%.*}"
+          rest="${semver#*.}"
+          minor="${rest%%.*}"
+          echo "tag=$semver" >> "$GITHUB_OUTPUT"
+          echo "major_minor=${major}.${minor}" >> "$GITHUB_OUTPUT"
+          echo "major=$major" >> "$GITHUB_OUTPUT"
 
       - name: Docker meta (scraper)
         id: meta-scraper
@@ -400,12 +406,11 @@ jobs:
         with:
           images: ${{ env.SCRAPER_IMAGE }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=ref,event=pr
+            type=raw,value=${{ steps.release-tag.outputs.tag }}
+            type=raw,value=${{ steps.release-tag.outputs.major_minor }}
+            type=raw,value=${{ steps.release-tag.outputs.major }}
+            type=raw,value=latest
+            type=sha,prefix=,suffix=,format=short
 
       - name: Docker meta (notification-service)
         id: meta-notification
@@ -413,12 +418,11 @@ jobs:
         with:
           images: ${{ env.NOTIFICATION_IMAGE }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=ref,event=pr
+            type=raw,value=${{ steps.release-tag.outputs.tag }}
+            type=raw,value=${{ steps.release-tag.outputs.major_minor }}
+            type=raw,value=${{ steps.release-tag.outputs.major }}
+            type=raw,value=latest
+            type=sha,prefix=,suffix=,format=short
 
       - name: Docker meta (dashboard)
         id: meta-dashboard
@@ -426,12 +430,11 @@ jobs:
         with:
           images: ${{ env.DASHBOARD_IMAGE }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=sha,prefix=,suffix=,format=short,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=ref,event=pr
+            type=raw,value=${{ steps.release-tag.outputs.tag }}
+            type=raw,value=${{ steps.release-tag.outputs.major_minor }}
+            type=raw,value=${{ steps.release-tag.outputs.major }}
+            type=raw,value=latest
+            type=sha,prefix=,suffix=,format=short
 
       - name: Push release tags (scraper)
         run: |
@@ -486,7 +489,7 @@ jobs:
   release:
     name: Publish release notes
     needs: [gate, build]
-    if: needs.gate.outputs.proceed == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -499,7 +502,12 @@ jobs:
       - name: Generate release notes
         id: notes
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
+          git fetch --tags origin
+          VERSION="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1)"
+          if [ -z "$VERSION" ]; then
+            echo "No release tag at HEAD"
+            exit 1
+          fi
           chmod +x scripts/generate-release-notes.sh
           ./scripts/generate-release-notes.sh "$VERSION" > release-notes.md
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"

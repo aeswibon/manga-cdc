@@ -2,6 +2,15 @@
 
 Run workflows locally with [nektos/act](https://github.com/nektos/act).
 
+## CI pipeline order
+
+| Trigger | Workflows |
+|---|---|
+| Push to `master` (normal commit) | **Test and Build** only |
+| Push tag `v*` | **Sync version from tag** → **Test and Build** (master, release) → **Deploy** |
+
+Tag pushes no longer start Test and Build directly. Sync updates version files on `master`, retags, then the master push runs the release build. Deploy runs after a successful release Test and Build run.
+
 ## Prerequisites
 
 - Docker (OrbStack/Colima) running
@@ -28,7 +37,7 @@ ACT=true act push --bind \
 
 Use `--bind` so act sees new/uncommitted workflow files. Without `--bind`, only tracked files are copied into the container.
 
-Expected: version files bump `0.4.4` → `0.4.5`, verify step passes, push skipped (`ACT=true`).
+Expected: version files bump `0.4.4` → `0.4.5`, verify step passes, push/retag skipped (`ACT=true`).
 
 After act, restore local files if needed:
 
@@ -36,6 +45,8 @@ After act, restore local files if needed:
 git checkout -- dashboard/package.json status-page/package.json helm/manga-cdc/Chart.yaml \
   scraper/internal/version/version.go notification-service/pom.xml scraper/Dockerfile notification-service/Dockerfile
 ```
+
+Script-only smoke test:
 
 ```bash
 bash scripts/ci/sync-versions-from-tag.sh 0.4.5

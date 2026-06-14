@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: sync-version-${{ github.ref }}
@@ -57,26 +58,65 @@ jobs:
           grep -q "ARG APP_VERSION=${VERSION}" scraper/Dockerfile notification-service/Dockerfile
           echo "act: verified version files at ${VERSION}"
 
-      - name: Commit and push to master
+      - name: Detect release state
         if: env.ACT != 'true'
+        id: state
         env:
           VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          if git diff --quiet; then
-            echo "Version files already aligned with v${VERSION}"
-            exit 0
+          git fetch origin master "refs/tags/v${VERSION}"
+          master_sha=$(git rev-parse origin/master)
+          tag_sha=$(git rev-parse "refs/tags/v${VERSION}^{commit}" 2>/dev/null || echo "")
+          if [ -z "$(git status --porcelain)" ] && [ -n "$tag_sha" ] && [ "$tag_sha" = "$master_sha" ]; then
+            echo "Release already aligned: tag v${VERSION} at master with synced files."
+            echo "skip_publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_publish=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Commit, retag, and push to master
+        if: env.ACT != 'true' && steps.state.outputs.skip_publish != 'true'
+        id: publish
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            dashboard/package.json \
-            status-page/package.json \
-            helm/manga-cdc/Chart.yaml \
-            scraper/internal/version/version.go \
-            notification-service/pom.xml \
-            scraper/Dockerfile \
-            notification-service/Dockerfile
 
-          git commit -S -m "chore: sync version files to v${VERSION}"
-          git push origin master
+          pushed_master=false
+          if ! git diff --quiet; then
+            git add \
+              dashboard/package.json \
+              status-page/package.json \
+              helm/manga-cdc/Chart.yaml \
+              scraper/internal/version/version.go \
+              notification-service/pom.xml \
+              scraper/Dockerfile \
+              notification-service/Dockerfile
+
+            git commit -S -m "chore: sync version files to v${VERSION}"
+            git push origin master
+            pushed_master=true
+          else
+            echo "Version files already aligned with v${VERSION}"
+          fi
+
+          tag_before=$(git rev-parse "refs/tags/v${VERSION}^{commit}" 2>/dev/null || echo "")
+          head_sha=$(git rev-parse HEAD)
+          git tag -f "v${VERSION}"
+          git push -f origin "v${VERSION}"
+
+          tag_moved=false
+          if [ "$tag_before" != "$head_sha" ]; then
+            tag_moved=true
+          fi
+          echo "pushed_master=${pushed_master}" >> "$GITHUB_OUTPUT"
+          echo "tag_moved=${tag_moved}" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger release Test and Build
+        if: env.ACT != 'true' && steps.state.outputs.skip_publish != 'true' && steps.publish.outputs.pushed_master == 'false' && steps.publish.outputs.tag_moved == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run test-and-build.yml --ref master
+          echo "Dispatched Test and Build on master (retag without version commit)."
