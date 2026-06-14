@@ -26,7 +26,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Require release bot token
-        if: env.ACT != 'true'
         env:
           RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
         run: |
@@ -39,7 +38,6 @@ jobs:
           fi
 
       - uses: actions/checkout@v6
-        if: env.ACT != 'true'
         with:
           fetch-depth: 0
           ref: master
@@ -64,22 +62,7 @@ jobs:
       - name: Sync version files
         run: bash scripts/ci/sync-versions-from-tag.sh "${{ steps.tag.outputs.version }}"
 
-      - name: Verify sync (act)
-        if: env.ACT == 'true'
-        env:
-          VERSION: ${{ steps.tag.outputs.version }}
-        run: |
-          grep -q "\"version\": \"${VERSION}\"" dashboard/package.json
-          grep -q "\"version\": \"${VERSION}\"" status-page/package.json
-          grep -q "const Version = \"${VERSION}\"" scraper/internal/version/version.go
-          grep -q "version: ${VERSION}" helm/manga-cdc/Chart.yaml
-          grep -q "appVersion: \"${VERSION}\"" helm/manga-cdc/Chart.yaml
-          grep -q "<version>${VERSION}</version>" notification-service/pom.xml
-          grep -q "ARG APP_VERSION=${VERSION}" scraper/Dockerfile notification-service/Dockerfile dashboard/Dockerfile
-          echo "act: verified version files at ${VERSION}"
-
       - name: Detect git release state
-        if: env.ACT != 'true'
         id: git_state
         env:
           VERSION: ${{ steps.tag.outputs.version }}
@@ -96,17 +79,14 @@ jobs:
           fi
 
       - uses: docker/setup-buildx-action@v4
-        if: env.ACT != 'true'
 
       - uses: docker/login-action@v4
-        if: env.ACT != 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check GHCR release images
-        if: env.ACT != 'true'
         id: images
         env:
           VERSION: ${{ steps.tag.outputs.version }}
@@ -122,7 +102,6 @@ jobs:
           fi
 
       - name: Decide sync skip
-        if: env.ACT != 'true'
         id: state
         run: |
           skip_publish="${{ steps.git_state.outputs.skip_publish }}"
@@ -138,7 +117,7 @@ jobs:
           echo "release_images_exist=${images_exist}" >> "$GITHUB_OUTPUT"
 
       - name: Publish version sync to master
-        if: env.ACT != 'true' && steps.state.outputs.skip_all != 'true' && steps.state.outputs.skip_publish != 'true'
+        if: steps.state.outputs.skip_all != 'true' && steps.state.outputs.skip_publish != 'true'
         id: publish
         env:
           VERSION: ${{ steps.tag.outputs.version }}
@@ -148,7 +127,6 @@ jobs:
 
       - name: Trigger release Test and Build
         if: >-
-          env.ACT != 'true' &&
           steps.state.outputs.skip_all != 'true' &&
           steps.state.outputs.release_images_exist != 'true' &&
           (

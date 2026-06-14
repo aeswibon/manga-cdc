@@ -46,29 +46,23 @@ export ACT_DOCKER_SOCKET="${HOME}/.orbstack/run/docker.sock"
 
 ## Sync version from tag
 
+Prefer the script-only smoke test below for local version bumps. Running the full workflow with act hits GitHub (checkout, GHCR, publish) and requires `-s RELEASE_BOT_TOKEN` plus a valid `GITHUB_TOKEN`.
+
 Event fixture: `.github/act/tag-push-v0.4.5.json`
 
 ```bash
-ACT=true act push --bind \
+act push --bind \
   -W .github/workflows/sync-version-on-tag.yml \
   -e .github/act/tag-push-v0.4.5.json \
   -j sync-version \
+  -s RELEASE_BOT_TOKEN=... \
+  -s GITHUB_TOKEN=... \
   --container-daemon-socket "unix://${ACT_DOCKER_SOCKET}"
 ```
 
 Use `--bind` so act sees new/uncommitted workflow files. Without `--bind`, only tracked files are copied into the container.
 
-Expected: version files bump `0.4.4` → `0.4.5`, verify step passes, push/retag skipped (`ACT=true`).
-
-After act, restore local files if needed:
-
-```bash
-git checkout -- dashboard/package.json status-page/package.json helm/manga-cdc/Chart.yaml \
-  scraper/internal/version/version.go notification-service/pom.xml scraper/Dockerfile \
-  notification-service/Dockerfile dashboard/Dockerfile
-```
-
-Script-only smoke test:
+Script-only smoke test (recommended locally):
 
 ```bash
 bash scripts/ci/sync-versions-from-tag.sh 0.4.5
