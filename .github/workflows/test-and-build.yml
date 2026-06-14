@@ -3,8 +3,6 @@ name: Test and Build
 on:
   pull_request:
     branches: [master]
-  push:
-    branches: [master]
   workflow_dispatch:
 
 env:
@@ -261,7 +259,7 @@ jobs:
 
   docker-snapshot:
     name: Build CI snapshot images
-    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'))
+    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && needs.gate.outputs.release == 'true'))
     needs: [gate, terraform, dashboard-test, status-page-check]
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -325,7 +323,7 @@ jobs:
 
   e2e-test:
     name: End-to-end tests
-    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'))
+    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && needs.gate.outputs.release == 'true'))
     needs: [gate, terraform, docker-snapshot, go-test, go-integration-test, configure-test, java-test, dashboard-test, watchlist-validate, status-page-check]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -344,7 +342,7 @@ jobs:
 
   build:
     name: Build and push Docker images
-    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'
+    if: needs.gate.outputs.proceed == 'true' && github.event_name == 'workflow_dispatch' && needs.gate.outputs.release == 'true'
     needs: [gate, docker-snapshot, e2e-test]
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -478,10 +476,23 @@ jobs:
             --tag docker.io/${{ secrets.DOCKER_USERNAME }}/dashboard:latest \
             ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
 
+      - name: Export outputs for pipeline-compose
+        if: success()
+        run: |
+          mkdir -p pipeline-compose
+          jq -n --arg image_tag "${{ steps.release-tag.outputs.tag }}" '{image_tag: $image_tag}' > pipeline-compose/outputs.json
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: pipeline-compose-test-build
+          path: pipeline-compose/outputs.json
+          retention-days: 1
+
   release:
     name: Publish release notes
     needs: [gate, build]
-    if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'
+    if: needs.gate.outputs.proceed == 'true' && github.event_name == 'workflow_dispatch' && needs.gate.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

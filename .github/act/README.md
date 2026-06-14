@@ -6,10 +6,10 @@ Run workflows locally with [nektos/act](https://github.com/nektos/act).
 
 | Trigger | Workflows |
 |---|---|
-| Push to `master` (normal commit) | **Test and Build** only |
-| Push tag `v*` | **Sync version from tag** → **Test and Build** (master, release) → **Deploy** |
+| Pull request | **Test and Build** (tests + optional e2e on PR) |
+| Push tag `v*` | **Release** → `version-sync` → `test-build` → `deploy` via [pipeline-compose-run](https://github.com/aeswibon/pipeline-compose-run) |
 
-Tag pushes no longer start Test and Build directly. Sync updates version files on `master`, retags, then the master push runs the release build. Deploy runs after a successful release Test and Build run.
+Release orchestration lives in `.github/pipelines/release.yml`. Tag pushes no longer chain workflows with `workflow_run` or manual `gh workflow run`.
 
 ## Release bot setup
 
@@ -44,15 +44,15 @@ export ACT_DOCKER_SOCKET="${HOME}/.orbstack/run/docker.sock"
 # or Colima: export ACT_DOCKER_SOCKET="${HOME}/.colima/default/docker.sock"
 ```
 
-## Sync version from tag
+## Version sync stage
 
-Prefer the script-only smoke test below for local version bumps. Running the full workflow with act hits GitHub (checkout, GHCR, publish) and requires `-s RELEASE_BOT_TOKEN` plus a valid `GITHUB_TOKEN`.
+Prefer the script-only smoke test below for local version bumps. Running the full release pipeline with act hits GitHub (checkout, GHCR, publish) and requires `-s RELEASE_BOT_TOKEN` plus a valid `GITHUB_TOKEN`.
 
 Event fixture: `.github/act/tag-push-v0.4.5.json`
 
 ```bash
-act push --bind \
-  -W .github/workflows/sync-version-on-tag.yml \
+act workflow_dispatch --bind \
+  -W .github/workflows/stage-version-sync.yml \
   -e .github/act/tag-push-v0.4.5.json \
   -j sync-version \
   -s RELEASE_BOT_TOKEN=... \

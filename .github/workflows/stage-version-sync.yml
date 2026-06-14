@@ -1,18 +1,12 @@
-name: Sync version from tag
+name: Version sync
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
   actions: write
   packages: read
-
-concurrency:
-  group: sync-version-${{ github.ref }}
-  cancel-in-progress: false
 
 env:
   SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
@@ -125,16 +119,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/ci/publish-version-sync.sh "${VERSION}"
 
-      - name: Trigger release Test and Build
-        if: >-
-          steps.state.outputs.skip_all != 'true' &&
-          steps.state.outputs.release_images_exist != 'true' &&
-          (
-            steps.state.outputs.skip_publish == 'true' ||
-            (steps.publish.outputs.pushed_master == 'false' && steps.publish.outputs.tag_moved == 'true')
-          )
+      - name: Export outputs for pipeline-compose
+        if: success()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          SKIP_ALL: ${{ steps.state.outputs.skip_all }}
+          SKIP_PUBLISH: ${{ steps.state.outputs.skip_publish }}
+          RELEASE_IMAGES_EXIST: ${{ steps.state.outputs.release_images_exist }}
         run: |
-          gh workflow run test-and-build.yml --ref master
-          echo "Dispatched Test and Build on master (ghcr.io release images missing)."
+          mkdir -p pipeline-compose
+          jq -n \
+            --arg version "$VERSION" \
+            --arg skip_all "$SKIP_ALL" \
+            --arg skip_publish "$SKIP_PUBLISH" \
+            --arg release_images_exist "$RELEASE_IMAGES_EXIST" \
+            '{version: $version, skip_all: $skip_all, skip_publish: $skip_publish, release_images_exist: $release_images_exist}' \
+            > pipeline-compose/outputs.json
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: pipeline-compose-version-sync
+          path: pipeline-compose/outputs.json
+          retention-days: 1

@@ -1,0 +1,27 @@
+name: release
+version: 1
+stages:
+  - id: version-sync
+    workflow: .github/workflows/stage-version-sync.yml
+    outputs:
+      - version
+      - skip_all
+      - skip_publish
+      - release_images_exist
+
+  - id: test-build
+    workflow: .github/workflows/test-and-build.yml
+    needs:
+      - version-sync
+    when: ${{ context.version-sync.skip_all == 'false' }}
+
+  - id: deploy
+    workflow: .github/workflows/deploy.yml
+    needs:
+      - test-build
+    when: ${{ context.version-sync.skip_all == 'false' }}
+    inputs:
+      image_tag: ${{ context.test-build.image_tag }}
+      cloud_provider: gcp
+      deployment_target: serverless
+      deploy_method: terraform

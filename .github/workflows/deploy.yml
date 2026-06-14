@@ -1,9 +1,6 @@
 name: Deploy
 
 on:
-  workflow_run:
-    workflows: [Test and Build]
-    types: [completed]
   workflow_dispatch:
     inputs:
       cloud_provider:
@@ -39,7 +36,7 @@ on:
         default: "latest"
 
 concurrency:
-  group: deploy-${{ github.event.workflow_run.head_sha || github.sha }}
+  group: deploy-${{ github.sha }}
   cancel-in-progress: false
 
 env:
@@ -51,13 +48,11 @@ env:
 jobs:
   resolve-release:
     name: Resolve release tag
-    if: ${{ (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')) || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       packages: read
-      actions: read
     outputs:
       should_deploy: ${{ steps.tag.outputs.should_deploy }}
       release_tag: ${{ steps.tag.outputs.release_tag }}
@@ -68,87 +63,37 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
           fetch-depth: 0
 
+      - uses: docker/setup-buildx-action@v4
+
       - uses: docker/login-action@v4
-        if: github.event_name == 'workflow_run'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-buildx-action@v4
-        if: github.event_name == 'workflow_run'
-
-      - name: Require version tag and verify pipeline
+      - name: Resolve release tag and verify images
         id: tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SNAPSHOT_TAG: ci-${{ github.event.workflow_run.head_sha }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag_input="${{ github.event.inputs.image_tag }}"
-            if [ "$tag_input" = "latest" ]; then
-              echo "Manual deploy must use an explicit version tag, not latest."
-              exit 1
-            fi
-            if ! echo "$tag_input" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-              echo "Manual deploy image_tag must be a semver (e.g. 0.4.0), not '$tag_input'."
-              exit 1
-            fi
-            git fetch --tags origin
-            if ! git rev-parse "refs/tags/v${tag_input}" >/dev/null 2>&1; then
-              echo "Manual deploy requires an existing release tag v${tag_input} on origin."
-              exit 1
-            fi
-            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-            echo "release_tag=v${tag_input}" >> "$GITHUB_OUTPUT"
-            echo "image_tag=${tag_input}" >> "$GITHUB_OUTPUT"
-            exit 0
+          tag_input="${{ github.event.inputs.image_tag }}"
+          if [ "$tag_input" = "latest" ]; then
+            echo "Deploy must use an explicit version tag, not latest."
+            exit 1
           fi
-
-          # 1. Tag check
+          if ! echo "$tag_input" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "Deploy image_tag must be a semver (e.g. 0.4.5), not '$tag_input'."
+            exit 1
+          fi
           git fetch --tags origin
-          release_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
-          if [ -z "$release_tag" ]; then
-            echo "No release tag on commit; skipping deploy."
-            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          if ! git rev-parse "refs/tags/v${tag_input}" >/dev/null 2>&1; then
+            echo "Deploy requires an existing release tag v${tag_input} on origin."
+            exit 1
           fi
-
-          # 2. Verify triggering run completed a release build (not CI-only master push)
-          build_conclusion=$(gh api "/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs" \
-            --jq '.jobs[] | select(.name == "Build and push Docker images") | .conclusion' | head -1)
-          echo "Triggering run: Build and push Docker images conclusion = ${build_conclusion:-none}"
-          if [ "$build_conclusion" != "success" ]; then
-            echo "Triggering run did not publish release images; skipping deploy."
-            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # 3. Verify snapshot images exist on ghcr.io
-          echo "Checking for ${{ env.SCRAPER_IMAGE }}:${SNAPSHOT_TAG}..."
-          for i in $(seq 1 6); do
-            if docker buildx imagetools inspect "${{ env.SCRAPER_IMAGE }}:${SNAPSHOT_TAG}" > /dev/null 2>&1 \
-              && docker buildx imagetools inspect "${{ env.NOTIFICATION_IMAGE }}:${SNAPSHOT_TAG}" > /dev/null 2>&1 \
-              && docker buildx imagetools inspect "${{ env.DASHBOARD_IMAGE }}:${SNAPSHOT_TAG}" > /dev/null 2>&1; then
-              echo "Snapshot images exist."
-              break
-            fi
-            echo "Attempt $i: images not ready, waiting 10s..."
-            sleep 10
-          done
-          if [ "$i" -eq 6 ]; then
-            echo "Snapshot images not found after retries; skipping deploy."
-            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "Release tag: $release_tag"
+          bash scripts/ci/check-ghcr-release-images.sh "${tag_input}"
           echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${release_tag#v}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v${tag_input}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${tag_input}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve deploy configuration
         id: config
@@ -157,15 +102,9 @@ jobs:
           INPUT_TARGET: ${{ github.event.inputs.deployment_target }}
           INPUT_METHOD: ${{ github.event.inputs.deploy_method }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            cloud="$INPUT_CLOUD"
-            target="$INPUT_TARGET"
-            method="$INPUT_METHOD"
-          else
-            cloud="gcp"
-            target="serverless"
-            method="terraform"
-          fi
+          cloud="${INPUT_CLOUD:-gcp}"
+          target="${INPUT_TARGET:-serverless}"
+          method="${INPUT_METHOD:-terraform}"
           echo "cloud_provider=$cloud" >> "$GITHUB_OUTPUT"
           echo "deployment_target=$target" >> "$GITHUB_OUTPUT"
           echo "deploy_method=$method" >> "$GITHUB_OUTPUT"
@@ -188,7 +127,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Deploy summary
         run: |
@@ -349,7 +288,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Deploy summary
         run: |
@@ -507,7 +446,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Deploy summary
         run: |
@@ -659,7 +598,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Deploy summary
         run: |
@@ -798,7 +737,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-node@v6
         with:
@@ -822,7 +761,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-node@v6
         with:
