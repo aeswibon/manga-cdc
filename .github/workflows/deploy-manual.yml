@@ -51,7 +51,23 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
+
+      - name: Render deploy pipeline
+        env:
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          DEPLOYMENT_TARGET: ${{ github.event.inputs.deployment_target }}
+          DEPLOY_METHOD: ${{ github.event.inputs.deploy_method }}
+        run: |
+          tpl=".github/pipelines/deploy-manual-${{ github.event.inputs.cloud_provider }}.template.yml"
+          if [ ! -f "$tpl" ]; then
+            echo "Unknown cloud provider template: $tpl" >&2
+            exit 1
+          fi
+          envsubst '$IMAGE_TAG $DEPLOYMENT_TARGET $DEPLOY_METHOD' < "$tpl" > /tmp/deploy-pipeline.yml
+          echo "Rendered pipeline:"
+          cat /tmp/deploy-pipeline.yml
+
       - uses: aeswibon/pipeline-compose-run@v0.3.0
         with:
-          pipeline_file: .github/pipelines/deploy-manual.yml
+          pipeline_file: /tmp/deploy-pipeline.yml
           github_token: ${{ github.token }}

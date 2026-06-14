@@ -13,7 +13,7 @@ stages:
     workflow: .github/workflows/stage-test.yml
     needs:
       - version-sync
-    when: ${{ context.version-sync.skip_all == 'false' }}
+    when: context.version-sync.skip_all == 'false'
     inputs:
       phase: unit
 
@@ -21,14 +21,14 @@ stages:
     workflow: .github/workflows/stage-terraform.yml
     needs:
       - version-sync
-    when: ${{ context.version-sync.skip_all == 'false' }}
+    when: context.version-sync.skip_all == 'false'
 
   - id: docker-build
     workflow: .github/workflows/stage-docker-build.yml
     needs:
       - test
       - terraform
-    when: ${{ context.version-sync.skip_all == 'false' }}
+    when: context.version-sync.skip_all == 'false'
     inputs:
       phase: snapshot
     outputs:
@@ -41,7 +41,7 @@ stages:
     workflow: .github/workflows/stage-test.yml
     needs:
       - docker-build
-    when: ${{ context.version-sync.skip_all == 'false' }}
+    when: context.version-sync.skip_all == 'false'
     inputs:
       phase: e2e
       scraper_image: ${{ context.docker-build.scraper_image }}
@@ -53,7 +53,7 @@ stages:
     needs:
       - test-e2e
       - docker-build
-    when: ${{ context.version-sync.skip_all == 'false' }}
+    when: context.version-sync.skip_all == 'false'
     inputs:
       phase: release
       snapshot_tag: ${{ context.docker-build.snapshot_tag }}
@@ -64,13 +64,13 @@ stages:
     workflow: .github/workflows/stage-release.yml
     needs:
       - docker-release
-    when: ${{ context.version-sync.skip_all == 'false' }}
+    when: context.version-sync.skip_all == 'false'
 
   - id: deploy-gcp
     workflow: .github/workflows/stage-deploy-gcp.yml
     needs:
       - docker-release
-    when: ${{ context.version-sync.skip_all == 'false' }}
+    when: context.version-sync.skip_all == 'false'
     inputs:
       image_tag: ${{ context.docker-release.image_tag }}
       deployment_target: serverless
@@ -80,4 +80,4 @@ stages:
     workflow: .github/workflows/stage-deploy-vercel.yml
     needs:
       - deploy-gcp
-    when: ${{ context.version-sync.skip_all == 'false' }}
+    when: context.version-sync.skip_all == 'false'

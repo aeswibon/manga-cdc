@@ -1,0 +1,14 @@
+name: deploy-manual-azure
+version: 1
+stages:
+  - id: deploy-azure
+    workflow: .github/workflows/stage-deploy-azure.yml
+    inputs:
+      image_tag: ${IMAGE_TAG}
+      deployment_target: ${DEPLOYMENT_TARGET}
+      deploy_method: ${DEPLOY_METHOD}
+
+  - id: deploy-vercel
+    workflow: .github/workflows/stage-deploy-vercel.yml
+    needs:
+      - deploy-azure
