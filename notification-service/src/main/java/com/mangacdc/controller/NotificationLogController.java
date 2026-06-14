@@ -5,7 +5,9 @@ import com.mangacdc.model.NotificationLogEntry;
 import com.mangacdc.repository.NotificationLogRepository;
 import com.mangacdc.service.Notifier;
 import com.mangacdc.service.SseEmitterService;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -56,7 +58,7 @@ public class NotificationLogController {
         Notifier targetNotifier = notifiers.stream()
                 .filter(n -> n.name().equalsIgnoreCase(entry.channel()))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Unsupported channel: " + entry.channel()));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported channel: " + entry.channel()));
 
         boolean success = targetNotifier.sendChapterAlert(
                 entry.seriesTitle(),

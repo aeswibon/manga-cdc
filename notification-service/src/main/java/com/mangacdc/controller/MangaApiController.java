@@ -63,20 +63,23 @@ public class MangaApiController {
 
     @GetMapping("/stats")
     public Map<String, Object> getStats() {
-        Integer totalSeries = jdbc.queryForObject("SELECT COUNT(*) FROM manga_series", Integer.class);
-        Integer activeSeries = jdbc.queryForObject("SELECT COUNT(*) FROM manga_series WHERE is_active = true", Integer.class);
-        Integer totalChapters = jdbc.queryForObject("SELECT COUNT(*) FROM chapters", Integer.class);
-        Integer totalLogs = jdbc.queryForObject("SELECT COUNT(*) FROM notification_logs", Integer.class);
-        Integer successfulDeliveries = jdbc.queryForObject("SELECT COUNT(*) FROM notification_logs WHERE status = 'SENT'", Integer.class);
-        Integer failedDeliveries = jdbc.queryForObject("SELECT COUNT(*) FROM notification_logs WHERE status = 'FAILED'", Integer.class);
+        Map<String, Object> seriesStats = jdbc.queryForMap(
+                "SELECT COUNT(*) as total_series, COUNT(CASE WHEN is_active THEN 1 END) as active_series FROM manga_series"
+        );
+        Map<String, Object> chapterStats = jdbc.queryForMap(
+                "SELECT COUNT(*) as total_chapters FROM chapters"
+        );
+        Map<String, Object> logStats = jdbc.queryForMap(
+                "SELECT COUNT(*) as total_logs, COUNT(CASE WHEN status = 'SENT' THEN 1 END) as successful_deliveries, COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failed_deliveries FROM notification_logs"
+        );
 
         Map<String, Object> stats = new HashMap<>();
-        stats.put("total_series", totalSeries != null ? totalSeries : 0);
-        stats.put("active_series", activeSeries != null ? activeSeries : 0);
-        stats.put("total_chapters", totalChapters != null ? totalChapters : 0);
-        stats.put("total_logs", totalLogs != null ? totalLogs : 0);
-        stats.put("successful_deliveries", successfulDeliveries != null ? successfulDeliveries : 0);
-        stats.put("failed_deliveries", failedDeliveries != null ? failedDeliveries : 0);
+        stats.put("total_series", ((Number) seriesStats.getOrDefault("total_series", 0)).intValue());
+        stats.put("active_series", ((Number) seriesStats.getOrDefault("active_series", 0)).intValue());
+        stats.put("total_chapters", ((Number) chapterStats.getOrDefault("total_chapters", 0)).intValue());
+        stats.put("total_logs", ((Number) logStats.getOrDefault("total_logs", 0)).intValue());
+        stats.put("successful_deliveries", ((Number) logStats.getOrDefault("successful_deliveries", 0)).intValue());
+        stats.put("failed_deliveries", ((Number) logStats.getOrDefault("failed_deliveries", 0)).intValue());
         return stats;
     }
 
