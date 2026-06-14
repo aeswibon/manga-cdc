@@ -20,9 +20,17 @@ The workflow uses two tokens:
 | `GITHUB_TOKEN` (automatic) | Creates blobs/trees/commits with GitHub-verified Actions signatures |
 | **`RELEASE_BOT_TOKEN`** (secret) | Updates protected `master` and release tags; actor must be on the ruleset **bypass list** |
 
-Create a **fine-grained PAT** with **Contents: Read and write** on this repository, add **your GitHub user** (the PAT owner) to the `master` ruleset **Bypass list**, then store the PAT as **`RELEASE_BOT_TOKEN`**.
+Create a **fine-grained PAT** with **Contents: Read and write** on this repository, add **your GitHub user** (the PAT owner) to the **`master`** ruleset **Bypass list**, then store the PAT as **`RELEASE_BOT_TOKEN`**.
 
-Without bypass access you will see `GH013` / HTTP 422 (PR required or unverified signature on ref update).
+Also ensure these rulesets allow bypass for the release bot (typically **Repository admin** role):
+
+| Ruleset | Why |
+|---|---|
+| `master` | Protected branch / PR / status checks |
+| `Require Signed Commits (Branches)` | Verified signatures on all branches |
+| `release-tag` | Verified signatures on `v*` tags |
+
+Without bypass on all applicable rulesets you may see `GH013` or HTTP 422 on master or tag updates.
 
 ## Prerequisites
 
