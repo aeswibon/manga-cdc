@@ -7,7 +7,10 @@ ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /scraper ./cmd/scraper
 
-FROM alpine:3.20
+RUN apk --no-cache add ca-certificates tzdata
+RUN addgroup -S mangacdc && adduser -S mangacdc -G mangacdc
+
+FROM scratch
 
 ARG APP_VERSION=0.4.3
 LABEL org.opencontainers.image.title="manga-cdc scraper" \
@@ -15,11 +18,12 @@ LABEL org.opencontainers.image.title="manga-cdc scraper" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
       org.opencontainers.image.vendor="aeswibon" \
       org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.base.name="docker.io/library/alpine:3.20"
+      org.opencontainers.image.base.name="scratch"
 
-RUN apk --no-cache add ca-certificates
-RUN addgroup -S mangacdc && adduser -S mangacdc -G mangacdc
-RUN mkdir -p /data && chown mangacdc:mangacdc /data
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+
 COPY --from=builder /scraper /scraper
 COPY --chown=mangacdc:mangacdc db/migrations /migrations
 COPY --chown=mangacdc:mangacdc data/watchlist.yaml /data/watchlist.yaml
