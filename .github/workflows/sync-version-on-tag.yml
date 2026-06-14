@@ -74,15 +74,24 @@ jobs:
             echo "skip_publish=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Configure GPG signing for bot commits
+        if: env.ACT != 'true' && steps.state.outputs.skip_publish != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gpg --batch --passphrase '' --quick-generate-key \
+            "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>" \
+            default default never
+          signing_key="$(gpg --list-secret-keys --with-colons | awk -F: '$1 == "sec" { print $5; exit }')"
+          git config user.signingkey "${signing_key}"
+          git config commit.gpgsign true
+
       - name: Commit, retag, and push to master
         if: env.ACT != 'true' && steps.state.outputs.skip_publish != 'true'
         id: publish
         env:
           VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           pushed_master=false
           if ! git diff --quiet; then
             git add \
@@ -94,7 +103,7 @@ jobs:
               scraper/Dockerfile \
               notification-service/Dockerfile
 
-            git commit -S -m "chore: sync version files to v${VERSION}"
+            git commit -m "chore: sync version files to v${VERSION}"
             git push origin master
             pushed_master=true
           else
