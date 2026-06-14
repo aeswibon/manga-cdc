@@ -9,19 +9,75 @@ stages:
       - skip_publish
       - release_images_exist
 
-  - id: test-build
-    workflow: .github/workflows/test-and-build.yml
+  - id: test
+    workflow: .github/workflows/stage-test.yml
+    needs:
+      - version-sync
+    when: ${{ context.version-sync.skip_all == 'false' }}
+    inputs:
+      phase: unit
+
+  - id: terraform
+    workflow: .github/workflows/stage-terraform.yml
     needs:
       - version-sync
     when: ${{ context.version-sync.skip_all == 'false' }}
 
-  - id: deploy
-    workflow: .github/workflows/deploy.yml
+  - id: docker-build
+    workflow: .github/workflows/stage-docker-build.yml
     needs:
-      - test-build
+      - test
+      - terraform
     when: ${{ context.version-sync.skip_all == 'false' }}
     inputs:
-      image_tag: ${{ context.test-build.image_tag }}
-      cloud_provider: gcp
+      phase: snapshot
+    outputs:
+      - scraper_image
+      - notification_image
+      - dashboard_image
+      - snapshot_tag
+
+  - id: test-e2e
+    workflow: .github/workflows/stage-test.yml
+    needs:
+      - docker-build
+    when: ${{ context.version-sync.skip_all == 'false' }}
+    inputs:
+      phase: e2e
+      scraper_image: ${{ context.docker-build.scraper_image }}
+      notification_image: ${{ context.docker-build.notification_image }}
+      dashboard_image: ${{ context.docker-build.dashboard_image }}
+
+  - id: docker-release
+    workflow: .github/workflows/stage-docker-build.yml
+    needs:
+      - test-e2e
+      - docker-build
+    when: ${{ context.version-sync.skip_all == 'false' }}
+    inputs:
+      phase: release
+      snapshot_tag: ${{ context.docker-build.snapshot_tag }}
+    outputs:
+      - image_tag
+
+  - id: github-release
+    workflow: .github/workflows/stage-release.yml
+    needs:
+      - docker-release
+    when: ${{ context.version-sync.skip_all == 'false' }}
+
+  - id: deploy-gcp
+    workflow: .github/workflows/stage-deploy-gcp.yml
+    needs:
+      - docker-release
+    when: ${{ context.version-sync.skip_all == 'false' }}
+    inputs:
+      image_tag: ${{ context.docker-release.image_tag }}
       deployment_target: serverless
       deploy_method: terraform
+
+  - id: deploy-vercel
+    workflow: .github/workflows/stage-deploy-vercel.yml
+    needs:
+      - deploy-gcp
+    when: ${{ context.version-sync.skip_all == 'false' }}

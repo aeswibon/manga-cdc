@@ -1,0 +1,37 @@
+name: deploy-manual
+version: 1
+stages:
+  - id: deploy-gcp
+    workflow: .github/workflows/stage-deploy-gcp.yml
+    when: ${{ github.event.inputs.cloud_provider == 'gcp' }}
+    inputs:
+      image_tag: ${{ github.event.inputs.image_tag }}
+      deployment_target: ${{ github.event.inputs.deployment_target }}
+      deploy_method: ${{ github.event.inputs.deploy_method }}
+
+  - id: deploy-aws
+    workflow: .github/workflows/stage-deploy-aws.yml
+    when: ${{ github.event.inputs.cloud_provider == 'aws' }}
+    inputs:
+      image_tag: ${{ github.event.inputs.image_tag }}
+      deployment_target: ${{ github.event.inputs.deployment_target }}
+      deploy_method: ${{ github.event.inputs.deploy_method }}
+
+  - id: deploy-azure
+    workflow: .github/workflows/stage-deploy-azure.yml
+    when: ${{ github.event.inputs.cloud_provider == 'azure' }}
+    inputs:
+      image_tag: ${{ github.event.inputs.image_tag }}
+      deployment_target: ${{ github.event.inputs.deployment_target }}
+      deploy_method: ${{ github.event.inputs.deploy_method }}
+
+  - id: deploy-digitalocean
+    workflow: .github/workflows/stage-deploy-digitalocean.yml
+    when: ${{ github.event.inputs.cloud_provider == 'digitalocean' }}
+    inputs:
+      image_tag: ${{ github.event.inputs.image_tag }}
+      deployment_target: ${{ github.event.inputs.deployment_target }}
+      deploy_method: ${{ github.event.inputs.deploy_method }}
+
+  - id: deploy-vercel
+    workflow: .github/workflows/stage-deploy-vercel.yml

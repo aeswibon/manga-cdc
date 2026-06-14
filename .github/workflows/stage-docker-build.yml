@@ -1,0 +1,252 @@
+name: Docker build
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "snapshot = CI images; release = semver tags after e2e"
+        required: true
+        type: choice
+        default: snapshot
+        options:
+          - snapshot
+          - release
+      snapshot_tag:
+        description: "Snapshot tag used for snapshot build and release retag (default ci-<sha>)"
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
+  NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
+  DASHBOARD_IMAGE: ghcr.io/aeswibon/manga-cdc/dashboard
+  SNAPSHOT_TAG: ${{ inputs.snapshot_tag != '' && inputs.snapshot_tag || format('ci-{0}', github.sha) }}
+  VITE_STATUS_PAGE_URL: ${{ vars.VITE_STATUS_PAGE_URL || 'http://localhost:3001' }}
+
+concurrency:
+  group: stage-docker-build-${{ github.event.inputs.phase }}-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    name: Build CI snapshot images
+    if: inputs.phase == 'snapshot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push scraper snapshot
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: scraper/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.SCRAPER_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          cache-from: type=gha,scope=manga-cdc-scraper
+          cache-to: type=gha,mode=max,scope=manga-cdc-scraper
+
+      - name: Build and push notification-service snapshot (JVM for e2e)
+        uses: docker/build-push-action@v7
+        with:
+          context: notification-service
+          file: notification-service/Dockerfile.jvm
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          cache-from: type=gha,scope=manga-cdc-notification-jvm
+          cache-to: type=gha,mode=max,scope=manga-cdc-notification-jvm
+
+      - name: Build and push dashboard snapshot
+        uses: docker/build-push-action@v7
+        with:
+          context: dashboard
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          build-args: |
+            VITE_STATUS_PAGE_URL=${{ env.VITE_STATUS_PAGE_URL }}
+          cache-from: type=gha,scope=manga-cdc-dashboard
+          cache-to: type=gha,mode=max,scope=manga-cdc-dashboard
+
+      - name: Export outputs for pipeline-compose
+        if: success()
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          DASHBOARD_IMAGE: ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          SNAPSHOT_TAG: ${{ env.SNAPSHOT_TAG }}
+        run: |
+          mkdir -p pipeline-compose
+          jq -n \
+            --arg scraper_image "$SCRAPER_IMAGE" \
+            --arg notification_image "$NOTIFICATION_IMAGE" \
+            --arg dashboard_image "$DASHBOARD_IMAGE" \
+            --arg snapshot_tag "$SNAPSHOT_TAG" \
+            '{scraper_image: $scraper_image, notification_image: $notification_image, dashboard_image: $dashboard_image, snapshot_tag: $snapshot_tag}' \
+            > pipeline-compose/outputs.json
+
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: pipeline-compose-docker-build
+          path: pipeline-compose/outputs.json
+          retention-days: 1
+
+  release:
+    name: Build and push release images
+    if: inputs.phase == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve release tag
+        id: release-tag
+        run: |
+          git fetch --tags origin
+          release_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]' | sort -V | tail -1 || true)"
+          if [ -z "$release_tag" ]; then
+            echo "No release tag at HEAD"
+            exit 1
+          fi
+          semver="${release_tag#v}"
+          major="${semver%%.*}"
+          rest="${semver#*.}"
+          minor="${rest%%.*}"
+          echo "tag=$semver" >> "$GITHUB_OUTPUT"
+          echo "major_minor=${major}.${minor}" >> "$GITHUB_OUTPUT"
+          echo "major=$major" >> "$GITHUB_OUTPUT"
+
+      - name: Docker meta (scraper)
+        id: meta-scraper
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.SCRAPER_IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.release-tag.outputs.tag }}
+            type=raw,value=${{ steps.release-tag.outputs.major_minor }}
+            type=raw,value=${{ steps.release-tag.outputs.major }}
+            type=raw,value=latest
+            type=sha,prefix=,suffix=,format=short
+
+      - name: Docker meta (notification-service)
+        id: meta-notification
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.NOTIFICATION_IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.release-tag.outputs.tag }}
+            type=raw,value=${{ steps.release-tag.outputs.major_minor }}
+            type=raw,value=${{ steps.release-tag.outputs.major }}
+            type=raw,value=latest
+            type=sha,prefix=,suffix=,format=short
+
+      - name: Docker meta (dashboard)
+        id: meta-dashboard
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.DASHBOARD_IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.release-tag.outputs.tag }}
+            type=raw,value=${{ steps.release-tag.outputs.major_minor }}
+            type=raw,value=${{ steps.release-tag.outputs.major }}
+            type=raw,value=latest
+            type=sha,prefix=,suffix=,format=short
+
+      - name: Build and push notification-service native release image
+        uses: docker/build-push-action@v7
+        with:
+          context: notification-service
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          cache-from: type=gha,scope=manga-cdc-notification-native
+          cache-to: type=gha,mode=max,scope=manga-cdc-notification-native
+
+      - name: Push release tags (scraper)
+        run: |
+          tags=""
+          for tag in $(echo "${{ steps.meta-scraper.outputs.tags }}"); do
+            tags="$tags --tag $tag"
+          done
+          docker buildx imagetools create $tags ${{ env.SCRAPER_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+
+      - name: Push release tags (notification-service)
+        run: |
+          tags=""
+          for tag in $(echo "${{ steps.meta-notification.outputs.tags }}"); do
+            tags="$tags --tag $tag"
+          done
+          docker buildx imagetools create $tags ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+
+      - name: Push release tags (dashboard)
+        run: |
+          tags=""
+          for tag in $(echo "${{ steps.meta-dashboard.outputs.tags }}"); do
+            tags="$tags --tag $tag"
+          done
+          docker buildx imagetools create $tags ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push to Docker Hub (scraper)
+        run: |
+          docker buildx imagetools create \
+            --tag docker.io/${{ secrets.DOCKER_USERNAME }}/scraper:${{ steps.release-tag.outputs.tag }} \
+            --tag docker.io/${{ secrets.DOCKER_USERNAME }}/scraper:latest \
+            ${{ env.SCRAPER_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+
+      - name: Push to Docker Hub (notification-service)
+        run: |
+          docker buildx imagetools create \
+            --tag docker.io/${{ secrets.DOCKER_USERNAME }}/notification-service:${{ steps.release-tag.outputs.tag }} \
+            --tag docker.io/${{ secrets.DOCKER_USERNAME }}/notification-service:latest \
+            ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+
+      - name: Push to Docker Hub (dashboard)
+        run: |
+          docker buildx imagetools create \
+            --tag docker.io/${{ secrets.DOCKER_USERNAME }}/dashboard:${{ steps.release-tag.outputs.tag }} \
+            --tag docker.io/${{ secrets.DOCKER_USERNAME }}/dashboard:latest \
+            ${{ env.DASHBOARD_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+
+      - name: Export outputs for pipeline-compose
+        if: success()
+        run: |
+          mkdir -p pipeline-compose
+          jq -n --arg image_tag "${{ steps.release-tag.outputs.tag }}" '{image_tag: $image_tag}' > pipeline-compose/outputs.json
+
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: pipeline-compose-docker-release
+          path: pipeline-compose/outputs.json
+          retention-days: 1

@@ -1,0 +1,57 @@
+name: Deploy (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloud_provider:
+        description: "Cloud provider"
+        required: true
+        default: gcp
+        type: choice
+        options:
+          - gcp
+          - aws
+          - azure
+          - digitalocean
+      deployment_target:
+        description: "Deployment target (vm, kubernetes, serverless)"
+        required: true
+        default: serverless
+        type: choice
+        options:
+          - vm
+          - kubernetes
+          - serverless
+      deploy_method:
+        description: "Deployment method (direct, terraform)"
+        required: true
+        default: terraform
+        type: choice
+        options:
+          - direct
+          - terraform
+      image_tag:
+        description: "Semver image tag (e.g. 0.4.5)"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-manual-${{ github.event.inputs.image_tag }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+  id-token: write
+
+jobs:
+  run-pipeline:
+    name: Run deploy pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: aeswibon/pipeline-compose-run@v0.3.0
+        with:
+          pipeline_file: .github/pipelines/deploy-manual.yml
+          github_token: ${{ github.token }}

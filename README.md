@@ -3,11 +3,11 @@
 **Change Data Capture for manga releases** — scrape six sources, detect new chapters, stream events through Kafka, and notify Discord, Slack, or Telegram.
 
 <p align="center">
-  <a href="https://github.com/aeswibon/manga-cdc/actions/workflows/test-and-build.yml?query=branch%3Amaster">
-    <img src="https://github.com/aeswibon/manga-cdc/actions/workflows/test-and-build.yml/badge.svg?branch=master" alt="Test and Build" />
+  <a href="https://github.com/aeswibon/manga-cdc/actions/workflows/pull-request.yml?query=branch%3Amaster">
+    <img src="https://github.com/aeswibon/manga-cdc/actions/workflows/pull-request.yml/badge.svg?branch=master" alt="Pull request CI" />
   </a>
-  <a href="https://github.com/aeswibon/manga-cdc/actions/workflows/deploy.yml?query=branch%3Amaster">
-    <img src="https://github.com/aeswibon/manga-cdc/actions/workflows/deploy.yml/badge.svg?branch=master" alt="Deploy" />
+  <a href="https://github.com/aeswibon/manga-cdc/actions/workflows/release.yml?query=branch%3Amaster">
+    <img src="https://github.com/aeswibon/manga-cdc/actions/workflows/release.yml/badge.svg?branch=master" alt="Release" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/aeswibon/manga-cdc?style=flat" alt="License" />

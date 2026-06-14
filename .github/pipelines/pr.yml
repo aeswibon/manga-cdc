@@ -1,0 +1,33 @@
+name: pr
+version: 1
+stages:
+  - id: test
+    workflow: .github/workflows/stage-test.yml
+    inputs:
+      phase: unit
+
+  - id: terraform
+    workflow: .github/workflows/stage-terraform.yml
+
+  - id: docker-build
+    workflow: .github/workflows/stage-docker-build.yml
+    needs:
+      - test
+      - terraform
+    inputs:
+      phase: snapshot
+    outputs:
+      - scraper_image
+      - notification_image
+      - dashboard_image
+      - snapshot_tag
+
+  - id: test-e2e
+    workflow: .github/workflows/stage-test.yml
+    needs:
+      - docker-build
+    inputs:
+      phase: e2e
+      scraper_image: ${{ context.docker-build.scraper_image }}
+      notification_image: ${{ context.docker-build.notification_image }}
+      dashboard_image: ${{ context.docker-build.dashboard_image }}

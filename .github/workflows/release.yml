@@ -18,7 +18,7 @@ jobs:
   run-pipeline:
     name: Run release pipeline
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v6
       - uses: aeswibon/pipeline-compose-run@v0.3.0

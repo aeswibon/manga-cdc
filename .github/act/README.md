@@ -4,12 +4,13 @@ Run workflows locally with [nektos/act](https://github.com/nektos/act).
 
 ## CI pipeline order
 
-| Trigger | Workflows |
+| Trigger | Pipeline |
 |---|---|
-| Pull request | **Test and Build** (tests + optional e2e on PR) |
-| Push tag `v*` | **Release** → `version-sync` → `test-build` → `deploy` via [pipeline-compose-run](https://github.com/aeswibon/pipeline-compose-run) |
+| Pull request | **Pull request** → `test` → `terraform` → `docker-build` → `test-e2e` via [pipeline-compose-run](https://github.com/aeswibon/pipeline-compose-run) |
+| Push tag `v*` | **Release** → `version-sync` → test/tf/build stages → `deploy-gcp` → `deploy-vercel` |
+| Manual deploy | **Deploy (manual)** → selected cloud + Vercel |
 
-Release orchestration lives in `.github/pipelines/release.yml`. Tag pushes no longer chain workflows with `workflow_run` or manual `gh workflow run`.
+Stage workflows live under `.github/workflows/stage-*.yml`. Orchestration lives in `.github/pipelines/`.
 
 ## Release bot setup
 

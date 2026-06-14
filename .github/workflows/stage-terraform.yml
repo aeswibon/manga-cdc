@@ -1,0 +1,70 @@
+name: Terraform check
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: stage-terraform-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  terraform-fmt:
+    name: Terraform fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.6"
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive terraform/
+
+  terraform-validate-plan:
+    name: Terraform (${{ matrix.cloud }} / ${{ matrix.target }})
+    needs: terraform-fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cloud: [gcp, aws, azure, digitalocean]
+        target: [vm, kubernetes, serverless]
+    env:
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
+      AWS_EC2_METADATA_DISABLED: true
+      ARM_USE_CLI: false
+      ARM_SKIP_PROVIDER_REGISTRATION: true
+      ARM_SUBSCRIPTION_ID: 00000000-0000-0000-0000-000000000000
+      ARM_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      ARM_CLIENT_ID: 00000000-0000-0000-0000-000000000000
+      ARM_CLIENT_SECRET: ci-dummy-secret
+      GOOGLE_CLOUD_PROJECT: ci-validate-project
+      GOOGLE_OAUTH_ACCESS_TOKEN: ci-dummy-token
+      DIGITALOCEAN_TOKEN: ci-dummy-token
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.6"
+          terraform_wrapper: false
+      - name: Validate and plan
+        run: bash ./scripts/ci/terraform-matrix-check.sh "${{ matrix.cloud }}" "${{ matrix.target }}"
+
+  export-outputs:
+    name: Export pipeline outputs
+    needs: terraform-validate-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Export outputs for pipeline-compose
+        run: |
+          mkdir -p pipeline-compose
+          jq -n '{ok: "true"}' > pipeline-compose/outputs.json
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pipeline-compose-terraform
+          path: pipeline-compose/outputs.json
+          retention-days: 1

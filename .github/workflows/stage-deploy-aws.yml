@@ -1,0 +1,194 @@
+name: Deploy AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Semver image tag (e.g. 0.4.5)"
+        required: true
+        type: string
+      deployment_target:
+        description: "Deployment target (vm, kubernetes, serverless)"
+        required: true
+        default: serverless
+        type: choice
+        options:
+          - vm
+          - kubernetes
+          - serverless
+      deploy_method:
+        description: "Deployment method (direct, terraform)"
+        required: true
+        default: terraform
+        type: choice
+        options:
+          - direct
+          - terraform
+
+env:
+  REGISTRY: ghcr.io
+  SCRAPER_IMAGE: ghcr.io/aeswibon/manga-cdc/scraper
+  NOTIFICATION_IMAGE: ghcr.io/aeswibon/manga-cdc/notification-service
+  DASHBOARD_IMAGE: ghcr.io/aeswibon/manga-cdc/dashboard
+
+concurrency:
+  group: stage-deploy-aws-${{ github.event.inputs.image_tag }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy AWS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      DEPLOYMENT_TARGET: ${{ inputs.deployment_target }}
+      DEPLOY_METHOD: ${{ inputs.deploy_method }}
+      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Deploy summary
+        run: |
+          echo "AWS deploy — target=${DEPLOYMENT_TARGET} method=${DEPLOY_METHOD} image=${IMAGE_TAG}"
+
+      - name: Configure AWS Credentials (OIDC)
+        if: env.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS Credentials (access keys)
+        if: env.AWS_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render production .env
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_TOPIC: mangacdc.public.chapters
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CDC_ENABLED: "true"
+          OBSERVABILITY_MODE: grafana-cloud
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_DATASOURCE_UID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+        run: bash ./scripts/ci/render-direct-env.sh
+
+      - name: Deploy to VM
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'vm'
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_SSH_KNOWN_HOSTS: ${{ secrets.VM_SSH_KNOWN_HOSTS }}
+        run: bash ./scripts/ci/vm-direct-deploy.sh
+
+      - name: Configure EKS kubeconfig
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        run: aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Parse DATABASE_URL for JDBC
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        id: db_parser
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: bash ./scripts/ci/parse-database-url.sh
+
+      - name: Deploy to Kubernetes via Helm
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'kubernetes'
+        env:
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JDBC_URL: ${{ steps.db_parser.outputs.jdbc_url }}
+          DB_USER: ${{ steps.db_parser.outputs.db_user }}
+          DB_PASS: ${{ steps.db_parser.outputs.db_pass }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+        run: bash ./scripts/ci/helm-deploy.sh
+
+      - name: Deploy to ECS Fargate
+        if: env.DEPLOY_METHOD == 'direct' && env.DEPLOYMENT_TARGET == 'serverless'
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition manga-cdc-notifier)
+          NEW_TASK_DEF=$(echo "$TASK_DEF" | jq --arg IMAGE "${{ env.NOTIFICATION_IMAGE }}:${{ env.IMAGE_TAG }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+          NEW_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster manga-cdc-ecs-prod --service manga-cdc-notifier --task-definition "$NEW_ARN"
+
+          TASK_DEF_SCRAPER=$(aws ecs describe-task-definition --task-definition manga-cdc-scraper)
+          NEW_TASK_DEF_SCRAPER=$(echo "$TASK_DEF_SCRAPER" | jq --arg IMAGE "${{ env.SCRAPER_IMAGE }}:${{ env.IMAGE_TAG }}" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
+          aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF_SCRAPER"
+
+      - name: Setup Terraform
+        if: env.DEPLOY_METHOD == 'terraform'
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.6"
+
+      - name: Terraform apply
+        if: env.DEPLOY_METHOD == 'terraform'
+        env:
+          DEPLOYMENT_TARGET: ${{ env.DEPLOYMENT_TARGET }}
+          SCRAPER_IMAGE: ${{ env.SCRAPER_IMAGE }}
+          NOTIFICATION_IMAGE: ${{ env.NOTIFICATION_IMAGE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          KAFKA_BROKERS: ${{ secrets.KAFKA_BROKERS }}
+          KAFKA_USERNAME: ${{ secrets.KAFKA_USERNAME }}
+          KAFKA_PASSWORD: ${{ secrets.KAFKA_PASSWORD }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GRAFANA_CLOUD_PROMETHEUS_URL: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_URL }}
+          GRAFANA_CLOUD_PROMETHEUS_USER: ${{ secrets.GRAFANA_CLOUD_PROMETHEUS_USER }}
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GRAFANA_CLOUD_STACK_URL: ${{ secrets.GRAFANA_CLOUD_STACK_URL }}
+          QSTASH_TOKEN: ${{ secrets.QSTASH_TOKEN }}
+          QSTASH_DESTINATION_URL: ${{ secrets.QSTASH_DESTINATION_URL }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          QSTASH_CURRENT_SIGNING_KEY: ${{ secrets.QSTASH_CURRENT_SIGNING_KEY }}
+          QSTASH_NEXT_SIGNING_KEY: ${{ secrets.QSTASH_NEXT_SIGNING_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+        run: bash ./scripts/ci/terraform-apply.sh aws

@@ -1,0 +1,52 @@
+name: Deploy Vercel
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: stage-deploy-vercel-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-status-page:
+    name: Deploy status page (Vercel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_STATUS_PAGE_PROJECT_ID: ${{ secrets.VERCEL_STATUS_PAGE_PROJECT_ID }}
+        run: bash ./scripts/ci/deploy-status-page.sh
+
+  deploy-dashboard:
+    name: Deploy dashboard (Vercel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_DASHBOARD_PROJECT_ID: ${{ secrets.VERCEL_DASHBOARD_PROJECT_ID }}
+        run: bash ./scripts/ci/deploy-dashboard-vercel.sh
