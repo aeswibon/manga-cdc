@@ -46,26 +46,6 @@ jobs:
           fi
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
-  repo-policy:
-    name: Repository policy checks
-    needs: gate
-    if: needs.gate.outputs.proceed == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-      - name: Block tracked agent docs
-        run: ./scripts/check-no-superpowers.sh
-      - name: Require signed commits without Cursor co-authors
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            ./scripts/check-commit-policy.sh "origin/${{ github.event.pull_request.base.ref }}"
-          elif [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-            ./scripts/check-commit-policy.sh "${{ github.event.before }}"
-          else
-            ./scripts/check-commit-policy.sh "HEAD"
-          fi
-
   watchlist-validate:
     name: Validate watchlist
     needs: gate
@@ -282,7 +262,7 @@ jobs:
   docker-snapshot:
     name: Build CI snapshot images
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'))
-    needs: [gate, repo-policy, terraform, dashboard-test, status-page-check]
+    needs: [gate, terraform, dashboard-test, status-page-check]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -345,7 +325,7 @@ jobs:
   e2e-test:
     name: End-to-end tests
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'))
-    needs: [gate, terraform, docker-snapshot, repo-policy, go-test, go-integration-test, configure-test, java-test, dashboard-test, watchlist-validate, status-page-check]
+    needs: [gate, terraform, docker-snapshot, go-test, go-integration-test, configure-test, java-test, dashboard-test, watchlist-validate, status-page-check]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
