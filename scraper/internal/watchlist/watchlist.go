@@ -40,10 +40,10 @@ type Entry struct {
 
 // NotificationPrefs controls per-series notification behavior (v0.5+).
 type NotificationPrefs struct {
-	PreferredGroups []string `yaml:"preferred_groups,omitempty"`
-	BlockedGroups   []string `yaml:"blocked_groups,omitempty"`
-	NotifyEvery     int      `yaml:"notify_every,omitempty"`
-	BlockEarlyWeek  bool     `yaml:"block_early_week,omitempty"`
+	PreferredGroups []string `yaml:"preferred_groups,omitempty" json:"preferred_groups,omitempty"`
+	BlockedGroups   []string `yaml:"blocked_groups,omitempty" json:"blocked_groups,omitempty"`
+	NotifyEvery     int      `yaml:"notify_every,omitempty" json:"notify_every,omitempty"`
+	BlockEarlyWeek  bool     `yaml:"block_early_week,omitempty" json:"block_early_week,omitempty"`
 }
 
 // NotificationPrefsJSON returns JSON for DB storage (empty object when unset).
