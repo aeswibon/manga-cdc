@@ -77,7 +77,7 @@ services:
     image: ${NOTIFICATION_IMAGE:-manga-cdc-notification-service:local}
     build:
       context: ./notification-service
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.jvm
     restart: unless-stopped
     depends_on:
       postgres:

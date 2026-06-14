@@ -69,5 +69,5 @@ bash scripts/ci/sync-versions-from-tag.sh 0.4.5
 git diff --stat
 git checkout -- dashboard/package.json status-page/package.json helm/manga-cdc/Chart.yaml \
   scraper/internal/version/version.go notification-service/pom.xml scraper/Dockerfile \
-  notification-service/Dockerfile dashboard/Dockerfile
+  notification-service/Dockerfile.jvm dashboard/Dockerfile
 ```

@@ -44,7 +44,7 @@ perl -i -pe 's/const Version = "[^"]+"/const Version = "'"$VERSION"'"/' scraper/
 
 perl -i -0777 -pe 's/(<artifactId>notification-service<\/artifactId>\s*\n\s*<version>)[^<]+/${1}'"$VERSION"'/s' notification-service/pom.xml
 
-perl -i -pe 's/ARG APP_VERSION=[^\s]+/ARG APP_VERSION='"$VERSION"'/' scraper/Dockerfile notification-service/Dockerfile dashboard/Dockerfile
+perl -i -pe 's/ARG APP_VERSION=[^\s]+/ARG APP_VERSION='"$VERSION"'/' scraper/Dockerfile notification-service/Dockerfile notification-service/Dockerfile.jvm dashboard/Dockerfile
 
 if git diff --quiet -- \
   dashboard/package.json \
@@ -54,6 +54,7 @@ if git diff --quiet -- \
   notification-service/pom.xml \
   scraper/Dockerfile \
   notification-service/Dockerfile \
+  notification-service/Dockerfile.jvm \
   dashboard/Dockerfile; then
   echo "Version files already at $VERSION"
 else
@@ -66,5 +67,6 @@ else
     notification-service/pom.xml \
     scraper/Dockerfile \
     notification-service/Dockerfile \
+    notification-service/Dockerfile.jvm \
     dashboard/Dockerfile
 fi

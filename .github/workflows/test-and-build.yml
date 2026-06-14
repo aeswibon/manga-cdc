@@ -264,7 +264,7 @@ jobs:
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'))
     needs: [gate, terraform, dashboard-test, status-page-check]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -300,15 +300,28 @@ jobs:
           cache-from: type=gha,scope=manga-cdc-scraper
           cache-to: type=gha,mode=max,scope=manga-cdc-scraper
 
-      - name: Build and push notification-service snapshot
+      - name: Build and push notification-service snapshot (JVM, PR/CI)
+        if: needs.gate.outputs.release != 'true'
         uses: docker/build-push-action@v7
         with:
           context: notification-service
-          platforms: linux/amd64,linux/arm64
+          file: notification-service/Dockerfile.jvm
+          platforms: linux/amd64
           push: true
           tags: ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
-          cache-from: type=gha,scope=manga-cdc-notification
-          cache-to: type=gha,mode=max,scope=manga-cdc-notification
+          cache-from: type=gha,scope=manga-cdc-notification-jvm
+          cache-to: type=gha,mode=max,scope=manga-cdc-notification-jvm
+
+      - name: Build and push notification-service snapshot (native, release)
+        if: needs.gate.outputs.release == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: notification-service
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.NOTIFICATION_IMAGE }}:${{ env.SNAPSHOT_TAG }}
+          cache-from: type=gha,scope=manga-cdc-notification-native
+          cache-to: type=gha,mode=max,scope=manga-cdc-notification-native
 
       - name: Build and push dashboard snapshot
         uses: docker/build-push-action@v7

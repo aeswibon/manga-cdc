@@ -1,13 +1,14 @@
-FROM eclipse-temurin:21-jdk-jammy AS builder
+# Production image: GraalVM native binary on distroless glibc (linux/amd64 in CI).
+FROM ghcr.io/graalvm/native-image-community:21 AS builder
 WORKDIR /app
 COPY mvnw .
 COPY .mvn .mvn
 COPY pom.xml .
 RUN ./mvnw dependency:go-offline -B
 COPY src src
-RUN ./mvnw package -DskipTests -B
+RUN ./mvnw -Pnative native:compile -DskipTests -B
 
-FROM eclipse-temurin:21-jre-jammy
+FROM gcr.io/distroless/base-debian12
 
 ARG APP_VERSION=0.4.5
 LABEL org.opencontainers.image.title="manga-cdc notification-service" \
@@ -15,13 +16,12 @@ LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
       org.opencontainers.image.vendor="aeswibon" \
       org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.base.name="eclipse-temurin:21-jre-jammy"
+      org.opencontainers.image.base.name="gcr.io/distroless/base-debian12"
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends wget \
-    && rm -rf /var/lib/apt/lists/*
+# Static wget for docker-compose healthchecks (distroless has no shell or package manager).
+COPY --from=busybox:1.36-glibc /bin/wget /bin/wget
 
-COPY --from=builder /app/target/notification-service-*.jar /app/app.jar
+COPY --from=builder /app/target/notification-service /app/notification-service
 WORKDIR /app
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]
+CMD ["/app/notification-service"]
