@@ -35,6 +35,7 @@ VERSION_FILES=(
   notification-service/pom.xml
   scraper/Dockerfile
   notification-service/Dockerfile
+  dashboard/Dockerfile
 )
 
 for path in "${VERSION_FILES[@]}"; do

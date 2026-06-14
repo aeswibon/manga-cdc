@@ -10,6 +10,15 @@ RUN bun run build
 
 # Serve stage
 FROM nginx:alpine
+
+ARG APP_VERSION=0.4.5
+LABEL org.opencontainers.image.title="manga-cdc dashboard" \
+      org.opencontainers.image.description="Read-only manga watchlist dashboard for manga-cdc" \
+      org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
+      org.opencontainers.image.vendor="aeswibon" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.base.name="nginx:alpine"
+
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

@@ -75,7 +75,7 @@ jobs:
           grep -q "version: ${VERSION}" helm/manga-cdc/Chart.yaml
           grep -q "appVersion: \"${VERSION}\"" helm/manga-cdc/Chart.yaml
           grep -q "<version>${VERSION}</version>" notification-service/pom.xml
-          grep -q "ARG APP_VERSION=${VERSION}" scraper/Dockerfile notification-service/Dockerfile
+          grep -q "ARG APP_VERSION=${VERSION}" scraper/Dockerfile notification-service/Dockerfile dashboard/Dockerfile
           echo "act: verified version files at ${VERSION}"
 
       - name: Detect git release state
