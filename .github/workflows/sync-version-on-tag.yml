@@ -95,6 +95,7 @@ jobs:
         env:
           VERSION: ${{ steps.tag.outputs.version }}
           RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/ci/publish-version-sync.sh "${VERSION}"
 
       - name: Trigger release Test and Build
