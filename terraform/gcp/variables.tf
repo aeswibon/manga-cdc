@@ -122,18 +122,21 @@ variable "discord_webhook_url" {
   description = "Discord Webhook URL for notifications"
   type        = string
   default     = ""
+  sensitive   = true
 }
 
 variable "slack_webhook_url" {
   description = "Slack Webhook URL for notifications"
   type        = string
   default     = ""
+  sensitive   = true
 }
 
 variable "telegram_bot_token" {
   description = "Telegram Bot Token for notifications"
   type        = string
   default     = ""
+  sensitive   = true
 }
 
 variable "telegram_chat_id" {

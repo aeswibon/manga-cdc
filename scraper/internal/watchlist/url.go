@@ -21,7 +21,7 @@ func ValidateRemoteURL(raw string) error {
 	}
 	if parsed.Scheme != "https" {
 		return fmt.Errorf("watchlist URL must use https")
-	 }
+	}
 	if parsed.Host == "" {
 		return fmt.Errorf("watchlist URL must include a host")
 	}
@@ -36,9 +36,16 @@ func ValidateRemoteURL(raw string) error {
 }
 
 func rejectPrivateIP(host string) error {
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return fmt.Errorf("watchlist URL resolves to non-public address")
+		}
+		return nil
+	}
+
 	ips, err := net.LookupIP(host)
 	if err != nil {
-		return nil
+		return fmt.Errorf("watchlist URL host could not be resolved: %w", err)
 	}
 	for _, ip := range ips {
 		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {

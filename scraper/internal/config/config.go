@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/aeswibon/manga-cdc/scraper/internal/netguard"
 )
 
 type Config struct {
@@ -128,6 +130,11 @@ func Load() (*Config, error) {
 		watchlistPath = "data/watchlist.yaml"
 	}
 
+	flareSolverrURL := os.Getenv("FLARESOLVERR_URL")
+	if err := netguard.ValidateFlareSolverrURL(flareSolverrURL); err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		DatabaseURL:              dbURL,
 		DBMaxConns:               dbMaxConns,
@@ -145,7 +152,7 @@ func Load() (*Config, error) {
 		QStashDestination:        os.Getenv("QSTASH_DESTINATION_URL"),
 		AdminDiscordWebhookURL:   adminWebhook,
 		DBEncryptionKey:          os.Getenv("DB_ENCRYPTION_KEY"),
-		FlareSolverrURL:          os.Getenv("FLARESOLVERR_URL"),
+		FlareSolverrURL:          flareSolverrURL,
 		ZeroResultAlertThreshold: threshold,
 		RejectRateAlertThreshold: rejectRateThreshold,
 		RejectRateMinSample:      rejectRateMinSample,

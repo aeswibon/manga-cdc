@@ -67,7 +67,8 @@ check "scraper healthz" curl -sf --max-time 15 http://127.0.0.1:2112/healthz
 check "scraper readyz" curl -sf --max-time 15 http://127.0.0.1:2112/readyz
 check "scraper metrics present" bash -c 'curl -sf --max-time 15 http://127.0.0.1:2112/metrics | grep -q "^scraper_chapters_"'
 check "notification health" curl -sf --max-time 15 http://127.0.0.1:8080/actuator/health
-check "pipeline health API" bash -c 'curl -sf --max-time 15 http://127.0.0.1:8080/api/pipeline/health | grep -q "\"status\""'
+api_read_key="$(grep -E '^API_READ_KEY=' .env | cut -d= -f2- | tr -d '\r')"
+check "pipeline health API" bash -c 'curl -sf --max-time 15 -H "X-Api-Key: '"$api_read_key"'" http://127.0.0.1:8080/api/pipeline/health | grep -q "\"status\""'
 
 warn "notification logs API" curl -sf --max-time 15 "http://127.0.0.1:8080/api/logs?limit=5" >/dev/null
 

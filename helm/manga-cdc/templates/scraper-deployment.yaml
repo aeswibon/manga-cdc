@@ -26,7 +26,10 @@ spec:
               name: metrics
           env:
             - name: DATABASE_URL
-              value: {{ .Values.database.url | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "manga-cdc.name" . }}-secrets
+                  key: database-url
             - name: SCRAPE_INTERVAL_SECONDS
               value: "300"
             - name: LOG_LEVEL

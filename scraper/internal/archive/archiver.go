@@ -10,9 +10,16 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 	"golang.org/x/sync/errgroup"
+)
+
+const (
+	maxArchivePages   = 100
+	maxImageBytes     = 10 * 1024 * 1024
+	downloadTimeout   = 60 * time.Second
 )
 
 type Archiver struct {
@@ -24,8 +31,7 @@ func NewArchiver(baseDir string) *Archiver {
 	return &Archiver{
 		BaseDir: baseDir,
 		HTTPClient: &http.Client{
-			// Moderate timeout for image downloading
-			Timeout: 0, 
+			Timeout: downloadTimeout,
 		},
 	}
 }
@@ -34,6 +40,9 @@ func NewArchiver(baseDir string) *Archiver {
 func (a *Archiver) ArchiveChapter(ctx context.Context, series model.Series, chapter model.Chapter, imageUrls []string) error {
 	if len(imageUrls) == 0 {
 		return fmt.Errorf("no images provided for chapter archive")
+	}
+	if len(imageUrls) > maxArchivePages {
+		return fmt.Errorf("chapter exceeds max archive pages (%d)", maxArchivePages)
 	}
 
 	// Create directory if it doesn't exist
@@ -60,10 +69,6 @@ func (a *Archiver) ArchiveChapter(ctx context.Context, series model.Series, chap
 
 	zipWriter := zip.NewWriter(file)
 
-	// Since we need to write to the zip file sequentially, but want to download concurrently,
-	// we will download all images into memory concurrently (or we can use temporary files if memory is a concern).
-	// For standard manga chapters (15-30 pages), memory is usually fine.
-	
 	type downloadResult struct {
 		Index int
 		Data  []byte
@@ -72,7 +77,7 @@ func (a *Archiver) ArchiveChapter(ctx context.Context, series model.Series, chap
 
 	results := make([]downloadResult, len(imageUrls))
 	g, gCtx := errgroup.WithContext(ctx)
-	
+
 	// Limit concurrency to avoid getting banned
 	g.SetLimit(5)
 
@@ -83,8 +88,7 @@ func (a *Archiver) ArchiveChapter(ctx context.Context, series model.Series, chap
 			if err != nil {
 				return err
 			}
-			
-			// Optional: add standard headers if some sites block go-http-client
+
 			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 			req.Header.Set("Referer", chapter.URL)
 
@@ -98,12 +102,18 @@ func (a *Archiver) ArchiveChapter(ctx context.Context, series model.Series, chap
 				return fmt.Errorf("unexpected status %d for image %d", resp.StatusCode, i)
 			}
 
-			data, err := io.ReadAll(resp.Body)
+			if contentLength := resp.ContentLength; contentLength > maxImageBytes {
+				return fmt.Errorf("image %d exceeds max size (%d bytes)", i, maxImageBytes)
+			}
+
+			data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageBytes+1))
 			if err != nil {
 				return fmt.Errorf("failed to read body for image %d: %w", i, err)
 			}
+			if len(data) > maxImageBytes {
+				return fmt.Errorf("image %d exceeds max size (%d bytes)", i, maxImageBytes)
+			}
 
-			// Try to guess extension from content type
 			ext := ".jpg"
 			if ctype := resp.Header.Get("Content-Type"); ctype == "image/png" {
 				ext = ".png"
@@ -124,19 +134,17 @@ func (a *Archiver) ArchiveChapter(ctx context.Context, series model.Series, chap
 		return fmt.Errorf("failed to download chapter images: %w", err)
 	}
 
-	// Write the zip file sequentially to ensure correct page ordering
 	var zipMu sync.Mutex
 	for _, res := range results {
-		// e.g. 001.jpg, 002.png
 		filename := fmt.Sprintf("%03d%s", res.Index+1, res.Ext)
-		
+
 		zipMu.Lock()
 		writer, wErr := zipWriter.Create(filename)
 		if wErr == nil {
 			_, wErr = writer.Write(res.Data)
 		}
 		zipMu.Unlock()
-		
+
 		if wErr != nil {
 			err = fmt.Errorf("failed to write to zip: %w", wErr)
 			return err
@@ -147,7 +155,6 @@ func (a *Archiver) ArchiveChapter(ctx context.Context, series model.Series, chap
 		return fmt.Errorf("failed to finalize zip archive: %w", err)
 	}
 
-	// Rename temp to final
 	if err = os.Rename(tmpPath, cbzPath); err != nil {
 		return fmt.Errorf("failed to save final cbz archive: %w", err)
 	}

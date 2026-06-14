@@ -26,7 +26,14 @@ mkdir -p ~/.ssh
 echo "$SSH_KEY" > ~/.ssh/id_rsa
 chmod 600 ~/.ssh/id_rsa
 
-ssh_opts=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_rsa)
+ssh_opts=(-i ~/.ssh/id_rsa)
+if [ -n "${VM_SSH_KNOWN_HOSTS:-}" ]; then
+  known_hosts_file="${RUNNER_TEMP}/known_hosts"
+  printf '%s\n' "$VM_SSH_KNOWN_HOSTS" > "$known_hosts_file"
+  ssh_opts+=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts_file")
+else
+  ssh_opts+=(-o StrictHostKeyChecking=accept-new)
+fi
 
 scp "${ssh_opts[@]}" "${RUNNER_TEMP}/deploy.tar.gz" "${VM_USER}@${VM_HOST}:~/deploy.tar.gz"
 scp "${ssh_opts[@]}" "${RUNNER_TEMP}/prod.env" "${VM_USER}@${VM_HOST}:~/prod.env"

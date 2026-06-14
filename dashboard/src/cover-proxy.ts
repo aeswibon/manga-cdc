@@ -2,6 +2,15 @@ const MANGADEX_HOST = 'uploads.mangadex.org';
 const MANGAPLUS_HOSTS = ['jumpg-assets.tokyo-cdn.com', 'img.mangaplus.shueisha.co.jp'];
 
 export const MAX_COVER_BYTES = 4 * 1024 * 1024;
+export const MAX_COVER_REDIRECTS = 3;
+
+export function isAllowedCoverHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === MANGADEX_HOST) {
+    return true;
+  }
+  return MANGAPLUS_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
 
 export function isAllowedCoverUrl(raw: string): boolean {
   let parsed: URL;
@@ -16,7 +25,25 @@ export function isAllowedCoverUrl(raw: string): boolean {
   if (parsed.username || parsed.password) {
     return false;
   }
-  return true;
+  return isAllowedCoverHost(parsed.hostname);
+}
+
+export function validateRedirectLocation(current: URL, location: string): URL | null {
+  try {
+    const next = new URL(location, current);
+    if (next.protocol !== 'https:') {
+      return null;
+    }
+    if (!isAllowedCoverHost(next.hostname)) {
+      return null;
+    }
+    if (next.username || next.password) {
+      return null;
+    }
+    return next;
+  } catch {
+    return null;
+  }
 }
 
 function isMangaDexThumbnailPath(pathname: string): boolean {

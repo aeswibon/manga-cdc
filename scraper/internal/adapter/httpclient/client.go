@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/aeswibon/manga-cdc/scraper/internal/netguard"
 )
 
 type Client struct {
@@ -17,11 +19,15 @@ type Client struct {
 }
 
 func New() *Client {
+	flareSolverrURL := os.Getenv("FLARESOLVERR_URL")
+	if err := netguard.ValidateFlareSolverrURL(flareSolverrURL); err != nil {
+		flareSolverrURL = ""
+	}
 	return &Client{
 		BaseClient: &http.Client{
 			Timeout: 65 * time.Second, // Long timeout for FlareSolverr
 		},
-		FlareSolverrURL: os.Getenv("FLARESOLVERR_URL"),
+		FlareSolverrURL: flareSolverrURL,
 	}
 }
 

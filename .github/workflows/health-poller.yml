@@ -13,34 +13,28 @@ jobs:
       - name: Fetch pipeline health and sync to Vercel KV
         env:
           PIPELINE_HEALTH_URL: ${{ secrets.PIPELINE_HEALTH_URL }}
+          API_READ_KEY: ${{ secrets.API_READ_KEY }}
           KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
         run: |
-          if [ -z "$PIPELINE_HEALTH_URL" ] || [ -z "$KV_REST_API_URL" ] || [ -z "$KV_REST_API_TOKEN" ]; then
-            echo "Missing required secrets. Ensure PIPELINE_HEALTH_URL, KV_REST_API_URL, and KV_REST_API_TOKEN are set."
+          if [ -z "$PIPELINE_HEALTH_URL" ] || [ -z "$API_READ_KEY" ] || [ -z "$KV_REST_API_URL" ] || [ -z "$KV_REST_API_TOKEN" ]; then
+            echo "Missing required secrets. Ensure PIPELINE_HEALTH_URL, API_READ_KEY, KV_REST_API_URL, and KV_REST_API_TOKEN are set."
             exit 1
           fi
 
-          echo "Fetching health from $PIPELINE_HEALTH_URL..."
-          # Fetch JSON into variable
-          HEALTH_JSON=$(curl -sS --fail --max-time 10 "$PIPELINE_HEALTH_URL")
-          
+          echo "Fetching pipeline health from notifier..."
+          HEALTH_JSON=$(curl -sS --fail --max-time 10 \
+            -H "X-Api-Key: $API_READ_KEY" \
+            "$PIPELINE_HEALTH_URL")
+
           echo "Saving to Vercel KV..."
-          # Vercel KV requires wrapping the payload as a string if using SET directly, or we can use SET with a JSON payload
-          # Actually, the @vercel/kv API for SET requires sending a raw string, or we can just send the JSON and it stores it as a string
-          # Wait, the REST API expects: ["SET", "key", "value"] or similar? 
-          # Or it's: curl -X POST -H "Authorization: Bearer $KV_REST_API_TOKEN" -d "{\"key\":\"pipeline_health\",\"value\":$HEALTH_JSON}" ?
-          # The standard Upstash/Vercel KV REST API uses the URL path for the command.
-          # curl https://YOUR_KV_REST_API_URL/set/pipeline_health -H "Authorization: Bearer YOUR_KV_REST_API_TOKEN" -d '{"my":"json"}'
-          
-          # We'll POST the health JSON payload directly as the body.
           STATUS_CODE=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "$KV_REST_API_URL/set/pipeline_health" \
             -H "Authorization: Bearer $KV_REST_API_TOKEN" \
             -d "$HEALTH_JSON")
-            
+
           if [ "$STATUS_CODE" != "200" ]; then
             echo "Failed to save to Vercel KV (HTTP $STATUS_CODE)"
             exit 1
           fi
-          
+
           echo "Successfully synced pipeline health."

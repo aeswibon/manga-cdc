@@ -60,6 +60,11 @@ Your compute size selection is mapped to cloud-native instance sizes:
 ## 4. Security & Secret Management
 
 * **Sensitive Variables**: Secrets like `database_url`, `kafka_password`, `grafana_cloud_api_key`, and webhook tokens are marked `sensitive = true` in Terraform to prevent leakage in shell outputs and plans.
+* **GCP VM bootstrap**: On GCP VM deployments, application `.env` content is stored in **Secret Manager** and fetched at boot via the instance service account. Startup metadata no longer embeds plaintext secrets.
+* **AWS VM bootstrap**: Application `.env` is stored in **AWS Secrets Manager** and fetched at EC2 boot via an instance profile.
+* **Azure VM bootstrap**: Application `.env` is stored in **Azure Key Vault** and fetched at boot via the VM managed identity.
+* **DigitalOcean VM**: Prefer `serverless` or `kubernetes` targets; droplet `user_data` still uses the legacy inline template until DO exposes a droplet-native secret store.
+* **Helm / Kubernetes**: Scraper `DATABASE_URL` is injected from a Kubernetes Secret; Terraform passes database credentials via `set_sensitive` Helm values.
 * **Azure ACA Secrets**: On Azure Container Apps, sensitive values are declared in a `secret` block with Azure-compliant names (`lower(replace(key, "_", "-"))`). They are stored securely in the Azure portal and injected via `secret_name` references in the container environment rather than as plain-text configurations.
 * **DigitalOcean App Platform Secrets**: Sensitive environment variables are registered with `type = "SECRET"`, indicating to DigitalOcean App Platform that they should be encrypted at rest and masked in app specifications.
 * **IAM Roles**: Minimum privilege IAM roles are provisioned (e.g. AWS Task Execution Roles, GCP Service Accounts) to limit access boundaries.

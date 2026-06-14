@@ -81,6 +81,40 @@ resource "google_service_account" "vm_sa" {
   display_name = "Manga CDC VM Service Account"
 }
 
+resource "google_project_service" "secretmanager" {
+  count   = var.deployment_target == "vm" ? 1 : 0
+  project = var.project_id
+  service = "secretmanager.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+resource "google_secret_manager_secret" "app_env" {
+  count     = var.deployment_target == "vm" ? 1 : 0
+  project   = var.project_id
+  secret_id = "manga-cdc-env-${var.environment}"
+
+  depends_on = [google_project_service.secretmanager[0]]
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "app_env" {
+  count       = var.deployment_target == "vm" ? 1 : 0
+  secret      = google_secret_manager_secret.app_env[0].id
+  secret_data = local.env_file_content
+}
+
+resource "google_secret_manager_secret_iam_member" "vm_env_reader" {
+  count     = var.deployment_target == "vm" ? 1 : 0
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.app_env[0].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.vm_sa[0].email}"
+}
+
 resource "google_compute_instance" "app_vm" {
   count        = var.deployment_target == "vm" ? 1 : 0
   name         = "manga-cdc-vm-${var.environment}"
@@ -99,8 +133,9 @@ resource "google_compute_instance" "app_vm" {
     access_config {} # Ephemeral Public IP
   }
 
-  metadata_startup_script = templatefile("${path.module}/../templates/startup.sh.tftpl", {
-    env_file_content            = local.env_file_content
+  metadata_startup_script = templatefile("${path.module}/../templates/startup-gcp.sh.tftpl", {
+    project_id                  = var.project_id
+    env_secret_id               = google_secret_manager_secret.app_env[0].secret_id
     compose_file_content        = file("${path.module}/../../docker-compose.prod.yml")
     caddyfile_content           = fileexists("${path.module}/../../Caddyfile") ? file("${path.module}/../../Caddyfile") : ""
     observability_cloud_enabled = var.observability_mode == "grafana-cloud"
@@ -108,6 +143,11 @@ resource "google_compute_instance" "app_vm" {
     alloy_config_content        = file("${path.module}/../../alloy/config.prod.alloy")
     observability_flags         = var.observability_mode == "grafana-cloud" ? "-f docker-compose.observability-cloud.yml" : ""
   })
+
+  depends_on = [
+    google_secret_manager_secret_version.app_env,
+    google_secret_manager_secret_iam_member.vm_env_reader,
+  ]
 
   service_account {
     email  = google_service_account.vm_sa[0].email
@@ -202,11 +242,6 @@ resource "helm_release" "manga_cdc" {
   }
 
   set {
-    name  = "database.url"
-    value = var.database_url
-  }
-
-  set {
     name  = "database.jdbcUrl"
     value = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
   }
@@ -216,7 +251,12 @@ resource "helm_release" "manga_cdc" {
     value = local.db_user
   }
 
-  set {
+  set_sensitive {
+    name  = "database.url"
+    value = var.database_url
+  }
+
+  set_sensitive {
     name  = "database.password"
     value = local.db_pass
   }
@@ -236,27 +276,27 @@ resource "helm_release" "manga_cdc" {
     value = var.kafka_username
   }
 
-  set {
+  set_sensitive {
     name  = "eventing.kafka.password"
     value = var.kafka_password
   }
 
-  set {
+  set_sensitive {
     name  = "discord.webhookUrl"
     value = var.discord_webhook_url
   }
 
-  set {
+  set_sensitive {
     name  = "slack.webhookUrl"
     value = var.slack_webhook_url
   }
 
-  set {
+  set_sensitive {
     name  = "telegram.botToken"
     value = var.telegram_bot_token
   }
 
-  set {
+  set_sensitive {
     name  = "telegram.chatId"
     value = var.telegram_chat_id
   }

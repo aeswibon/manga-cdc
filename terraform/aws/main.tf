@@ -150,15 +150,64 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+resource "aws_secretsmanager_secret" "app_env" {
+  count = var.deployment_target == "vm" ? 1 : 0
+  name  = "manga-cdc-env-${var.environment}"
+}
+
+resource "aws_secretsmanager_secret_version" "app_env" {
+  count         = var.deployment_target == "vm" ? 1 : 0
+  secret_id     = aws_secretsmanager_secret.app_env[0].id
+  secret_string = local.env_file_content
+}
+
+resource "aws_iam_role" "ec2_vm_role" {
+  count = var.deployment_target == "vm" ? 1 : 0
+  name  = "manga-cdc-ec2-role-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "ec2_vm_secrets" {
+  count = var.deployment_target == "vm" ? 1 : 0
+  name  = "manga-cdc-ec2-secrets-${var.environment}"
+  role  = aws_iam_role.ec2_vm_role[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = aws_secretsmanager_secret.app_env[0].arn
+    }]
+  })
+}
+
+resource "aws_iam_instance_profile" "ec2_vm_profile" {
+  count = var.deployment_target == "vm" ? 1 : 0
+  name  = "manga-cdc-ec2-profile-${var.environment}"
+  role  = aws_iam_role.ec2_vm_role[0].name
+}
+
 resource "aws_instance" "app_ec2" {
   count                  = var.deployment_target == "vm" ? 1 : 0
   ami                    = local.aws_ami_id
   instance_type          = var.instance_type
   subnet_id              = local.aws_subnet_ids[0]
   vpc_security_group_ids = [aws_security_group.vm_sg[0].id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_vm_profile[0].name
 
-  user_data = templatefile("${path.module}/../templates/startup.sh.tftpl", {
-    env_file_content            = local.env_file_content
+  user_data = templatefile("${path.module}/../templates/startup-aws.sh.tftpl", {
+    secret_arn                  = aws_secretsmanager_secret.app_env[0].arn
     compose_file_content        = file("${path.module}/../../docker-compose.prod.yml")
     caddyfile_content           = fileexists("${path.module}/../../Caddyfile") ? file("${path.module}/../../Caddyfile") : ""
     observability_cloud_enabled = var.observability_mode == "grafana-cloud"
@@ -166,6 +215,8 @@ resource "aws_instance" "app_ec2" {
     alloy_config_content        = file("${path.module}/../../alloy/config.prod.alloy")
     observability_flags         = var.observability_mode == "grafana-cloud" ? "-f docker-compose.observability-cloud.yml" : ""
   })
+
+  depends_on = [aws_secretsmanager_secret_version.app_env]
 
   user_data_replace_on_change = true
 

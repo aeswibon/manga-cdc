@@ -49,7 +49,7 @@ public class ApiSecurityFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
         String path = request.getRequestURI();
-        String clientIp = SecurityUtils.clientIp(null, request.getRemoteAddr());
+        String clientIp = SecurityUtils.clientIp(request.getHeader("X-Forwarded-For"), request.getRemoteAddr());
 
         if (path.startsWith("/actuator/health")) {
             filterChain.doFilter(request, response);

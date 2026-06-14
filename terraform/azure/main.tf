@@ -78,6 +78,37 @@ EOT
 # -----------------------------------------------------------------------------
 # TARGET: VM Deployment (Docker Compose on Azure Linux VM)
 # -----------------------------------------------------------------------------
+data "azurerm_client_config" "current" {
+  count = var.deployment_target == "vm" && !var.ci_plan_mode ? 1 : 0
+}
+
+resource "azurerm_key_vault" "app_kv" {
+  count                      = var.deployment_target == "vm" ? 1 : 0
+  name                       = "mcdc-${var.environment}"
+  location                   = azurerm_resource_group.rg.location
+  resource_group_name        = azurerm_resource_group.rg.name
+  tenant_id                  = var.ci_plan_mode ? "22222222-2222-2222-2222-222222222222" : data.azurerm_client_config.current[0].tenant_id
+  sku_name                   = "standard"
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = false
+}
+
+resource "azurerm_key_vault_access_policy" "terraform" {
+  count        = var.deployment_target == "vm" && !var.ci_plan_mode ? 1 : 0
+  key_vault_id = azurerm_key_vault.app_kv[0].id
+  tenant_id    = data.azurerm_client_config.current[0].tenant_id
+  object_id    = data.azurerm_client_config.current[0].object_id
+
+  secret_permissions = ["Get", "List", "Set", "Delete", "Recover", "Purge"]
+}
+
+resource "azurerm_key_vault_secret" "app_env" {
+  count        = var.deployment_target == "vm" ? 1 : 0
+  name         = "manga-cdc-env"
+  value        = local.env_file_content
+  key_vault_id = azurerm_key_vault.app_kv[0].id
+}
+
 resource "azurerm_virtual_network" "vnet" {
   count               = var.deployment_target == "vm" ? 1 : 0
   name                = "manga-cdc-vnet-${var.environment}"
@@ -173,6 +204,10 @@ resource "azurerm_linux_virtual_machine" "app_vm" {
   size                = var.vm_size
   admin_username      = "azureuser"
 
+  identity {
+    type = "SystemAssigned"
+  }
+
   network_interface_ids = [
     azurerm_network_interface.nic[0].id,
   ]
@@ -194,8 +229,9 @@ resource "azurerm_linux_virtual_machine" "app_vm" {
     version   = "latest"
   }
 
-  custom_data = base64encode(templatefile("${path.module}/../templates/startup.sh.tftpl", {
-    env_file_content            = local.env_file_content
+  custom_data = base64encode(templatefile("${path.module}/../templates/startup-azure.sh.tftpl", {
+    vault_name                  = azurerm_key_vault.app_kv[0].name
+    secret_name                 = azurerm_key_vault_secret.app_env[0].name
     compose_file_content        = file("${path.module}/../../docker-compose.prod.yml")
     caddyfile_content           = fileexists("${path.module}/../../Caddyfile") ? file("${path.module}/../../Caddyfile") : ""
     observability_cloud_enabled = var.observability_mode == "grafana-cloud"
@@ -203,6 +239,13 @@ resource "azurerm_linux_virtual_machine" "app_vm" {
     alloy_config_content        = file("${path.module}/../../alloy/config.prod.alloy")
     observability_flags         = var.observability_mode == "grafana-cloud" ? "-f docker-compose.observability-cloud.yml" : ""
   }))
+}
+
+resource "azurerm_role_assignment" "vm_kv_secrets" {
+  count                = var.deployment_target == "vm" ? 1 : 0
+  scope                = azurerm_key_vault.app_kv[0].id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_linux_virtual_machine.app_vm[0].identity[0].principal_id
 }
 
 # -----------------------------------------------------------------------------
