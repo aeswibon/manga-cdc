@@ -1,13 +1,13 @@
-FROM ghcr.io/graalvm/native-image-community:21 AS builder
+FROM eclipse-temurin:21-jdk-alpine AS builder
 WORKDIR /app
 COPY mvnw .
 COPY .mvn .mvn
 COPY pom.xml .
 RUN ./mvnw dependency:go-offline -B
 COPY src src
-RUN ./mvnw -Pnative native:compile -DskipTests -B
+RUN ./mvnw package -DskipTests -B
 
-FROM gcr.io/distroless/base-debian12
+FROM eclipse-temurin:21-jre-alpine
 
 ARG APP_VERSION=0.4.5
 LABEL org.opencontainers.image.title="manga-cdc notification-service" \
@@ -15,9 +15,11 @@ LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
       org.opencontainers.image.vendor="aeswibon" \
       org.opencontainers.image.version="${APP_VERSION}" \
-      org.opencontainers.image.base.name="gcr.io/distroless/base-debian12"
+      org.opencontainers.image.base.name="eclipse-temurin:21-jre-alpine"
 
-COPY --from=builder /app/target/notification-service /app/notification-service
+RUN apk add --no-cache wget
+
+COPY --from=builder /app/target/notification-service-*.jar /app/app.jar
 WORKDIR /app
 EXPOSE 8080
-CMD ["/app/notification-service"]
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]
