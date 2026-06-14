@@ -67,20 +67,15 @@ function offlinePayload(error: string, latencyMs = 0): StatusPayload {
   };
 }
 
-async function fetchPipelineHealth(url: string): Promise<{ health: PipelineHealth | null; latencyMs: number; error?: string }> {
+async function fetchPipelineHealth(kvUrl: string, kvToken: string): Promise<{ health: PipelineHealth | null; latencyMs: number; error?: string }> {
   const started = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const apiKey = process.env.NOTIFIER_API_KEY?.trim();
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (apiKey) {
-    headers['X-Api-Key'] = apiKey;
-  }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(`${kvUrl}/get/pipeline_health`, {
       method: 'GET',
-      headers,
+      headers: { Authorization: `Bearer ${kvToken}` },
       signal: controller.signal,
     });
     const latencyMs = Date.now() - started;
@@ -89,11 +84,16 @@ async function fetchPipelineHealth(url: string): Promise<{ health: PipelineHealt
       return {
         health: null,
         latencyMs,
-        error: `HTTP ${response.status}`,
+        error: `KV HTTP ${response.status}`,
       };
     }
 
-    const health = (await response.json()) as PipelineHealth;
+    const json = await response.json();
+    if (!json.result) {
+       return { health: null, latencyMs, error: 'No health data in KV' };
+    }
+
+    const health = JSON.parse(json.result) as PipelineHealth;
     return { health, latencyMs };
   } catch (error) {
     return {
@@ -119,15 +119,17 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     return;
   }
 
-  const pipelineUrl = process.env.PIPELINE_HEALTH_URL?.trim();
-  if (!pipelineUrl) {
-    sendStatus(res, offlinePayload('PIPELINE_HEALTH_URL is not set'));
+  const kvUrl = process.env.KV_REST_API_URL?.trim();
+  const kvToken = process.env.KV_REST_API_TOKEN?.trim();
+
+  if (!kvUrl || !kvToken) {
+    sendStatus(res, offlinePayload('KV_REST_API_URL or KV_REST_API_TOKEN is not set'));
     return;
   }
 
-  const { health, latencyMs, error } = await fetchPipelineHealth(pipelineUrl);
+  const { health, latencyMs, error } = await fetchPipelineHealth(kvUrl, kvToken);
   if (!health) {
-    const payload = offlinePayload(error ?? 'Production health endpoint unreachable', latencyMs);
+    const payload = offlinePayload(error ?? 'KV health endpoint unreachable', latencyMs);
     cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
     sendStatus(res, payload);
     return;
