@@ -64,13 +64,15 @@ jobs:
           git fetch origin master "refs/tags/v${VERSION}"
           master_sha=$(git rev-parse origin/master)
           tag_sha=$(git rev-parse "refs/tags/v${VERSION}^{commit}" 2>/dev/null || echo "")
-          if [ -z "$(git status --porcelain)" ] && [ -n "$tag_sha" ] && [ "$tag_sha" = "$master_sha" ]; then
-            echo "Git release aligned: tag v${VERSION} at master with synced files."
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Version files already synced on master."
             echo "skip_publish=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Git release needs publish (version commit and/or retag)."
+            echo "Version files need publish to master."
             echo "skip_publish=false" >> "$GITHUB_OUTPUT"
           fi
+          echo "master_sha=${master_sha}" >> "$GITHUB_OUTPUT"
+          echo "tag_sha=${tag_sha}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
 
@@ -100,7 +102,9 @@ jobs:
         run: |
           skip_publish="${{ steps.git_state.outputs.skip_publish }}"
           images_exist="${{ steps.images.outputs.release_images_exist }}"
-          if [ "$skip_publish" = "true" ] && [ "$images_exist" = "true" ]; then
+          master_sha="${{ steps.git_state.outputs.master_sha }}"
+          tag_sha="${{ steps.git_state.outputs.tag_sha }}"
+          if [ "$skip_publish" = "true" ] && [ "$images_exist" = "true" ] && [ -n "$tag_sha" ] && [ "$tag_sha" = "$master_sha" ]; then
             echo "Release complete: git aligned and ghcr.io images published."
             echo "skip_all=true" >> "$GITHUB_OUTPUT"
           else

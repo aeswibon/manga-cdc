@@ -7,10 +7,19 @@ Run workflows locally with [nektos/act](https://github.com/nektos/act).
 | Trigger | Pipeline |
 |---|---|
 | Pull request | **Pull request** → `test` → `terraform` → `docker-build` → `test-e2e` via [pipeline-compose-run](https://github.com/aeswibon/pipeline-compose-run) |
-| Push tag `v*` | **Release** → `version-sync` → test/tf/build stages → `deploy-gcp` → `deploy-vercel` |
+| Push tag `v*` | **Release** → `version-sync` → test/tf/build stages → `deploy-gcp` → `deploy-vercel` → `finalize-release` |
 | Manual deploy | **Deploy (manual)** → selected cloud + Vercel |
 
 Stage workflows live under `.github/workflows/stage-*.yml`. Orchestration lives in `.github/pipelines/`.
+
+### Single release run per tag push
+
+`version-sync` commits version file bumps to `master` but **does not move the release tag** mid-pipeline (that would fire a second `release.yml`). After deploy succeeds, `finalize-release`:
+
+1. Creates an empty **anchor commit** on `master` with `[skip release] [skip ci]` in the message
+2. Moves `vX.Y.Z` to that anchor commit
+
+GitHub skips workflows for commits with `[skip ci]`, so the tag realign does not start another Release run. `release-gate.sh` is a backup: it also skips the pipeline when the tagged commit contains `[skip release]`, or when a tag **update** points at `master` and release images already exist.
 
 ## Release bot setup
 

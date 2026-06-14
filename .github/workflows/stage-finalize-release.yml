@@ -1,0 +1,71 @@
+name: Finalize release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage-finalize-release-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  align-tag:
+    name: Anchor release tag on master
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require release bot token
+        env:
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_BOT_TOKEN" ]; then
+            echo "error: RELEASE_BOT_TOKEN secret is required to move protected release tags." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+
+      - name: Resolve tag version
+        id: tag
+        run: |
+          ref="${GITHUB_REF}"
+          if ! [[ "$ref" =~ ^refs/tags/v(.+)$ ]]; then
+            echo "Expected refs/tags/vX.Y.Z, got $ref"
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create release tag anchor on master
+        id: anchor
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          anchor_sha="$(bash scripts/ci/create-release-tag-anchor.sh "${VERSION}")"
+          echo "commit_sha=${anchor_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Move release tag to anchor commit
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          ANCHOR_SHA: ${{ steps.anchor.outputs.commit_sha }}
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+        run: bash scripts/ci/move-release-tag.sh "${VERSION}" "${ANCHOR_SHA}"
+
+      - name: Export outputs for pipeline-compose
+        if: success()
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          mkdir -p pipeline-compose
+          jq -n --arg version "$VERSION" '{version: $version, finalized: "true"}' > pipeline-compose/outputs.json
+
+      - uses: actions/upload-artifact@v6
+        if: success()
+        with:
+          name: pipeline-compose-finalize-release
+          path: pipeline-compose/outputs.json
+          retention-days: 1

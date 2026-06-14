@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Publish synced version files to protected master and move the release tag via GitHub API.
+# Publish synced version files to protected master.
+#
+# Tag alignment is handled after a successful release by scripts/ci/move-release-tag.sh
+# so moving the tag mid-pipeline does not re-trigger release.yml.
 #
 # Uses two tokens:
 # - GITHUB_TOKEN creates blobs/trees/commits (GitHub-verified Actions signatures)
@@ -48,14 +51,6 @@ done
 
 master_sha="$(gh_api_push "repos/${repo}/git/ref/heads/master" --jq .object.sha)"
 base_tree="$(gh_api_content "repos/${repo}/git/commits/${master_sha}" --jq .tree.sha)"
-
-tag_ref="tags/v${version}"
-tag_sha=""
-if tag_sha="$(gh_api_push "repos/${repo}/git/ref/${tag_ref}" --jq .object.sha 2>/dev/null)"; then
-  :
-else
-  tag_sha=""
-fi
 
 needs_commit=false
 if ! git diff --quiet -- "${VERSION_FILES[@]}"; then
@@ -106,23 +101,9 @@ else
   echo "Version files already aligned on master"
 fi
 
-tag_moved=false
-if [ "$tag_sha" != "$target_sha" ]; then
-  if [ -n "$tag_sha" ]; then
-    gh_api_push "repos/${repo}/git/refs/${tag_ref}" -X PATCH \
-      --input - <<< "$(jq -n --arg sha "$target_sha" '{sha: $sha, force: true}')"
-  else
-    gh_api_push "repos/${repo}/git/refs" -X POST \
-      --input - <<< "$(jq -n --arg ref "refs/tags/v${version}" --arg sha "$target_sha" '{ref: $ref, sha: $sha}')"
-  fi
-  tag_moved=true
-  echo "Moved tag v${version} to ${target_sha}"
-fi
-
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   {
     echo "pushed_master=${needs_commit}"
-    echo "tag_moved=${tag_moved}"
     echo "commit_sha=${target_sha}"
   } >> "$GITHUB_OUTPUT"
 fi
