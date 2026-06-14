@@ -15,10 +15,10 @@ env:
   SNAPSHOT_TAG: ci-${{ github.sha }}
   VITE_STATUS_PAGE_URL: ${{ vars.VITE_STATUS_PAGE_URL || 'http://localhost:3001' }}
 
-# Release builds run on master after sync-version retags; PRs use separate groups.
+# PR/master pushes cancel superseded runs; release dispatches run to completion.
 concurrency:
-  group: test-build-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: test-build-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'workflow_dispatch' && format('-dispatch-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   gate:
@@ -264,7 +264,7 @@ jobs:
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'))
     needs: [gate, terraform, dashboard-test, status-page-check]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -346,7 +346,7 @@ jobs:
     if: needs.gate.outputs.proceed == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gate.outputs.release == 'true'
     needs: [gate, docker-snapshot, e2e-test]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
