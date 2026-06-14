@@ -2,6 +2,7 @@ package com.mangacdc.service;
 
 import com.mangacdc.config.NotificationProperties;
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -29,17 +30,9 @@ public class ChapterNotificationBatcher {
     private final ScheduledExecutorService scheduler;
     private final ConcurrentHashMap<String, Batch> batches = new ConcurrentHashMap<>();
 
+    @Autowired
     public ChapterNotificationBatcher(NotificationProperties properties) {
         this.batchWindowMs = properties.batchWindowMillis();
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "chapter-notification-batcher");
-            thread.setDaemon(true);
-            return thread;
-        });
-    }
-
-    ChapterNotificationBatcher(long batchWindowMs) {
-        this.batchWindowMs = batchWindowMs;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread thread = new Thread(r, "chapter-notification-batcher");
             thread.setDaemon(true);

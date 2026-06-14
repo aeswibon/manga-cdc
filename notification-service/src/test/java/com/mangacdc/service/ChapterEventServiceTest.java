@@ -1,6 +1,7 @@
 package com.mangacdc.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mangacdc.config.NotificationProperties;
 import com.mangacdc.repository.ChapterRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +29,7 @@ class ChapterEventServiceTest {
     }
  
     private ChapterEventService newService(NotifierRegistry registry, ChapterRepository repo) {
-        ChapterNotificationBatcher batcher = new ChapterNotificationBatcher(0L);
+        ChapterNotificationBatcher batcher = new ChapterNotificationBatcher(new NotificationProperties(0));
         return new ChapterEventService(registry, repo, notificationLogRepo, sseEmitterService, meterRegistry, batcher);
     }
 
