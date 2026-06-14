@@ -9,7 +9,7 @@ RUN ./mvnw -Pnative native:compile -DskipTests -B
 
 FROM gcr.io/distroless/base-debian12
 
-ARG APP_VERSION=0.4.4
+ARG APP_VERSION=0.4.5
 LABEL org.opencontainers.image.title="manga-cdc notification-service" \
       org.opencontainers.image.description="Consumes chapter CDC events from Kafka and sends Discord, Slack, and Telegram notifications" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \
