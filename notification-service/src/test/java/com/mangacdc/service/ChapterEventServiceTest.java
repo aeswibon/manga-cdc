@@ -236,6 +236,13 @@ class ChapterEventServiceTest {
     }
 
     @Test
+    void isEarlyWeekLeak_detectsMondayThroughWednesday() {
+        assertTrue(ChapterEventService.isEarlyWeekLeak(Instant.parse("2024-01-15T12:00:00Z")));
+        assertFalse(ChapterEventService.isEarlyWeekLeak(Instant.parse("2024-01-19T12:00:00Z")));
+        assertFalse(ChapterEventService.isEarlyWeekLeak(null));
+    }
+
+    @Test
     void processChapterEvent_shouldHandleMalformedJson() {
         NotifierRegistry registry = mock(NotifierRegistry.class);
         ChapterRepository repo = mock(ChapterRepository.class);
@@ -251,7 +258,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
-        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of(), 5));
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of(), 5, false));
         when(repo.countNewChaptersForSeries("s1")).thenReturn(3);
 
         ChapterEventService service = newService(registry, repo);
@@ -268,7 +275,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch3")).thenReturn(true);
         when(repo.findChapterUrl("ch3")).thenReturn("https://ex.com/3");
-        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of(), 3));
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of(), 3, false));
         when(repo.countNewChaptersForSeries("s1")).thenReturn(3);
         when(repo.findSeriesTitle("s1")).thenReturn("One Piece");
         when(repo.findNewChaptersForSeries("s1")).thenReturn(List.of(
@@ -294,7 +301,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
-        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of("Machine TL"), 0));
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of("Machine TL"), 0, false));
 
         ChapterEventService service = newService(registry, repo);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1", "Title", "https://ex.com/1", true, "Machine TL"));
@@ -310,7 +317,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
-        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0));
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0, false));
         when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(Map.of("discord", true));
 
@@ -328,7 +335,23 @@ class ChapterEventServiceTest {
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
         when(repo.findScanGroup("ch1")).thenReturn(null);
-        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0));
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0, false));
+
+        ChapterEventService service = newService(registry, repo);
+        service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1", "Title", "https://ex.com/1", true));
+
+        verifyNoInteractions(registry);
+        verify(repo).markNotified("ch1");
+    }
+
+    @Test
+    void processChapterEvent_leakFilter_skipsEarlyWeekRelease() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
+        when(repo.findReleaseDate("ch1")).thenReturn(Instant.parse("2024-01-16T08:00:00Z"));
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of(), 0, true));
 
         ChapterEventService service = newService(registry, repo);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1", "Title", "https://ex.com/1", true));

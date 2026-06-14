@@ -16,6 +16,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
  
 @Service
 public class ChapterEventService {
@@ -100,6 +104,16 @@ public class ChapterEventService {
                 if (!prefs.allowsGroup(scanGroup)) {
                     log.info("Group filter skipped chapter {} for series {} (group={})",
                         chapterId, resolvedTitle, scanGroup.isBlank() ? "unknown" : scanGroup);
+                    chapterRepo.markNotified(chapterId);
+                    return;
+                }
+            }
+
+            if (prefs.blockEarlyWeek()) {
+                Instant releaseDate = chapterRepo.findReleaseDate(chapterId);
+                if (isEarlyWeekLeak(releaseDate)) {
+                    log.info("Early-week leak filter skipped chapter {} for series {} (release={})",
+                        chapterId, resolvedTitle, releaseDate);
                     chapterRepo.markNotified(chapterId);
                     return;
                 }
@@ -239,6 +253,14 @@ public class ChapterEventService {
 
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    static boolean isEarlyWeekLeak(Instant releaseDate) {
+        if (releaseDate == null) {
+            return false;
+        }
+        DayOfWeek day = ZonedDateTime.ofInstant(releaseDate, ZoneOffset.UTC).getDayOfWeek();
+        return day == DayOfWeek.MONDAY || day == DayOfWeek.TUESDAY || day == DayOfWeek.WEDNESDAY;
     }
 
     private void recordDelivery(String channel, String status) {

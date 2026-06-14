@@ -76,6 +76,19 @@ public class ChapterRepository {
             chapterId);
     }
 
+    public java.time.Instant findReleaseDate(String chapterId) {
+        return jdbc.query(
+            "SELECT release_date FROM chapters WHERE id = ?::uuid",
+            rs -> {
+                if (!rs.next()) {
+                    return null;
+                }
+                java.sql.Timestamp ts = rs.getTimestamp("release_date");
+                return ts != null ? ts.toInstant() : null;
+            },
+            chapterId);
+    }
+
     public void logNotification(String chapterId, String status, String channel, String errorMessage) {
         jdbc.update(
             "INSERT INTO notification_logs (chapter_id, status, channel, error_message) VALUES (?::uuid, ?, ?, ?)",

@@ -10,10 +10,11 @@ import java.util.Locale;
 public record SeriesNotificationPrefs(
     List<String> preferredGroups,
     List<String> blockedGroups,
-    int notifyEvery
+    int notifyEvery,
+    boolean blockEarlyWeek
 ) {
     public static SeriesNotificationPrefs empty() {
-        return new SeriesNotificationPrefs(List.of(), List.of(), 0);
+        return new SeriesNotificationPrefs(List.of(), List.of(), 0, false);
     }
 
     public boolean bingeEnabled() {
@@ -58,7 +59,8 @@ public record SeriesNotificationPrefs(
             return new SeriesNotificationPrefs(
                 readStringList(node.path("preferred_groups")),
                 readStringList(node.path("blocked_groups")),
-                notifyEvery
+                notifyEvery,
+                node.path("block_early_week").asBoolean(false)
             );
         } catch (Exception ex) {
             return empty();

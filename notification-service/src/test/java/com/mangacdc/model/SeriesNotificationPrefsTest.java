@@ -44,16 +44,23 @@ class SeriesNotificationPrefsTest {
 
     @Test
     void allowsGroup_blocksDeniedGroups() {
-        SeriesNotificationPrefs prefs = new SeriesNotificationPrefs(List.of(), List.of("Machine TL"), 0);
+        SeriesNotificationPrefs prefs = new SeriesNotificationPrefs(List.of(), List.of("Machine TL"), 0, false);
         assertFalse(prefs.allowsGroup("Machine TL"));
         assertTrue(prefs.allowsGroup("Official TL"));
     }
 
     @Test
     void allowsGroup_requiresPreferredMatch() {
-        SeriesNotificationPrefs prefs = new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0);
+        SeriesNotificationPrefs prefs = new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0, false);
         assertTrue(prefs.allowsGroup("official tl"));
         assertFalse(prefs.allowsGroup("Machine TL"));
         assertFalse(prefs.allowsGroup(""));
+    }
+
+    @Test
+    void fromJson_parsesBlockEarlyWeek() {
+        SeriesNotificationPrefs prefs = SeriesNotificationPrefs.fromJson(
+            "{\"block_early_week\": true}", mapper);
+        assertTrue(prefs.blockEarlyWeek());
     }
 }
