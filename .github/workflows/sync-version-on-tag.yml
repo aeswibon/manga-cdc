@@ -1,0 +1,82 @@
+name: Sync version from tag
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-version-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync-version:
+    name: Align version files on master
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        if: env.ACT != 'true'
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Resolve tag version
+        id: tag
+        run: |
+          ref="${GITHUB_REF}"
+          if ! [[ "$ref" =~ ^refs/tags/v(.+)$ ]]; then
+            echo "Expected refs/tags/vX.Y.Z, got $ref"
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid semver tag: v${version}"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Tag version: $version"
+
+      - name: Sync version files
+        run: bash scripts/ci/sync-versions-from-tag.sh "${{ steps.tag.outputs.version }}"
+
+      - name: Verify sync (act)
+        if: env.ACT == 'true'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          grep -q "\"version\": \"${VERSION}\"" dashboard/package.json
+          grep -q "\"version\": \"${VERSION}\"" status-page/package.json
+          grep -q "const Version = \"${VERSION}\"" scraper/internal/version/version.go
+          grep -q "version: ${VERSION}" helm/manga-cdc/Chart.yaml
+          grep -q "appVersion: \"${VERSION}\"" helm/manga-cdc/Chart.yaml
+          grep -q "<version>${VERSION}</version>" notification-service/pom.xml
+          grep -q "ARG APP_VERSION=${VERSION}" scraper/Dockerfile notification-service/Dockerfile
+          echo "act: verified version files at ${VERSION}"
+
+      - name: Commit and push to master
+        if: env.ACT != 'true'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          if git diff --quiet; then
+            echo "Version files already aligned with v${VERSION}"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            dashboard/package.json \
+            status-page/package.json \
+            helm/manga-cdc/Chart.yaml \
+            scraper/internal/version/version.go \
+            notification-service/pom.xml \
+            scraper/Dockerfile \
+            notification-service/Dockerfile
+
+          git commit -S -m "chore: sync version files to v${VERSION}"
+          git push origin master

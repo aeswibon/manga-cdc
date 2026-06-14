@@ -1,0 +1,16 @@
+{
+  "ref": "refs/tags/v0.4.5",
+  "ref_type": "tag",
+  "repository": {
+    "name": "manga-cdc",
+    "full_name": "aeswibon/manga-cdc",
+    "default_branch": "master",
+    "owner": {
+      "login": "aeswibon"
+    }
+  },
+  "pusher": {
+    "name": "aeswibon",
+    "email": "dev@local.test"
+  }
+}
