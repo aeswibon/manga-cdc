@@ -117,13 +117,11 @@ jobs:
         working-directory: status-page
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: oven-sh/setup-bun@v1
         with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: status-page/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
+          bun-version: latest
+      - run: bun install
+      - run: bun run typecheck
       - name: Verify static assets
         run: |
           test -f public/index.html
