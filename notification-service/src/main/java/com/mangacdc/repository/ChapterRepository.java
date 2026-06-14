@@ -69,6 +69,13 @@ public class ChapterRepository {
                 chapterId);
     }
 
+    public String findScanGroup(String chapterId) {
+        return jdbc.query(
+            "SELECT scan_group FROM chapters WHERE id = ?::uuid",
+            rs -> rs.next() ? rs.getString("scan_group") : null,
+            chapterId);
+    }
+
     public void logNotification(String chapterId, String status, String channel, String errorMessage) {
         jdbc.update(
             "INSERT INTO notification_logs (chapter_id, status, channel, error_message) VALUES (?::uuid, ?, ?, ?)",

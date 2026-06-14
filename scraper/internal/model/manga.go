@@ -32,6 +32,7 @@ type Chapter struct {
 	Number      float64   `json:"chapter_num"`
 	Title       string    `json:"title,omitempty"`
 	URL         string    `json:"url"`
+	ScanGroup   string    `json:"scan_group,omitempty"`
 	ReleaseDate time.Time `json:"release_date,omitempty"`
 	IsNew       bool      `json:"is_new"`
 }

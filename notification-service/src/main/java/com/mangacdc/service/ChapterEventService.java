@@ -69,6 +69,7 @@ public class ChapterEventService {
             String seriesTitle = after.path("series_title").asText("");
             String url = after.path("url").asText();
             boolean isNew = after.path("is_new").asBoolean(false);
+            String scanGroup = after.path("scan_group").asText("");
 
             if (!isNew) {
                 return;
@@ -91,6 +92,19 @@ public class ChapterEventService {
             }
 
             String resolvedTitle = seriesTitle.isEmpty() ? "Unknown" : seriesTitle;
+            SeriesNotificationPrefs prefs = prefsService.getPrefs(seriesId);
+            if (prefs.hasGroupFilters()) {
+                if (scanGroup.isBlank()) {
+                    scanGroup = nullToEmpty(chapterRepo.findScanGroup(chapterId));
+                }
+                if (!prefs.allowsGroup(scanGroup)) {
+                    log.info("Group filter skipped chapter {} for series {} (group={})",
+                        chapterId, resolvedTitle, scanGroup.isBlank() ? "unknown" : scanGroup);
+                    chapterRepo.markNotified(chapterId);
+                    return;
+                }
+            }
+
             ChapterNotificationBatcher.PendingChapter pending = new ChapterNotificationBatcher.PendingChapter(
                 chapterId, seriesId, resolvedTitle, chapterNum, title, url
             );
@@ -221,6 +235,10 @@ public class ChapterEventService {
             return minChapter;
         }
         return minChapter + "–" + maxChapter;
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private void recordDelivery(String channel, String status) {

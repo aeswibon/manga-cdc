@@ -41,6 +41,10 @@ class ChapterEventServiceTest {
     }
 
     private String cdcEvent(String op, String id, String seriesId, String seriesTitle, String chapterNum, String title, String url, boolean isNew) {
+        return cdcEvent(op, id, seriesId, seriesTitle, chapterNum, title, url, isNew, null);
+    }
+
+    private String cdcEvent(String op, String id, String seriesId, String seriesTitle, String chapterNum, String title, String url, boolean isNew, String scanGroup) {
         try {
             var after = mapper.createObjectNode();
             after.put("id", id);
@@ -50,6 +54,7 @@ class ChapterEventServiceTest {
             after.put("title", title);
             after.put("url", url);
             after.put("is_new", isNew);
+            if (scanGroup != null) after.put("scan_group", scanGroup);
 
             var root = mapper.createObjectNode();
             root.put("op", op);
@@ -246,7 +251,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
-        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(5));
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of(), 5));
         when(repo.countNewChaptersForSeries("s1")).thenReturn(3);
 
         ChapterEventService service = newService(registry, repo);
@@ -263,7 +268,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch3")).thenReturn(true);
         when(repo.findChapterUrl("ch3")).thenReturn("https://ex.com/3");
-        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(3));
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of(), 3));
         when(repo.countNewChaptersForSeries("s1")).thenReturn(3);
         when(repo.findSeriesTitle("s1")).thenReturn("One Piece");
         when(repo.findNewChaptersForSeries("s1")).thenReturn(List.of(
@@ -281,5 +286,54 @@ class ChapterEventServiceTest {
         verify(repo).markNotified("ch1");
         verify(repo).markNotified("ch2");
         verify(repo).markNotified("ch3");
+    }
+
+    @Test
+    void processChapterEvent_groupFilter_blocksDeniedGroup() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of(), List.of("Machine TL"), 0));
+
+        ChapterEventService service = newService(registry, repo);
+        service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1", "Title", "https://ex.com/1", true, "Machine TL"));
+
+        verifyNoInteractions(registry);
+        verify(repo).markNotified("ch1");
+        verify(repo, never()).logNotification(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void processChapterEvent_groupFilter_allowsPreferredGroup() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0));
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+            .thenReturn(Map.of("discord", true));
+
+        ChapterEventService service = newService(registry, repo);
+        service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1", "Title", "https://ex.com/1", true, "Official TL"));
+
+        verify(registry).sendAll("One Piece", "1", "Title", "https://ex.com/1");
+        verify(repo).markNotified("ch1");
+    }
+
+    @Test
+    void processChapterEvent_groupFilter_skipsUnknownGroupWhenPreferredListSet() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
+        when(repo.findScanGroup("ch1")).thenReturn(null);
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0));
+
+        ChapterEventService service = newService(registry, repo);
+        service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1", "Title", "https://ex.com/1", true));
+
+        verifyNoInteractions(registry);
+        verify(repo).markNotified("ch1");
     }
 }

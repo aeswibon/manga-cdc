@@ -170,11 +170,11 @@ func (d *DB) GetSeriesByTitle(ctx context.Context, title string) (*model.Series,
 func (d *DB) InsertChapter(ctx context.Context, seriesID string, ch model.Chapter) (string, error) {
 	var id string
 	err := d.pool.QueryRow(ctx, `
-		INSERT INTO chapters (series_id, chapter_num, title, url, release_date, is_new)
-		VALUES ($1, $2, $3, $4, $5, true)
+		INSERT INTO chapters (series_id, chapter_num, title, url, scan_group, release_date, is_new)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, true)
 		ON CONFLICT (series_id, chapter_num) DO NOTHING
 		RETURNING id
-	`, seriesID, ch.Number, ch.Title, ch.URL, ch.ReleaseDate).Scan(&id)
+	`, seriesID, ch.Number, ch.Title, ch.URL, ch.ScanGroup, ch.ReleaseDate).Scan(&id)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -197,7 +197,7 @@ func (d *DB) BulkInsertChapters(ctx context.Context, seriesID string, chapters [
 			VALUES ($1, $2, $3, $4, $5, true)
 			ON CONFLICT (series_id, chapter_num) DO NOTHING
 			RETURNING id, chapter_num
-		`, seriesID, ch.Number, ch.Title, ch.URL, ch.ReleaseDate)
+		`, seriesID, ch.Number, ch.Title, ch.URL, ch.ScanGroup, ch.ReleaseDate)
 	}
 
 	br := d.pool.SendBatch(ctx, batch)

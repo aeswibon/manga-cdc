@@ -63,6 +63,7 @@ type chapterData struct {
 	ChapterNum  float64 `json:"chapter_num"`
 	Title       string  `json:"title,omitempty"`
 	URL         string  `json:"url"`
+	ScanGroup   string  `json:"scan_group,omitempty"`
 	IsNew       bool    `json:"is_new"`
 }
 
@@ -76,6 +77,7 @@ func (p *Producer) PublishChapterEvent(ctx context.Context, chapter model.Chapte
 			ChapterNum:  chapter.Number,
 			Title:       chapter.Title,
 			URL:         chapter.URL,
+			ScanGroup:   chapter.ScanGroup,
 			IsNew:       true,
 		},
 	}

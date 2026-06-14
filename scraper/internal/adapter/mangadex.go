@@ -424,7 +424,7 @@ func (m *MangaDexAdapter) fetchCoverFileName(ctx context.Context, coverID string
 }
 
 func (m *MangaDexAdapter) FetchChapters(ctx context.Context, seriesID string) ([]model.Chapter, error) {
-	url := fmt.Sprintf("%s/manga/%s/feed?limit=50&translatedLanguage[]=en&order[chapter]=desc", m.baseURL, seriesID)
+	url := fmt.Sprintf("%s/manga/%s/feed?limit=50&translatedLanguage[]=en&order[chapter]=desc&includes[]=scanlation_group", m.baseURL, seriesID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -449,17 +449,39 @@ func (m *MangaDexAdapter) FetchChapters(ctx context.Context, seriesID string) ([
 
 	var feed struct {
 		Data []struct {
-			ID         string `json:"id"`
+			ID            string `json:"id"`
+			Relationships struct {
+				ScanlationGroup struct {
+					Data []struct {
+						ID   string `json:"id"`
+						Type string `json:"type"`
+					} `json:"data"`
+				} `json:"scanlation_group"`
+			} `json:"relationships"`
 			Attributes struct {
 				Chapter   string  `json:"chapter"`
 				Title     *string `json:"title"`
 				PublishAt string  `json:"publishAt"`
 			} `json:"attributes"`
 		} `json:"data"`
+		Included []struct {
+			ID         string `json:"id"`
+			Type       string `json:"type"`
+			Attributes struct {
+				Name string `json:"name"`
+			} `json:"attributes"`
+		} `json:"included"`
 	}
 
 	if err := json.Unmarshal(body, &feed); err != nil {
 		return nil, fmt.Errorf("mangadex: parse chapters: %w", err)
+	}
+
+	groupNames := make(map[string]string)
+	for _, item := range feed.Included {
+		if item.Type == "scanlation_group" && item.Attributes.Name != "" {
+			groupNames[item.ID] = item.Attributes.Name
+		}
 	}
 
 	var chapters []model.Chapter
@@ -479,10 +501,19 @@ func (m *MangaDexAdapter) FetchChapters(ctx context.Context, seriesID string) ([
 			releaseDate, _ = time.Parse(time.RFC3339, d.Attributes.PublishAt)
 		}
 
+		scanGroup := ""
+		for _, group := range d.Relationships.ScanlationGroup.Data {
+			if name := groupNames[group.ID]; name != "" {
+				scanGroup = name
+				break
+			}
+		}
+
 		chapters = append(chapters, model.Chapter{
 			Number:      chapterNum,
 			Title:       title,
 			URL:         fmt.Sprintf("https://mangadex.org/chapter/%s", d.ID),
+			ScanGroup:   scanGroup,
 			ReleaseDate: releaseDate,
 			IsNew:       true,
 		})

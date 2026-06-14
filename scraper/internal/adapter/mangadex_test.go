@@ -70,6 +70,11 @@ func TestMangaDexAdapter_FetchChapters(t *testing.T) {
 			"data": [
 				{
 					"id": "ch1",
+					"relationships": {
+						"scanlation_group": {
+							"data": [{"id": "grp-1", "type": "scanlation_group"}]
+						}
+					},
 					"attributes": {
 						"chapter": "1",
 						"title": "Chapter One",
@@ -83,6 +88,13 @@ func TestMangaDexAdapter_FetchChapters(t *testing.T) {
 						"title": null,
 						"publishAt": ""
 					}
+				}
+			],
+			"included": [
+				{
+					"id": "grp-1",
+					"type": "scanlation_group",
+					"attributes": {"name": "Official TL"}
 				}
 			]
 		}`))
@@ -102,6 +114,9 @@ func TestMangaDexAdapter_FetchChapters(t *testing.T) {
 	}
 	if chapters[0].ReleaseDate.IsZero() {
 		t.Error("expected non-zero release date")
+	}
+	if chapters[0].ScanGroup != "Official TL" {
+		t.Errorf("expected scan group Official TL, got %q", chapters[0].ScanGroup)
 	}
 	if chapters[1].Number != 2.5 || chapters[1].Title != "" {
 		t.Errorf("unexpected second chapter: %+v", chapters[1])
