@@ -44,9 +44,7 @@ jobs:
           VERSION: ${{ steps.tag.outputs.version }}
           RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          anchor_sha="$(bash scripts/ci/create-release-tag-anchor.sh "${VERSION}")"
-          echo "commit_sha=${anchor_sha}" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/create-release-tag-anchor.sh "${VERSION}"
 
       - name: Move release tag to anchor commit
         env:
