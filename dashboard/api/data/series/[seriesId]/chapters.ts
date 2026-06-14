@@ -1,18 +1,21 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+export const config = { runtime: 'edge' };
 import { proxyNotifierGet } from '../../_proxy.js';
 
-function seriesIdFromRequest(req: VercelRequest): string | undefined {
-  const raw = req.query.seriesId;
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+function seriesIdFromRequest(req: Request): string | undefined {
+  const url = new URL(req.url);
+  const parts = url.pathname.split('/');
+  const idx = parts.indexOf('series');
+  if (idx >= 0 && idx + 1 < parts.length) {
+    return parts[idx + 1];
+  }
+  return undefined;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request) {
   const seriesId = seriesIdFromRequest(req);
   if (!seriesId) {
-    res.status(400).json({ error: 'seriesId required' });
-    return;
+    return Response.json({ error: 'seriesId required' }, { status: 400 });
   }
 
-  await proxyNotifierGet(req, res, `/api/series/${encodeURIComponent(seriesId)}/chapters`);
+  return await proxyNotifierGet(req, `/api/series/${encodeURIComponent(seriesId)}/chapters`);
 }

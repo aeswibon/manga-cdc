@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+export const config = { runtime: 'edge' };
 import {
   getCached,
   setCached,
@@ -27,27 +27,36 @@ async function upstreamGet(baseUrl: string, apiKey: string | undefined, path: st
   return response.json();
 }
 
-function parseScope(req: VercelRequest): BootstrapScope {
-  const raw = req.query.scope;
-  const value = Array.isArray(raw) ? raw[0] : raw;
+function parseScope(req: Request): BootstrapScope {
+  const url = new URL(req.url);
+  const value = url.searchParams.get('scope');
   if (value === 'overview' || value === 'watchlist') {
     return value;
   }
   return 'full';
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+function sendJson(body: unknown, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: { 'Cache-Control': UPSTREAM_CACHE_CONTROL },
+  });
+}
+
+function sendError(message: string, status = 502) {
+  return Response.json({ error: message }, { status });
+}
+
+export default async function handler(req: Request) {
   const method = (req.method ?? 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    return sendError('Method not allowed', 405);
   }
 
   const baseUrl = process.env.NOTIFIER_URL?.replace(/\/$/, '');
   const apiKey = process.env.NOTIFIER_API_KEY?.trim();
   if (!baseUrl) {
-    res.status(503).json({ error: 'NOTIFIER_URL is not configured' });
-    return;
+    return sendError('NOTIFIER_URL is not configured', 503);
   }
 
   const scope = parseScope(req);
@@ -57,9 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const cached = getCached(cacheKey);
     if (cached) {
-      res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
-      res.status(cached.status).json(cached.body);
-      return;
+      return sendJson(cached.body, cached.status);
     }
 
     if (scope === 'overview') {
@@ -69,18 +76,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ]);
       const body = { stats, logs };
       setCached(cacheKey, body, 200, UPSTREAM_CACHE_TTL_MS);
-      res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
-      res.status(200).json(body);
-      return;
+      return sendJson(body, 200);
     }
 
     if (scope === 'watchlist') {
       const series = await upstreamGet(baseUrl, apiKey, '/api/series');
       const body = { series };
       setCached(cacheKey, body, 200, UPSTREAM_CACHE_TTL_MS);
-      res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
-      res.status(200).json(body);
-      return;
+      return sendJson(body, 200);
     }
 
     const [stats, series, logs] = await Promise.all([
@@ -91,10 +94,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = { stats, series, logs };
     setCached(cacheKey, body, 200, UPSTREAM_CACHE_TTL_MS);
-    res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
-    res.status(200).json(body);
+    return sendJson(body, 200);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Upstream request failed';
-    res.status(502).json({ error: message });
+    return sendError(message, 502);
   }
 }

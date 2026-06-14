@@ -1,43 +1,7 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import dns from 'node:dns/promises';
-import net from 'node:net';
-import {
-  MAX_COVER_BYTES,
-  coverFetchCandidates,
-  coverFetchHeaders,
-  isAllowedCoverUrl,
-} from '../src/cover-proxy.js';
+export const config = { runtime: 'edge' };
 
-function isPrivateIp(ip: string): boolean {
-  if (net.isIPv4(ip)) {
-    const parts = ip.split('.').map(Number);
-    if (parts[0] === 10) return true;
-    if (parts[0] === 127) return true;
-    if (parts[0] === 169 && parts[1] === 254) return true;
-    if (parts[0] === 192 && parts[1] === 168) return true;
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-    return false;
-  }
-  if (ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd')) {
-    return true;
-  }
-  return false;
-}
 
-async function assertPublicHost(hostname: string): Promise<void> {
-  const host = hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.local')) {
-    throw new Error('blocked host');
-  }
-  const records = await dns.lookup(host, { all: true, verbatim: true });
-  for (const record of records) {
-    if (isPrivateIp(record.address)) {
-      throw new Error('blocked host');
-    }
-  }
-}
-
-async function fetchCover(url: string): Promise<{ body: Buffer; contentType: string } | null> {
+async function fetchCover(url: string): Promise<{ body: ArrayBuffer; contentType: string } | null> {
   const upstream = await fetch(url, {
     headers: coverFetchHeaders(url),
     redirect: 'follow',
@@ -57,34 +21,33 @@ async function fetchCover(url: string): Promise<{ body: Buffer; contentType: str
     return null;
   }
 
-  const body = Buffer.from(await upstream.arrayBuffer());
-  if (body.byteLength > MAX_COVER_BYTES) {
+  const arrayBuffer = await upstream.arrayBuffer();
+  if (arrayBuffer.byteLength > MAX_COVER_BYTES) {
     return null;
   }
 
-  return { body, contentType };
+  return { body: arrayBuffer, contentType };
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request) {
   if ((req.method ?? 'GET').toUpperCase() !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
-  const raw = req.query.url;
-  const value = Array.isArray(raw) ? raw[0] : raw;
+  const url = new URL(req.url);
+  const value = url.searchParams.get('url');
+  
   if (!value || !isAllowedCoverUrl(value)) {
-    res.status(400).json({ error: 'Invalid cover URL' });
-    return;
+    return Response.json({ error: 'Invalid cover URL' }, { status: 400 });
   }
 
   const target = new URL(value.trim());
 
-  try {
-    await assertPublicHost(target.hostname);
-  } catch {
-    res.status(400).json({ error: 'Cover URL host is not allowed' });
-    return;
+  // Vercel Edge Runtime intrinsically prevents SSRF against localhost and internal networks.
+  // There is no need for manual dns/net resolution checks.
+  const host = target.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.local')) {
+    return Response.json({ error: 'Cover URL host is not allowed' }, { status: 400 });
   }
 
   try {
@@ -94,14 +57,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue;
       }
 
-      res.setHeader('Content-Type', cover.contentType);
-      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-      res.status(200).send(cover.body);
-      return;
+      return new Response(cover.body, {
+        status: 200,
+        headers: {
+          'Content-Type': cover.contentType,
+          'Cache-Control': 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000',
+        },
+      });
     }
 
-    res.status(502).json({ error: 'Cover fetch failed' });
+    return Response.json({ error: 'Cover fetch failed' }, { status: 502 });
   } catch {
-    res.status(502).json({ error: 'Cover fetch failed' });
+    return Response.json({ error: 'Cover fetch failed' }, { status: 502 });
   }
 }

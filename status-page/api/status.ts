@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+export const config = { runtime: 'edge' };
 
 type PipelineComponent = {
   name: string;
@@ -106,33 +106,34 @@ async function fetchPipelineHealth(kvUrl: string, kvToken: string): Promise<{ he
   }
 }
 
-function sendStatus(res: VercelResponse, payload: StatusPayload) {
-  res.setHeader('Cache-Control', STATUS_CACHE_CONTROL);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.status(200).json(payload);
+function sendStatus(payload: StatusPayload): Response {
+  return Response.json(payload, {
+    status: 200,
+    headers: {
+      'Cache-Control': STATUS_CACHE_CONTROL,
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
 }
 
-export default async function handler(_req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request): Promise<Response> {
   const now = Date.now();
   if (cachedHealth && cachedHealth.expiresAt > now) {
-    sendStatus(res, cachedHealth.payload);
-    return;
+    return sendStatus(cachedHealth.payload);
   }
 
   const kvUrl = process.env.KV_REST_API_URL?.trim();
   const kvToken = process.env.KV_REST_API_TOKEN?.trim();
 
   if (!kvUrl || !kvToken) {
-    sendStatus(res, offlinePayload('KV_REST_API_URL or KV_REST_API_TOKEN is not set'));
-    return;
+    return sendStatus(offlinePayload('KV_REST_API_URL or KV_REST_API_TOKEN is not set'));
   }
 
   const { health, latencyMs, error } = await fetchPipelineHealth(kvUrl, kvToken);
   if (!health) {
     const payload = offlinePayload(error ?? 'KV health endpoint unreachable', latencyMs);
     cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
-    sendStatus(res, payload);
-    return;
+    return sendStatus(payload);
   }
 
   const status = normalizeStatus(health.status);
@@ -147,8 +148,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       error: error ?? `Pipeline reported ${health.status}`,
     };
     cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
-    sendStatus(res, payload);
-    return;
+    return sendStatus(payload);
   }
 
   const payload: StatusPayload = {
@@ -160,5 +160,5 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     components: health.components ?? [],
   };
   cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
-  sendStatus(res, payload);
+  return sendStatus(payload);
 }

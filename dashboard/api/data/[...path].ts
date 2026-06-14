@@ -1,7 +1,7 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+export const config = { runtime: 'edge' };
 import { buildTargetPath, proxyNotifierGet, proxySegments } from './_proxy.js';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request) {
   const targetPath = buildTargetPath(proxySegments(req));
-  await proxyNotifierGet(req, res, targetPath);
+  return await proxyNotifierGet(req, targetPath);
 }

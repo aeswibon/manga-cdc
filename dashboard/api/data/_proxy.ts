@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 import {
   getCached,
   setCached,
@@ -43,8 +43,9 @@ export function buildTargetPath(segments: string | string[] | undefined): string
   return `/api/${pathParts.map(encodeURIComponent).join('/')}`.replace(/\/+$/, '') || '/api';
 }
 
-export function proxySegments(req: VercelRequest): string | string[] | undefined {
-  const pathname = (req.url ?? '').split('?')[0];
+export function proxySegments(req: Request): string | string[] | undefined {
+  const url = new URL(req.url);
+  const pathname = url.pathname;
   const prefix = '/api/data/';
   if (pathname.startsWith(prefix)) {
     const remainder = pathname.slice(prefix.length);
@@ -53,8 +54,13 @@ export function proxySegments(req: VercelRequest): string | string[] | undefined
     }
   }
 
-  const queryPath = req.query.path ?? req.query['...path'];
-  return Array.isArray(queryPath) ? queryPath : typeof queryPath === 'string' ? queryPath : undefined;
+  const queryPath = url.searchParams.getAll('path').length > 0
+    ? url.searchParams.getAll('path')
+    : url.searchParams.getAll('...path');
+    
+  if (queryPath.length === 1) return queryPath[0];
+  if (queryPath.length > 1) return queryPath;
+  return undefined;
 }
 
 export function isAllowedGetPath(path: string): boolean {
@@ -68,31 +74,27 @@ export function isAllowedGetPath(path: string): boolean {
 }
 
 export async function proxyNotifierGet(
-  req: VercelRequest,
-  res: VercelResponse,
+  req: Request,
   targetPath: string,
-): Promise<void> {
+): Promise<Response> {
   const baseUrl = process.env.NOTIFIER_URL?.replace(/\/$/, '');
   const apiKey = process.env.NOTIFIER_API_KEY?.trim();
 
   if (!baseUrl) {
-    res.status(503).json({ error: 'NOTIFIER_URL is not configured' });
-    return;
+    return Response.json({ error: 'NOTIFIER_URL is not configured' }, { status: 503 });
   }
 
   const method = (req.method ?? 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    return Response.json({ error: 'Method not allowed' }, { status: 405 });
   }
 
   if (!isAllowedGetPath(targetPath)) {
-    res.status(404).json({ error: 'Not found' });
-    return;
+    return Response.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const queryIndex = req.url?.indexOf('?') ?? -1;
-  const query = queryIndex >= 0 ? req.url!.slice(queryIndex) : '';
+  const url = new URL(req.url);
+  const query = url.search;
   const targetUrl = `${baseUrl}${targetPath}${query}`;
   const isStream = targetPath === '/api/logs/stream';
   const cacheKey = isStream ? '' : `proxy:${targetPath}${query}`;
@@ -100,19 +102,20 @@ export async function proxyNotifierGet(
   if (cacheKey) {
     const cached = getCached(cacheKey);
     if (cached && typeof cached.body === 'string') {
-      res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
-      res.setHeader('Content-Type', 'application/json');
-      res.status(cached.status).send(cached.body);
-      return;
+      return new Response(cached.body, {
+        status: cached.status,
+        headers: {
+          'Cache-Control': UPSTREAM_CACHE_CONTROL,
+          'Content-Type': 'application/json',
+        },
+      });
     }
   }
 
   const acceptHeader =
     isStream
       ? 'text/event-stream'
-      : typeof req.headers.accept === 'string' && req.headers.accept.length > 0
-        ? req.headers.accept
-        : 'application/json';
+      : req.headers.get('accept') || 'application/json';
   const headers = new Headers({ Accept: acceptHeader });
   if (apiKey) {
     headers.set('X-Api-Key', apiKey);
@@ -124,36 +127,28 @@ export async function proxyNotifierGet(
     signal: AbortSignal.timeout(20_000),
   });
 
-  res.status(upstream.status);
-
   if (!isStream && upstream.ok) {
     const bodyText = await upstream.text();
     setCached(cacheKey, bodyText, upstream.status, UPSTREAM_CACHE_TTL_MS);
-    res.setHeader('Cache-Control', UPSTREAM_CACHE_CONTROL);
-    res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'application/json');
-    res.send(bodyText);
-    return;
+    return new Response(bodyText, {
+      status: upstream.status,
+      headers: {
+        'Cache-Control': UPSTREAM_CACHE_CONTROL,
+        'Content-Type': upstream.headers.get('content-type') ?? 'application/json',
+      },
+    });
   }
 
+  const responseHeaders = new Headers();
   upstream.headers.forEach((value, key) => {
     if (HOP_BY_HOP.has(key.toLowerCase()) || STRIP_HEADERS.has(key.toLowerCase())) {
       return;
     }
-    res.setHeader(key, value);
+    responseHeaders.set(key, value);
   });
 
-  if (!upstream.body) {
-    res.end();
-    return;
-  }
-
-  const reader = upstream.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    res.write(Buffer.from(value));
-  }
-  res.end();
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: responseHeaders,
+  });
 }
