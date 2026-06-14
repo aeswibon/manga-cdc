@@ -12,7 +12,7 @@ RUN addgroup -S mangacdc && adduser -S mangacdc -G mangacdc
 
 FROM scratch
 
-ARG APP_VERSION=0.4.3
+ARG APP_VERSION=0.4.4
 LABEL org.opencontainers.image.title="manga-cdc scraper" \
       org.opencontainers.image.description="Scrapes manga sources and publishes new chapter events to Kafka" \
       org.opencontainers.image.source="https://github.com/aeswibon/manga-cdc" \

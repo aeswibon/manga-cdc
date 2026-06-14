@@ -222,9 +222,10 @@ GCP VM direct SSH deploy is not supported in CI; use `deployment_target=vm` with
 
 #### Dashboard & public status page
 * `VITE_STATUS_PAGE_URL` (**repository variable**): Public status page URL embedded in the dashboard image at CI build time.
-* `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` (optional): Enable automated Vercel deploy via the **Deploy** workflow after each release.
+* `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_STATUS_PAGE_PROJECT_ID` (or `VERCEL_PROJECT_ID`): Enable automated Vercel deploy via the **Deploy** workflow after each release.
 * `GCP_DASHBOARD_CLOUD_RUN_SERVICE` (repository **variable**, optional): Cloud Run service name for dashboard image updates.
-* `PIPELINE_HEALTH_URL`: Configure in the **Vercel project** — production notifier `/api/pipeline/health` URL.
+* **Status page (Vercel project env):** `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
+* **Health poller (GitHub secrets):** `PIPELINE_HEALTH_URL`, `API_READ_KEY`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
 
 See [`status-page/README.md`](../status-page/README.md).
 
@@ -236,5 +237,6 @@ See [`status-page/README.md`](../status-page/README.md).
 |----------|---------|------|
 | `test-and-build.yml` | PR, `master`, tags `v*` | Tests, watchlist validation, E2E, release images on tags |
 | `watchlist-check.yml` | Watchlist file changes | Fast watchlist validation |
+| `health-poller.yml` | Every 5 min + manual | Poll notifier health → sync to Vercel KV |
 | `deploy.yml` | After tag build | Cloud deploy for scraper + notifier |
 | `deploy.yml` | After tag build succeeds | Deploy backend + optional frontend (dashboard Cloud Run, status page Vercel) |

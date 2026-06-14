@@ -183,9 +183,10 @@ GCP VM direct SSH deploy is not supported in CI; use `deployment_target=vm` with
 
 #### Dashboard & public status page
 * `VITE_STATUS_PAGE_URL` (**repository variable**): Public status page URL embedded in the dashboard image at CI build time.
-* `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` (optional): Enable automated Vercel deploy via the **Deploy** workflow after each release deploy.
+* `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_STATUS_PAGE_PROJECT_ID` (or `VERCEL_PROJECT_ID`): Enable automated Vercel deploy via the **Deploy** workflow after each release deploy.
 * `GCP_DASHBOARD_CLOUD_RUN_SERVICE` (repository **variable**, optional): Cloud Run service name for dashboard image updates.
-* `PIPELINE_HEALTH_URL`: Configure in the **Vercel project** (not GitHub). The status page serverless function polls this URL (your production notifier `/api/pipeline/health`).
+* **Status page (Vercel project env):** `KV_REST_API_URL`, `KV_REST_API_TOKEN` — read by `/api/status`.
+* **Health poller (GitHub secrets):** `PIPELINE_HEALTH_URL`, `API_READ_KEY`, plus the same KV URL/token for writes (see `.github/workflows/health-poller.yml`).
 
 See [`status-page/README.md`](../status-page/README.md) and [CONTRIBUTING.md](../CONTRIBUTING.md) for watchlist and status page setup.
 
@@ -197,6 +198,7 @@ See [`status-page/README.md`](../status-page/README.md) and [CONTRIBUTING.md](..
 |----------|---------|------|
 | `.github/workflows/test-and-build.yml` | PR, `master`, tags `v*` | Unit/integration tests, watchlist validation, dashboard + status-page checks, E2E, release images on tags |
 | `.github/workflows/watchlist-check.yml` | PR/push when `data/watchlist.yaml` changes | Fast watchlist-only validation |
+| `.github/workflows/health-poller.yml` | Every 5 min + manual | Poll notifier health → sync to Vercel KV |
 | `.github/workflows/deploy.yml` | After tag build succeeds | Deploy scraper + notifier; optional dashboard Cloud Run + status page Vercel |
 
 Release flow: merge to `master` → tag `v*` → Test and Build → Deploy (backend + optional frontend). Set `VITE_STATUS_PAGE_URL` before tagging so dashboard builds link to the live status page.

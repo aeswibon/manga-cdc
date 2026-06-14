@@ -287,7 +287,7 @@ Set in **GitHub → Settings → Secrets and variables** before tagging a releas
 | Security | `API_READ_KEY`, `WEBHOOK_SECRET`, QStash signing keys |
 | Variable | `ALLOWED_ORIGINS`, `VITE_STATUS_PAGE_URL`, `VITE_DASHBOARD_URL` |
 
-Vercel projects need `NOTIFIER_URL`, `NOTIFIER_API_KEY`, and `PIPELINE_HEALTH_URL`. Details: [docs/security-model.md](docs/security-model.md).
+Vercel **dashboard** needs `NOTIFIER_URL` and `NOTIFIER_API_KEY`. The **status page** needs `KV_REST_API_URL` and `KV_REST_API_TOKEN` on Vercel; GitHub stores poller secrets (`PIPELINE_HEALTH_URL`, `API_READ_KEY`, KV credentials). Details: [docs/security-model.md](docs/security-model.md).
 
 ### Release flow
 

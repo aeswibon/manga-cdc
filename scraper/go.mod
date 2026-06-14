@@ -3,10 +3,10 @@ module github.com/aeswibon/manga-cdc/scraper
 go 1.26.3
 
 require (
-	github.com/docker/docker v27.1.1+incompatible
 	github.com/docker/go-connections v0.6.0
 	github.com/gocolly/colly/v2 v2.3.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/moby/moby/api v1.54.1
 	github.com/pressly/goose/v3 v3.24.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/segmentio/kafka-go v0.4.47
@@ -56,7 +56,6 @@ require (
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.2.0 // indirect
-	github.com/moby/moby/api v1.54.1 // indirect
 	github.com/moby/moby/client v0.4.0 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect

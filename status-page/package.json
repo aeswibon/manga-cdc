@@ -1,7 +1,7 @@
 {
   "name": "manga-cdc-status-page",
   "private": true,
-  "version": "0.4.3",
+  "version": "0.4.4",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "bun run typecheck",
@@ -11,5 +11,10 @@
     "@types/node": "^24.12.3",
     "@vercel/node": "^5.8.17",
     "typescript": "~6.0.2"
+  },
+  "overrides": {
+    "esbuild": ">=0.25.12",
+    "minimatch": ">=10.2.3",
+    "undici": ">=6.23.2"
   }
 }
