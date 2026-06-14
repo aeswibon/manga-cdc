@@ -67,3 +67,22 @@ jobs:
     steps:
       - run: |
           echo "Release pipeline skipped (${{ needs.release-gate.outputs.reason }})."
+
+  complete:
+    name: Release complete
+    needs: [release-gate, run-pipeline, skip-release]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Verify release result
+        run: |
+          if [ "${{ needs.release-gate.outputs.proceed }}" != "true" ]; then
+            echo "Release skipped by gate (${{ needs.release-gate.outputs.reason }})."
+            exit 0
+          fi
+          if [ "${{ needs.run-pipeline.result }}" = "success" ]; then
+            exit 0
+          fi
+          echo "Release pipeline failed."
+          exit 1

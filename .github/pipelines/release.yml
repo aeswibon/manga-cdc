@@ -81,9 +81,3 @@ stages:
     needs:
       - deploy-gcp
     when: context.version-sync.skip_all == 'false'
-
-  - id: finalize-release
-    workflow: .github/workflows/stage-finalize-release.yml
-    needs:
-      - deploy-vercel
-    when: context.version-sync.skip_all == 'false'

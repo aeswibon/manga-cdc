@@ -35,6 +35,7 @@ jobs:
           echo "semver=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
+        id: gh_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.notes.outputs.version }}
@@ -43,6 +44,19 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
+
+      - name: Ensure GitHub release is published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.notes.outputs.version }}
+        run: |
+          if ! gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION was not created."
+            exit 1
+          fi
+          if [ "$(gh release view "$VERSION" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release edit "$VERSION" --draft=false --latest
+          fi
 
       - name: Export outputs for pipeline-compose
         if: success()
