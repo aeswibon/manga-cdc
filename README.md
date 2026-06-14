@@ -133,6 +133,18 @@ flowchart TB
 
 ## Roadmap
 
+Release train (current focus **v0.5.0** — reader notifications):
+
+| Version | Theme |
+|---------|--------|
+| **v0.5.0** | Mass-release batching, watchlist notification prefs, group/binge/leak filters |
+| **v0.6.0** | Multi-source fallback, hiatus/schedule hints |
+| **v0.7.0** | Watchlist linter, fast-retry, dashboard ops |
+| **v0.8.0** | Discord community (roles, `/subscribe`) |
+| **v0.9.0** | Homelab archive (CBZ, OPDS, RSS, webhooks) |
+| **v1.0.0** | Phase 1 complete (self-hosted operator product) |
+| **v2.0.0+** | SaaS platform, then WAL CDC / ecosystem |
+
 Based on [`docs/superpowers/plans/2026-06-13-future-roadmap.md`](docs/superpowers/plans/2026-06-13-future-roadmap.md) and the [original pipeline spec](docs/superpowers/specs/2026-06-10-mangastream-cdc-pipeline-design.md).
 
 ### Shipped
@@ -152,6 +164,7 @@ Based on [`docs/superpowers/plans/2026-06-13-future-roadmap.md`](docs/superpower
 | Production security | API keys, webhook auth, rate limits, CORS — see [security model](docs/security-model.md) |
 | Observability | Prometheus + Grafana locally; Grafana Cloud + Alloy in prod |
 | **v0.4.0 production ops** | Vercel dashboard proxy/bootstrap, PWA update banner, Cloud Run cost profile (2h scraper, CDC off serverless), pipeline health cache |
+| **v0.5.0 (in progress)** | Watchlist `notifications` prefs, mass-release batching in notifier |
 
 ### Pending
 

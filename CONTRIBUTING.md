@@ -35,6 +35,29 @@ Example:
   source_url: https://mangadex.org/title/a1c3b275-c93f-4279-a17d-2b4742e47444/one-piece
 ```
 
+### Optional notification preferences (v0.5+)
+
+Per-series notification behavior can be tuned with an optional `notifications` block (synced to the database on watchlist sync):
+
+```yaml
+- source: mangadex
+  source_id: a1c3b275-c93f-4279-a17d-2b4742e47444
+  title: One Piece
+  source_url: https://mangadex.org/title/a1c3b275-c93f-4279-a17d-2b4742e47444/one-piece
+  notifications:
+    preferred_groups: ["Official TL"]
+    blocked_groups: ["Machine TL"]
+    notify_every: 10
+    block_early_week: true
+```
+
+| Field | Description |
+|-------|-------------|
+| `preferred_groups` | Allow-list of scanlator/group names (when chapter metadata includes them) |
+| `blocked_groups` | Deny-list of groups to ignore |
+| `notify_every` | Binge mode — notify every N chapters (0 = every chapter) |
+| `block_early_week` | Suppress early-week leak uploads (heuristic) |
+
 ## Valid sources
 
 | `source` value | Site |

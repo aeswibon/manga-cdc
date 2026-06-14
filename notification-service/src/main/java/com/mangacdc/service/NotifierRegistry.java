@@ -38,4 +38,9 @@ public class NotifierRegistry {
         }
         return results;
     }
+
+    public Map<String, Boolean> sendMassRelease(String seriesTitle, String rangeLabel, int count, String url) {
+        String chapterTitle = String.format("Mass release (%d chapters)", count);
+        return sendAll(seriesTitle, rangeLabel, chapterTitle, url);
+    }
 }

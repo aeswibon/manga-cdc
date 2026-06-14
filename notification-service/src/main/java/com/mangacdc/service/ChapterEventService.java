@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
  
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
  
@@ -24,18 +26,21 @@ public class ChapterEventService {
     private final NotificationLogRepository notificationLogRepo;
     private final SseEmitterService sseEmitterService;
     private final MeterRegistry meterRegistry;
+    private final ChapterNotificationBatcher batcher;
     private final ObjectMapper mapper;
  
     public ChapterEventService(NotifierRegistry notifierRegistry,
                                 ChapterRepository chapterRepo,
                                 NotificationLogRepository notificationLogRepo,
                                 SseEmitterService sseEmitterService,
-                                MeterRegistry meterRegistry) {
+                                MeterRegistry meterRegistry,
+                                ChapterNotificationBatcher batcher) {
         this.notifierRegistry = notifierRegistry;
         this.chapterRepo = chapterRepo;
         this.notificationLogRepo = notificationLogRepo;
         this.sseEmitterService = sseEmitterService;
         this.meterRegistry = meterRegistry;
+        this.batcher = batcher;
         this.mapper = new ObjectMapper();
     }
 
@@ -82,38 +87,94 @@ public class ChapterEventService {
             }
 
             String resolvedTitle = seriesTitle.isEmpty() ? "Unknown" : seriesTitle;
-
-            Map<String, Boolean> results = notifierRegistry.sendAll(resolvedTitle, chapterNum, title, url);
-
-            boolean anySuccess = false;
-            for (Map.Entry<String, Boolean> entry : results.entrySet()) {
-                String channel = entry.getKey();
-                boolean success = entry.getValue();
-                String status = success ? "SENT" : "FAILED";
-                String error = success ? null : "Webhook returned error";
-                chapterRepo.logNotification(chapterId, status, channel, error);
-                recordDelivery(channel, status);
-                if (success) {
-                    anySuccess = true;
-                }
-                try {
-                    NotificationLogEntry logEntry = notificationLogRepo.findRecentForChapterAndChannel(UUID.fromString(chapterId), channel);
-                    sseEmitterService.publishLog(logEntry);
-                } catch (Exception ex) {
-                    log.error("Failed to publish log event to SSE: {}", ex.getMessage());
-                }
-            }
-
-            if (anySuccess) {
-                chapterRepo.markNotified(chapterId);
-            }
-
-            log.info("Processed chapter {} for series {}: {} channel(s)",
-                chapterNum, resolvedTitle, results.size());
+            ChapterNotificationBatcher.PendingChapter pending = new ChapterNotificationBatcher.PendingChapter(
+                chapterId, seriesId, resolvedTitle, chapterNum, title, url
+            );
+            batcher.enqueue(pending, chapters -> deliverChapters(chapters));
 
         } catch (Exception e) {
             log.error("Failed to process chapter event: {}", e.getMessage(), e);
         }
+    }
+
+    private void deliverChapters(List<ChapterNotificationBatcher.PendingChapter> chapters) {
+        if (chapters.isEmpty()) {
+            return;
+        }
+        if (chapters.size() == 1) {
+            deliverSingle(chapters.get(0));
+            return;
+        }
+        deliverBatch(chapters);
+    }
+
+    private void deliverSingle(ChapterNotificationBatcher.PendingChapter chapter) {
+        Map<String, Boolean> results = notifierRegistry.sendAll(
+            chapter.seriesTitle(), chapter.chapterNum(), chapter.title(), chapter.url()
+        );
+        recordResults(chapter.chapterId(), chapter.seriesTitle(), chapter.chapterNum(), results);
+    }
+
+    private void deliverBatch(List<ChapterNotificationBatcher.PendingChapter> chapters) {
+        chapters.sort(Comparator.comparingDouble(ch -> parseChapterNum(ch.chapterNum())));
+
+        ChapterNotificationBatcher.PendingChapter first = chapters.get(0);
+        ChapterNotificationBatcher.PendingChapter last = chapters.get(chapters.size() - 1);
+        String rangeLabel = formatRangeLabel(first.chapterNum(), last.chapterNum());
+        String url = last.url();
+
+        Map<String, Boolean> results = notifierRegistry.sendMassRelease(
+            first.seriesTitle(), rangeLabel, chapters.size(), url
+        );
+
+        for (ChapterNotificationBatcher.PendingChapter chapter : chapters) {
+            recordResults(chapter.chapterId(), chapter.seriesTitle(), rangeLabel, results);
+        }
+    }
+
+    private void recordResults(String chapterId, String seriesTitle, String chapterLabel, Map<String, Boolean> results) {
+        boolean anySuccess = false;
+        for (Map.Entry<String, Boolean> entry : results.entrySet()) {
+            String channel = entry.getKey();
+            boolean success = entry.getValue();
+            String status = success ? "SENT" : "FAILED";
+            String error = success ? null : "Webhook returned error";
+            chapterRepo.logNotification(chapterId, status, channel, error);
+            recordDelivery(channel, status);
+            if (success) {
+                anySuccess = true;
+            }
+            try {
+                NotificationLogEntry logEntry = notificationLogRepo.findRecentForChapterAndChannel(
+                    UUID.fromString(chapterId), channel
+                );
+                sseEmitterService.publishLog(logEntry);
+            } catch (Exception ex) {
+                log.error("Failed to publish log event to SSE: {}", ex.getMessage());
+            }
+        }
+
+        if (anySuccess) {
+            chapterRepo.markNotified(chapterId);
+        }
+
+        log.info("Processed chapter {} for series {}: {} channel(s)",
+            chapterLabel, seriesTitle, results.size());
+    }
+
+    private static double parseChapterNum(String chapterNum) {
+        try {
+            return Double.parseDouble(chapterNum);
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
+
+    static String formatRangeLabel(String minChapter, String maxChapter) {
+        if (minChapter.equals(maxChapter)) {
+            return minChapter;
+        }
+        return minChapter + "–" + maxChapter;
     }
 
     private void recordDelivery(String channel, String status) {

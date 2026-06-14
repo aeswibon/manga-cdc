@@ -62,6 +62,41 @@ def validate_entry(entry: object, index: int) -> list[str]:
         if not is_http_url(source_url.strip()):
             errors.append(f"{prefix}: 'source_url' must be an HTTP or HTTPS URL")
 
+    notifications = entry.get("notifications")
+    if notifications is not None:
+        errors.extend(validate_notifications(notifications, prefix))
+
+    return errors
+
+
+def validate_notifications(notifications: object, prefix: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(notifications, dict):
+        return [f"{prefix}: 'notifications' must be a mapping"]
+
+    notify_every = notifications.get("notify_every")
+    if notify_every is not None and not isinstance(notify_every, int):
+        errors.append(f"{prefix}: 'notifications.notify_every' must be an integer")
+    if isinstance(notify_every, int) and notify_every < 0:
+        errors.append(f"{prefix}: 'notifications.notify_every' must be >= 0")
+
+    for field in ("preferred_groups", "blocked_groups"):
+        groups = notifications.get(field)
+        if groups is None:
+            continue
+        if not isinstance(groups, list):
+            errors.append(f"{prefix}: 'notifications.{field}' must be a list of strings")
+            continue
+        for index, group in enumerate(groups):
+            if not isinstance(group, str) or not group.strip():
+                errors.append(
+                    f"{prefix}: 'notifications.{field}[{index}]' must be a non-empty string"
+                )
+
+    block_early_week = notifications.get("block_early_week")
+    if block_early_week is not None and not isinstance(block_early_week, bool):
+        errors.append(f"{prefix}: 'notifications.block_early_week' must be a boolean")
+
     return errors
 
 

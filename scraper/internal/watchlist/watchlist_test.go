@@ -119,6 +119,42 @@ func TestLoadFromFile_rejectsInvalidSource(t *testing.T) {
 	}
 }
 
+func TestValidateEntry_notificationPrefs(t *testing.T) {
+	entry := Entry{
+		Source:    "mangadex",
+		SourceID:  "abc",
+		Title:     "Test",
+		SourceURL: "https://mangadex.org/title/abc",
+		Notifications: &NotificationPrefs{
+			NotifyEvery:    5,
+			PreferredGroups: []string{"Official TL"},
+		},
+	}
+	if err := validateEntry(entry); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entry.Notifications.NotifyEvery = -1
+	if err := validateEntry(entry); err == nil {
+		t.Fatal("expected error for negative notify_every")
+	}
+}
+
+func TestNotificationPrefsJSON(t *testing.T) {
+	entry := Entry{
+		Notifications: &NotificationPrefs{NotifyEvery: 10},
+	}
+	raw := entry.NotificationPrefsJSON()
+	if string(raw) != `{"notify_every":10}` {
+		t.Fatalf("unexpected json %s", raw)
+	}
+
+	empty := Entry{}.NotificationPrefsJSON()
+	if string(empty) != "{}" {
+		t.Fatalf("expected empty object, got %s", empty)
+	}
+}
+
 func TestLoadRepoWatchlist(t *testing.T) {
 	path := filepath.Join("..", "..", "..", "data", "watchlist.yaml")
 	entries, err := LoadFromFile(path)

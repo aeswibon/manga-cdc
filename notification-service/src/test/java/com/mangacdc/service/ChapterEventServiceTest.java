@@ -28,7 +28,8 @@ class ChapterEventServiceTest {
     }
  
     private ChapterEventService newService(NotifierRegistry registry, ChapterRepository repo) {
-        return new ChapterEventService(registry, repo, notificationLogRepo, sseEmitterService, meterRegistry);
+        ChapterNotificationBatcher batcher = new ChapterNotificationBatcher(0L);
+        return new ChapterEventService(registry, repo, notificationLogRepo, sseEmitterService, meterRegistry, batcher);
     }
 
     private String cdcEvent(String op, String id, String seriesId, String seriesTitle, String chapterNum, String title, String url, boolean isNew) {
@@ -213,6 +214,12 @@ class ChapterEventServiceTest {
 
         verifyNoInteractions(registry);
         verify(repo, never()).logNotification(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void formatRangeLabel_formatsSingleAndRange() {
+        assertEquals("100", ChapterEventService.formatRangeLabel("100", "100"));
+        assertEquals("100–114", ChapterEventService.formatRangeLabel("100", "114"));
     }
 
     @Test

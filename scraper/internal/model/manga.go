@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -19,8 +20,9 @@ type Series struct {
 	Status        string    `json:"status,omitempty"`
 	SourceURL     string    `json:"source_url"`
 	LatestChapter float64   `json:"latest_chapter"`
-	LastChecked   time.Time `json:"last_checked,omitempty"`
-	IsActive      bool      `json:"is_active"`
+	LastChecked   time.Time       `json:"last_checked,omitempty"`
+	IsActive      bool            `json:"is_active"`
+	NotificationPrefs json.RawMessage `json:"notification_prefs,omitempty"`
 }
 
 type Chapter struct {

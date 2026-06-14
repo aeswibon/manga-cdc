@@ -40,6 +40,9 @@ cdc:
   enabled: ${CDC_ENABLED:false}
   topic-pattern: mangacdc.public.chapters
 
+notifications:
+  batch-window-seconds: ${NOTIFICATIONS_BATCH_WINDOW_SECONDS:30}
+
 pipeline:
   scraper-health-url: ${PIPELINE_SCRAPER_HEALTH_URL:}
   scraper-ready-url: ${PIPELINE_SCRAPER_READY_URL:}

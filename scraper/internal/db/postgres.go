@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -52,8 +53,8 @@ func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 	var id string
 	err := d.pool.QueryRow(ctx, `
 		INSERT INTO manga_series (source_id, title, alt_titles, anilist_id, mal_id, canonical_title, author, artist, description,
-			cover_url, status, source_url, latest_chapter, last_checked, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			cover_url, status, source_url, latest_chapter, last_checked, is_active, notification_prefs)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, COALESCE($16, '{}'::jsonb))
 		ON CONFLICT (source_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			alt_titles = EXCLUDED.alt_titles,
@@ -71,12 +72,32 @@ func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 			updated_at = NOW()
 		RETURNING id
 	`, s.SourceID, s.Title, s.AltTitles, s.AniListID, s.MalID, s.CanonicalTitle, s.Author, s.Artist, s.Description,
-		s.CoverURL, s.Status, s.SourceURL, s.LatestChapter, time.Now(), s.IsActive).Scan(&id)
+		s.CoverURL, s.Status, s.SourceURL, s.LatestChapter, time.Now(), s.IsActive, prefsOrEmpty(s.NotificationPrefs)).Scan(&id)
 
 	if err != nil {
 		return "", fmt.Errorf("upsert series: %w", err)
 	}
 	return id, nil
+}
+
+func prefsOrEmpty(prefs json.RawMessage) json.RawMessage {
+	if len(prefs) == 0 {
+		return json.RawMessage("{}")
+	}
+	return prefs
+}
+
+func (d *DB) UpdateSeriesNotificationPrefs(ctx context.Context, sourceID string, prefs json.RawMessage) error {
+	_, err := d.pool.Exec(ctx, `
+		UPDATE manga_series SET
+			notification_prefs = COALESCE($2, '{}'::jsonb),
+			updated_at = NOW()
+		WHERE source_id = $1
+	`, sourceID, prefsOrEmpty(prefs))
+	if err != nil {
+		return fmt.Errorf("update series notification prefs: %w", err)
+	}
+	return nil
 }
 
 func (d *DB) UpdateSeries(ctx context.Context, s model.Series) error {

@@ -66,17 +66,22 @@ func (e *Engine) SyncWatchlist(ctx context.Context, entries []watchlist.Entry) (
 		if err != nil {
 			return added, rejected, removed, fmt.Errorf("check series %s: %w", namespacedID, err)
 		}
+		prefsJSON := entry.NotificationPrefsJSON()
 		if existing != nil {
+			if err := e.db.UpdateSeriesNotificationPrefs(ctx, namespacedID, prefsJSON); err != nil {
+				return added, rejected, removed, fmt.Errorf("sync notification prefs %s: %w", namespacedID, err)
+			}
 			continue
 		}
 
 		series := validate.NormalizeSeries(model.Series{
-			SourceID:  namespacedID,
-			Title:     entry.Title,
-			SourceURL: entry.SourceURL,
-			CoverURL:  entry.CoverURL,
-			Status:    entry.Status,
-			IsActive:  true,
+			SourceID:          namespacedID,
+			Title:             entry.Title,
+			SourceURL:         entry.SourceURL,
+			CoverURL:          entry.CoverURL,
+			Status:            entry.Status,
+			IsActive:          true,
+			NotificationPrefs: prefsJSON,
 		})
 
 		seriesResult := validate.Series(series, validate.Insert)

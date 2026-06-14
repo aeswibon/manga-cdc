@@ -2,6 +2,7 @@ package watchlist
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,12 +29,33 @@ type File struct {
 }
 
 type Entry struct {
-	Source    string `yaml:"source"`
-	SourceID  string `yaml:"source_id"`
-	Title     string `yaml:"title"`
-	SourceURL string `yaml:"source_url"`
-	CoverURL  string `yaml:"cover_url,omitempty"`
-	Status    string `yaml:"status,omitempty"`
+	Source        string             `yaml:"source"`
+	SourceID      string             `yaml:"source_id"`
+	Title         string             `yaml:"title"`
+	SourceURL     string             `yaml:"source_url"`
+	CoverURL      string             `yaml:"cover_url,omitempty"`
+	Status        string             `yaml:"status,omitempty"`
+	Notifications *NotificationPrefs `yaml:"notifications,omitempty"`
+}
+
+// NotificationPrefs controls per-series notification behavior (v0.5+).
+type NotificationPrefs struct {
+	PreferredGroups []string `yaml:"preferred_groups,omitempty"`
+	BlockedGroups   []string `yaml:"blocked_groups,omitempty"`
+	NotifyEvery     int      `yaml:"notify_every,omitempty"`
+	BlockEarlyWeek  bool     `yaml:"block_early_week,omitempty"`
+}
+
+// NotificationPrefsJSON returns JSON for DB storage (empty object when unset).
+func (e Entry) NotificationPrefsJSON() json.RawMessage {
+	if e.Notifications == nil {
+		return json.RawMessage("{}")
+	}
+	b, err := json.Marshal(e.Notifications)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return b
 }
 
 func ValidateSource(source string) error {
@@ -134,6 +156,28 @@ func validateEntry(entry Entry) error {
 	}
 	if strings.TrimSpace(entry.SourceURL) == "" {
 		return fmt.Errorf("source_url is required")
+	}
+	if entry.Notifications != nil {
+		if err := validateNotificationPrefs(entry.Notifications); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateNotificationPrefs(prefs *NotificationPrefs) error {
+	if prefs.NotifyEvery < 0 {
+		return fmt.Errorf("notifications.notify_every must be >= 0")
+	}
+	for _, group := range prefs.PreferredGroups {
+		if strings.TrimSpace(group) == "" {
+			return fmt.Errorf("notifications.preferred_groups must not contain empty strings")
+		}
+	}
+	for _, group := range prefs.BlockedGroups {
+		if strings.TrimSpace(group) == "" {
+			return fmt.Errorf("notifications.blocked_groups must not contain empty strings")
+		}
 	}
 	return nil
 }
