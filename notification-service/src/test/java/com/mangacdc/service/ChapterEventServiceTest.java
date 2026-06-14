@@ -2,11 +2,15 @@ package com.mangacdc.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mangacdc.config.NotificationProperties;
+import com.mangacdc.model.Chapter;
+import com.mangacdc.model.SeriesNotificationPrefs;
 import com.mangacdc.repository.ChapterRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,6 +23,7 @@ class ChapterEventServiceTest {
     private SimpleMeterRegistry meterRegistry;
     private com.mangacdc.repository.NotificationLogRepository notificationLogRepo;
     private SseEmitterService sseEmitterService;
+    private SeriesNotificationPrefsService prefsService;
  
     @BeforeEach
     void setUp() {
@@ -26,11 +31,13 @@ class ChapterEventServiceTest {
         meterRegistry = new SimpleMeterRegistry();
         notificationLogRepo = mock(com.mangacdc.repository.NotificationLogRepository.class);
         sseEmitterService = mock(SseEmitterService.class);
+        prefsService = mock(SeriesNotificationPrefsService.class);
+        when(prefsService.getPrefs(anyString())).thenReturn(SeriesNotificationPrefs.empty());
     }
  
     private ChapterEventService newService(NotifierRegistry registry, ChapterRepository repo) {
         ChapterNotificationBatcher batcher = new ChapterNotificationBatcher(new NotificationProperties(0));
-        return new ChapterEventService(registry, repo, notificationLogRepo, sseEmitterService, meterRegistry, batcher);
+        return new ChapterEventService(registry, repo, notificationLogRepo, sseEmitterService, meterRegistry, batcher, prefsService);
     }
 
     private String cdcEvent(String op, String id, String seriesId, String seriesTitle, String chapterNum, String title, String url, boolean isNew) {
@@ -231,5 +238,48 @@ class ChapterEventServiceTest {
 
         service.processChapterEvent("{invalid json}");
         verifyNoInteractions(registry, repo);
+    }
+
+    @Test
+    void processChapterEvent_bingeMode_holdsUntilThreshold() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch1")).thenReturn(true);
+        when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(5));
+        when(repo.countNewChaptersForSeries("s1")).thenReturn(3);
+
+        ChapterEventService service = newService(registry, repo);
+        service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1", "Title", "https://ex.com/1", true));
+
+        verifyNoInteractions(registry);
+        verify(repo, never()).markNotified(anyString());
+        verify(repo, never()).logNotification(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void processChapterEvent_bingeMode_sendsMassReleaseWhenThresholdMet() {
+        NotifierRegistry registry = mock(NotifierRegistry.class);
+        ChapterRepository repo = mock(ChapterRepository.class);
+        when(repo.existsNewChapter("ch3")).thenReturn(true);
+        when(repo.findChapterUrl("ch3")).thenReturn("https://ex.com/3");
+        when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(3));
+        when(repo.countNewChaptersForSeries("s1")).thenReturn(3);
+        when(repo.findSeriesTitle("s1")).thenReturn("One Piece");
+        when(repo.findNewChaptersForSeries("s1")).thenReturn(List.of(
+            new Chapter("ch1", "s1", 1.0, "T1", "https://ex.com/1", Instant.now(), true),
+            new Chapter("ch2", "s1", 2.0, "T2", "https://ex.com/2", Instant.now(), true),
+            new Chapter("ch3", "s1", 3.0, "T3", "https://ex.com/3", Instant.now(), true)
+        ));
+        when(registry.sendMassRelease(eq("One Piece"), eq("1–3"), eq(3), eq("https://ex.com/3")))
+            .thenReturn(Map.of("discord", true));
+
+        ChapterEventService service = newService(registry, repo);
+        service.processChapterEvent(cdcEvent("c", "ch3", "s1", "One Piece", "3", "T3", "https://ex.com/3", true));
+
+        verify(registry).sendMassRelease("One Piece", "1–3", 3, "https://ex.com/3");
+        verify(repo).markNotified("ch1");
+        verify(repo).markNotified("ch2");
+        verify(repo).markNotified("ch3");
     }
 }

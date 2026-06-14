@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mangacdc.repository.ChapterRepository;
 import com.mangacdc.repository.NotificationLogRepository;
 import com.mangacdc.model.NotificationLogEntry;
+import com.mangacdc.model.SeriesNotificationPrefs;
 import com.mangacdc.security.SecurityUtils;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -27,6 +28,7 @@ public class ChapterEventService {
     private final SseEmitterService sseEmitterService;
     private final MeterRegistry meterRegistry;
     private final ChapterNotificationBatcher batcher;
+    private final SeriesNotificationPrefsService prefsService;
     private final ObjectMapper mapper;
  
     public ChapterEventService(NotifierRegistry notifierRegistry,
@@ -34,13 +36,15 @@ public class ChapterEventService {
                                 NotificationLogRepository notificationLogRepo,
                                 SseEmitterService sseEmitterService,
                                 MeterRegistry meterRegistry,
-                                ChapterNotificationBatcher batcher) {
+                                ChapterNotificationBatcher batcher,
+                                SeriesNotificationPrefsService prefsService) {
         this.notifierRegistry = notifierRegistry;
         this.chapterRepo = chapterRepo;
         this.notificationLogRepo = notificationLogRepo;
         this.sseEmitterService = sseEmitterService;
         this.meterRegistry = meterRegistry;
         this.batcher = batcher;
+        this.prefsService = prefsService;
         this.mapper = new ObjectMapper();
     }
 
@@ -101,11 +105,52 @@ public class ChapterEventService {
         if (chapters.isEmpty()) {
             return;
         }
+
+        String seriesId = chapters.get(0).seriesId();
+        SeriesNotificationPrefs prefs = prefsService.getPrefs(seriesId);
+        if (prefs.bingeEnabled()) {
+            int pending = chapterRepo.countNewChaptersForSeries(seriesId);
+            if (pending < prefs.notifyEvery()) {
+                log.info("Binge mode: holding {} of {} new chapters for series {}",
+                    pending, prefs.notifyEvery(), chapters.get(0).seriesTitle());
+                return;
+            }
+            chapters = loadPendingChapters(seriesId, chapters.get(0).seriesTitle());
+            if (chapters.isEmpty()) {
+                return;
+            }
+        }
+
         if (chapters.size() == 1) {
             deliverSingle(chapters.get(0));
             return;
         }
         deliverBatch(chapters);
+    }
+
+    private List<ChapterNotificationBatcher.PendingChapter> loadPendingChapters(String seriesId, String fallbackTitle) {
+        String seriesTitle = chapterRepo.findSeriesTitle(seriesId);
+        if (seriesTitle == null || seriesTitle.isBlank()) {
+            seriesTitle = fallbackTitle;
+        }
+        String resolvedTitle = seriesTitle.isBlank() ? "Unknown" : seriesTitle;
+        return chapterRepo.findNewChaptersForSeries(seriesId).stream()
+            .map(ch -> new ChapterNotificationBatcher.PendingChapter(
+                ch.id(),
+                ch.seriesId(),
+                resolvedTitle,
+                formatChapterNum(ch.chapterNum()),
+                ch.title() != null ? ch.title() : "",
+                ch.url()
+            ))
+            .toList();
+    }
+
+    private static String formatChapterNum(double chapterNum) {
+        if (chapterNum == Math.rint(chapterNum)) {
+            return String.valueOf((long) chapterNum);
+        }
+        return String.valueOf(chapterNum);
     }
 
     private void deliverSingle(ChapterNotificationBatcher.PendingChapter chapter) {
@@ -116,18 +161,19 @@ public class ChapterEventService {
     }
 
     private void deliverBatch(List<ChapterNotificationBatcher.PendingChapter> chapters) {
-        chapters.sort(Comparator.comparingDouble(ch -> parseChapterNum(ch.chapterNum())));
-
-        ChapterNotificationBatcher.PendingChapter first = chapters.get(0);
-        ChapterNotificationBatcher.PendingChapter last = chapters.get(chapters.size() - 1);
+        List<ChapterNotificationBatcher.PendingChapter> sorted = chapters.stream()
+            .sorted(Comparator.comparingDouble(ch -> parseChapterNum(ch.chapterNum())))
+            .toList();
+        ChapterNotificationBatcher.PendingChapter first = sorted.get(0);
+        ChapterNotificationBatcher.PendingChapter last = sorted.get(sorted.size() - 1);
         String rangeLabel = formatRangeLabel(first.chapterNum(), last.chapterNum());
         String url = last.url();
 
         Map<String, Boolean> results = notifierRegistry.sendMassRelease(
-            first.seriesTitle(), rangeLabel, chapters.size(), url
+            first.seriesTitle(), rangeLabel, sorted.size(), url
         );
 
-        for (ChapterNotificationBatcher.PendingChapter chapter : chapters) {
+        for (ChapterNotificationBatcher.PendingChapter chapter : sorted) {
             recordResults(chapter.chapterId(), chapter.seriesTitle(), rangeLabel, results);
         }
     }

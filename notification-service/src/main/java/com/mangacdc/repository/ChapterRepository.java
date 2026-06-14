@@ -74,4 +74,27 @@ public class ChapterRepository {
             "INSERT INTO notification_logs (chapter_id, status, channel, error_message) VALUES (?::uuid, ?, ?, ?)",
             chapterId, status, channel, errorMessage);
     }
+
+    public int countNewChaptersForSeries(String seriesId) {
+        Integer count = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM chapters WHERE series_id = ?::uuid AND is_new = true",
+            Integer.class,
+            seriesId);
+        return count != null ? count : 0;
+    }
+
+    public List<Chapter> findNewChaptersForSeries(String seriesId) {
+        return jdbc.query(
+            "SELECT id, series_id, chapter_num, title, url, release_date, is_new " +
+            "FROM chapters WHERE series_id = ?::uuid AND is_new = true ORDER BY chapter_num ASC",
+            DataClassRowMapper.newInstance(Chapter.class),
+            seriesId);
+    }
+
+    public String findSeriesTitle(String seriesId) {
+        return jdbc.query(
+            "SELECT title FROM manga_series WHERE id = ?::uuid",
+            rs -> rs.next() ? rs.getString("title") : null,
+            seriesId);
+    }
 }
