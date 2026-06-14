@@ -102,13 +102,6 @@ if [ "${chapter_count:-0}" != "1" ]; then
   exit 1
 fi
 
-echo "Publishing chapter event to Kafka (scraper format)..." | tee -a "$LOG"
-EVENT=$(cat <<EOF
-{"op":"c","after":{"id":"${CHAPTER_ID}","series_id":"${SERIES_ID}","chapter_num":1,"title":"Chapter 1","url":"https://example.com/e2e/ch-1","is_new":true}}
-EOF
-)
-echo "$EVENT" | docker compose exec -T redpanda rpk topic produce "$TOPIC" -k "$CHAPTER_ID" 2>&1 | tee -a "$LOG"
-
 echo "Starting notification service..." | tee -a "$LOG"
 if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
   if ! docker image inspect "${NOTIFICATION_IMAGE}" >/dev/null 2>&1; then
@@ -117,21 +110,37 @@ if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
   fi
   DISCORD_WEBHOOK_URL=http://127.0.0.1:9/unreachable \
   CDC_ENABLED=true \
+  LOGGING_LEVEL_APP=INFO \
   docker compose up -d --no-build notification-service 2>&1 | tee -a "$LOG"
 else
   DISCORD_WEBHOOK_URL=http://127.0.0.1:9/unreachable \
   CDC_ENABLED=true \
+  LOGGING_LEVEL_APP=INFO \
   docker compose up -d --build notification-service 2>&1 | tee -a "$LOG"
 fi
 
 echo "Waiting for notification consumer..." | tee -a "$LOG"
+consumer_ready=false
 for _ in $(seq 1 30); do
   if curl -sf --max-time 5 http://127.0.0.1:8080/api/pipeline/health | grep -q '"status"'; then
     echo "PASS: Pipeline health endpoint responding" | tee -a "$LOG"
+    consumer_ready=true
     break
   fi
   sleep 2
 done
+if [ "$consumer_ready" != "true" ]; then
+  echo "FAIL: Notification service not ready within timeout" | tee -a "$LOG"
+  docker compose logs --tail=100 notification-service 2>&1 | tee -a "$LOG" || true
+  exit 1
+fi
+
+echo "Publishing chapter event to Kafka (scraper format)..." | tee -a "$LOG"
+EVENT=$(cat <<EOF
+{"op":"c","after":{"id":"${CHAPTER_ID}","series_id":"${SERIES_ID}","chapter_num":1,"title":"Chapter 1","url":"https://example.com/e2e/ch-1","is_new":true}}
+EOF
+)
+echo "$EVENT" | docker compose exec -T redpanda rpk topic produce "$TOPIC" -k "$CHAPTER_ID" 2>&1 | tee -a "$LOG"
 
 for _ in $(seq 1 60); do
   STATUS=$(docker compose exec -T postgres psql -U mangacdc -d mangacdc -tAc \
@@ -146,5 +155,5 @@ for _ in $(seq 1 60); do
 done
 
 echo "FAIL: No notification log found within timeout" | tee -a "$LOG"
-docker compose logs --tail=50 notification-service 2>&1 | tee -a "$LOG" || true
+docker compose logs --tail=100 notification-service 2>&1 | tee -a "$LOG" || true
 exit 1
