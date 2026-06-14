@@ -1,5 +1,11 @@
 export const config = { runtime: 'edge' };
 
+import {
+  MAX_COVER_BYTES,
+  coverFetchCandidates,
+  coverFetchHeaders,
+  isAllowedCoverUrl,
+} from '../src/cover-proxy.js';
 
 async function fetchCover(url: string): Promise<{ body: ArrayBuffer; contentType: string } | null> {
   const upstream = await fetch(url, {
