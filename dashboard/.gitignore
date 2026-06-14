@@ -36,3 +36,4 @@ ca.pem
 *.jks
 service.cert
 service.key
+.env*
