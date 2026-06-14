@@ -5,17 +5,17 @@ package kafka_test
 import (
 	"context"
 	"encoding/json"
+	"net/netip"
 	"testing"
 	"time"
 
 	"github.com/aeswibon/manga-cdc/scraper/internal/kafka"
 	"github.com/aeswibon/manga-cdc/scraper/internal/model"
 	segkafka "github.com/segmentio/kafka-go"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-
-	"github.com/moby/moby/api/types/container"
-	"github.com/docker/go-connections/nat"
 )
 
 const (
@@ -39,9 +39,9 @@ func TestIntegration_ProducerPublishAndConsumerRead(t *testing.T) {
 		},
 		ExposedPorts: []string{redpandaPort},
 		HostConfigModifier: func(hc *container.HostConfig) {
-			hc.PortBindings = nat.PortMap{
-				nat.Port(redpandaPort): []nat.PortBinding{
-					{HostIP: "127.0.0.1", HostPort: "29092"},
+			hc.PortBindings = network.PortMap{
+				network.MustParsePort(redpandaPort): []network.PortBinding{
+					{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: "29092"},
 				},
 			}
 		},
