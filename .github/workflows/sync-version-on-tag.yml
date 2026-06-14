@@ -19,11 +19,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require release bot token
+        if: env.ACT != 'true'
+        env:
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_BOT_TOKEN" ]; then
+            echo "error: RELEASE_BOT_TOKEN secret is required to push verified commits to protected master." >&2
+            echo "Create a fine-grained PAT (contents read/write), add its user to the master ruleset bypass list," >&2
+            echo "store it as RELEASE_BOT_TOKEN, then re-run this workflow." >&2
+            echo "See .github/act/README.md#release-bot-setup" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v6
         if: env.ACT != 'true'
         with:
           fetch-depth: 0
           ref: master
+          token: ${{ secrets.RELEASE_BOT_TOKEN }}
 
       - name: Resolve tag version
         id: tag
@@ -63,6 +77,7 @@ jobs:
         id: state
         env:
           VERSION: ${{ steps.tag.outputs.version }}
+          GH_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
         run: |
           git fetch origin master "refs/tags/v${VERSION}"
           master_sha=$(git rev-parse origin/master)
@@ -74,53 +89,13 @@ jobs:
             echo "skip_publish=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Configure GPG signing for bot commits
-        if: env.ACT != 'true' && steps.state.outputs.skip_publish != 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          gpg --batch --passphrase '' --quick-generate-key \
-            "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>" \
-            default default never
-          signing_key="$(gpg --list-secret-keys --with-colons | awk -F: '$1 == "sec" { print $5; exit }')"
-          git config user.signingkey "${signing_key}"
-          git config commit.gpgsign true
-
-      - name: Commit, retag, and push to master
+      - name: Publish version sync to master
         if: env.ACT != 'true' && steps.state.outputs.skip_publish != 'true'
         id: publish
         env:
           VERSION: ${{ steps.tag.outputs.version }}
-        run: |
-          pushed_master=false
-          if ! git diff --quiet; then
-            git add \
-              dashboard/package.json \
-              status-page/package.json \
-              helm/manga-cdc/Chart.yaml \
-              scraper/internal/version/version.go \
-              notification-service/pom.xml \
-              scraper/Dockerfile \
-              notification-service/Dockerfile
-
-            git commit -m "chore: sync version files to v${VERSION}"
-            git push origin master
-            pushed_master=true
-          else
-            echo "Version files already aligned with v${VERSION}"
-          fi
-
-          tag_before=$(git rev-parse "refs/tags/v${VERSION}^{commit}" 2>/dev/null || echo "")
-          head_sha=$(git rev-parse HEAD)
-          git tag -f "v${VERSION}"
-          git push -f origin "v${VERSION}"
-
-          tag_moved=false
-          if [ "$tag_before" != "$head_sha" ]; then
-            tag_moved=true
-          fi
-          echo "pushed_master=${pushed_master}" >> "$GITHUB_OUTPUT"
-          echo "tag_moved=${tag_moved}" >> "$GITHUB_OUTPUT"
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
+        run: bash scripts/ci/publish-version-sync.sh "${VERSION}"
 
       - name: Trigger release Test and Build
         if: env.ACT != 'true' && steps.state.outputs.skip_publish != 'true' && steps.publish.outputs.pushed_master == 'false' && steps.publish.outputs.tag_moved == 'true'

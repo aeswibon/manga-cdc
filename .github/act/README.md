@@ -11,6 +11,16 @@ Run workflows locally with [nektos/act](https://github.com/nektos/act).
 
 Tag pushes no longer start Test and Build directly. Sync updates version files on `master`, retags, then the master push runs the release build. Deploy runs after a successful release Test and Build run.
 
+## Release bot setup
+
+Protected `master` requires **verified commits** and blocks direct pushes unless the actor is on the **ruleset bypass list**. The sync workflow uses a dedicated token secret:
+
+1. Create a **fine-grained PAT** (or GitHub App installation token) with **Contents: Read and write** on this repository.
+2. In GitHub → **Settings → Rules → Rulesets** → edit the `master` ruleset → **Bypass list** → add the PAT user or GitHub App.
+3. Store the token as repository secret **`RELEASE_BOT_TOKEN`**.
+
+The workflow publishes commits through the GitHub Git API (`scripts/ci/publish-version-sync.sh`) using that token. Without bypass access you will see `GH013` (PR required / unverified signature).
+
 ## Prerequisites
 
 - Docker (OrbStack/Colima) running
