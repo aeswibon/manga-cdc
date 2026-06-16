@@ -25,6 +25,8 @@ type StatusPayload = {
 const TIMEOUT_MS = 8000;
 const HEALTH_CACHE_TTL_MS = 2 * 60 * 1000;
 const STATUS_CACHE_CONTROL = 's-maxage=120, stale-while-revalidate=300';
+/** Health poller runs every 5m; treat older snapshots as stale. */
+const HEALTH_STALE_MS = 15 * 60 * 1000;
 
 type CachedHealth = {
   payload: StatusPayload;
@@ -54,6 +56,17 @@ function statusLabel(status: StatusPayload['status']): string {
     default:
       return 'Pipeline Offline';
   }
+}
+
+function isStaleHealth(updatedAt: string | undefined, nowMs: number): boolean {
+  if (!updatedAt) {
+    return true;
+  }
+  const parsed = Date.parse(updatedAt);
+  if (Number.isNaN(parsed)) {
+    return true;
+  }
+  return nowMs - parsed > HEALTH_STALE_MS;
 }
 
 function offlinePayload(error: string, latencyMs = 0): StatusPayload {
@@ -132,6 +145,20 @@ export default async function handler(req: Request): Promise<Response> {
   const { health, latencyMs, error } = await fetchPipelineHealth(kvUrl, kvToken);
   if (!health) {
     const payload = offlinePayload(error ?? 'KV health endpoint unreachable', latencyMs);
+    cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
+    return sendStatus(payload);
+  }
+
+  if (isStaleHealth(health.updatedAt, now)) {
+    const payload: StatusPayload = {
+      status: 'offline',
+      label: 'Pipeline Offline',
+      checkedAt: new Date().toISOString(),
+      latencyMs,
+      sourceUpdatedAt: health.updatedAt,
+      components: health.components ?? [],
+      error: 'Pipeline health snapshot is stale; poller may be failing',
+    };
     cachedHealth = { payload, expiresAt: now + HEALTH_CACHE_TTL_MS };
     return sendStatus(payload);
   }

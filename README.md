@@ -133,7 +133,7 @@ flowchart TB
 
 ## Roadmap
 
-Release train (current focus **v0.5.0** — reader notifications):
+Release train (current focus **v0.6.0** — sources & resilience):
 
 | Version | Theme |
 |---------|--------|
@@ -164,7 +164,7 @@ Based on [`docs/superpowers/plans/2026-06-13-future-roadmap.md`](docs/superpower
 | Production security | API keys, webhook auth, rate limits, CORS — see [security model](docs/security-model.md) |
 | Observability | Prometheus + Grafana locally; Grafana Cloud + Alloy in prod |
 | **v0.4.0 production ops** | Vercel dashboard proxy/bootstrap, PWA update banner, Cloud Run cost profile (2h scraper, CDC off serverless), pipeline health cache |
-| **v0.5.0 (in progress)** | Watchlist `notifications` prefs, mass-release batching in notifier |
+| **v0.5.0** | Watchlist `notifications` prefs, mass-release batching, binge/group/leak filters |
 
 ### Pending
 

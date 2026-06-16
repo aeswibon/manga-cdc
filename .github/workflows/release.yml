@@ -53,7 +53,7 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v6
-      - uses: aeswibon/pipeline-compose-run@v0.3.0
+      - uses: aeswibon/pipeline-compose-run@v1.1.0
         with:
           pipeline_file: .github/pipelines/release.yml
           github_token: ${{ github.token }}
