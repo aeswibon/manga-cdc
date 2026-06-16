@@ -86,26 +86,30 @@ jobs:
         id: images
         env:
           VERSION: ${{ steps.tag.outputs.version }}
+          TAG_SHA: ${{ steps.git_state.outputs.tag_sha }}
         run: |
           set +e
-          bash scripts/ci/check-ghcr-release-images.sh "${VERSION}"
-          status=$?
-          set -e
-          if [ "$status" -eq 0 ]; then
-            echo "release_images_exist=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$TAG_SHA" ]; then
+            bash scripts/ci/check-ghcr-release-images.sh "${VERSION}" "${TAG_SHA}"
           else
-            echo "release_images_exist=false" >> "$GITHUB_OUTPUT"
+            bash scripts/ci/check-ghcr-release-images.sh "${VERSION}"
           fi
+          set -e
 
       - name: Decide sync skip
         id: state
         run: |
           skip_publish="${{ steps.git_state.outputs.skip_publish }}"
           images_exist="${{ steps.images.outputs.release_images_exist }}"
+          images_match="${{ steps.images.outputs.release_images_match_commit }}"
           master_sha="${{ steps.git_state.outputs.master_sha }}"
           tag_sha="${{ steps.git_state.outputs.tag_sha }}"
-          if [ "$skip_publish" = "true" ] && [ "$images_exist" = "true" ] && [ -n "$tag_sha" ] && [ "$tag_sha" = "$master_sha" ]; then
-            echo "Release complete: git aligned and ghcr.io images published."
+          if [ "$skip_publish" = "true" ] \
+            && [ "$images_exist" = "true" ] \
+            && [ "$images_match" = "true" ] \
+            && [ -n "$tag_sha" ] \
+            && [ "$tag_sha" = "$master_sha" ]; then
+            echo "Release complete: git aligned and ghcr.io images match tag commit."
             echo "skip_all=true" >> "$GITHUB_OUTPUT"
           else
             echo "Release incomplete or needs rebuild."
@@ -113,6 +117,7 @@ jobs:
           fi
           echo "skip_publish=${skip_publish}" >> "$GITHUB_OUTPUT"
           echo "release_images_exist=${images_exist}" >> "$GITHUB_OUTPUT"
+          echo "release_images_match_commit=${images_match}" >> "$GITHUB_OUTPUT"
 
       - name: Publish version sync to master
         if: steps.state.outputs.skip_all != 'true' && steps.state.outputs.skip_publish != 'true'
@@ -127,5 +132,5 @@ jobs:
         if: success()
         with:
           stage_id: version-sync
-          outputs: '{"version":"${{ steps.tag.outputs.version }}","skip_all":"${{ steps.state.outputs.skip_all }}","skip_publish":"${{ steps.state.outputs.skip_publish }}","release_images_exist":"${{ steps.state.outputs.release_images_exist }}"}'
+          outputs: '{"version":"${{ steps.tag.outputs.version }}","skip_all":"${{ steps.state.outputs.skip_all }}","skip_publish":"${{ steps.state.outputs.skip_publish }}","release_images_exist":"${{ steps.state.outputs.release_images_exist }}","release_images_match_commit":"${{ steps.state.outputs.release_images_match_commit }}"}'
           retention-days: 1

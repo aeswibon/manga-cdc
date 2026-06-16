@@ -25,7 +25,7 @@ elif [ "${GITHUB_EVENT_CREATED:-true}" = "false" ]; then
   tag_sha="$(git rev-parse HEAD)"
   if [ "$tag_sha" = "$master_sha" ]; then
     set +e
-    bash scripts/ci/check-ghcr-release-images.sh "${version}"
+    bash scripts/ci/check-ghcr-release-images.sh "${version}" "${tag_sha}"
     images_ok=$?
     set -e
     if [ "$images_ok" -eq 0 ]; then
