@@ -30,6 +30,7 @@
   <a href="https://manga-cdc.vercel.app"><strong>Dashboard</strong></a> ·
   <a href="https://manga-cdc-status.vercel.app"><strong>Status</strong></a> ·
   <a href="https://manga-cdc.openstatus.dev"><strong>OpenStatus</strong></a> ·
+  <a href="docs/architecture/README.md"><strong>Architecture</strong></a> ·
   <a href="CONTRIBUTING.md"><strong>Watchlist</strong></a> ·
   <a href="docs/security-model.md"><strong>Security</strong></a>
 </p>
@@ -345,6 +346,7 @@ gh secret set DEPLOY_METHOD --body "direct"
 
 | Document | Description |
 |----------|-------------|
+| **[Architecture rationale (series)](docs/architecture/README.md)** | **Why** the system is built this way — ADRs, invariants, trade-offs for senior/PE readers |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Community watchlist PR guide |
 | [docs/security-model.md](docs/security-model.md) | Trust boundaries, secrets, operator checklist |
 | [docs/cloud-setup.md](docs/cloud-setup.md) | Multi-cloud deploy guide |
