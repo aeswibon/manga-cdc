@@ -30,8 +30,8 @@ data "google_client_config" "default" {
 # Database URL Parser
 # -----------------------------------------------------------------------------
 locals {
-  # Regex to parse connection string format: postgres://user:pass@host:port/dbname?query
-  db_parts          = regex("^postgres://(?:(?P<user>[^:@]+)(?::(?P<pass>[^@]+))?@)?(?P<host>[^/]+)(?P<path>/[^?]+)?(?:\\?(?P<query>.+))?$", var.database_url)
+  # Regex to parse connection string format: postgres:// or postgresql://user:pass@host:port/dbname?query
+  db_parts          = regex("^postgres(?:ql)?://(?:(?P<user>[^:@]+)(?::(?P<pass>[^@]+))?@)?(?P<host>[^/]+)(?P<path>/[^?]+)?(?:\\?(?P<query>.+))?$", var.database_url)
   db_user           = local.db_parts.user != null ? local.db_parts.user : ""
   db_pass           = local.db_parts.pass != null ? local.db_parts.pass : ""
   db_host           = local.db_parts.host
@@ -39,7 +39,7 @@ locals {
   db_query          = local.db_parts.query != null ? "?${local.db_parts.query}" : ""
   db_path_and_query = "${local.db_path}${local.db_query}"
 
-  db_read_parts = var.database_read_url != "" ? regex("^postgres://(?:(?P<user>[^:@]+)(?::(?P<pass>[^@]+))?@)?(?P<host>[^/]+)(?P<path>/[^?]+)?(?:\\?(?P<query>.+))?$", var.database_read_url) : null
+  db_read_parts = var.database_read_url != "" ? regex("^postgres(?:ql)?://(?:(?P<user>[^:@]+)(?::(?P<pass>[^@]+))?@)?(?P<host>[^/]+)(?P<path>/[^?]+)?(?:\\?(?P<query>.+))?$", var.database_read_url) : null
   db_read_host  = local.db_read_parts != null ? local.db_read_parts.host : ""
   db_read_path  = local.db_read_parts != null && local.db_read_parts.path != null ? local.db_read_parts.path : "/postgres"
   db_read_query = local.db_read_parts != null && local.db_read_parts.query != null ? "?${local.db_read_parts.query}" : ""
