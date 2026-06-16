@@ -4,6 +4,7 @@ import org.apache.kafka.clients.admin.AdminClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.stereotype.Service;
@@ -20,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class PipelineHealthService {
 
-    private final JdbcTemplate jdbc;
+    private final JdbcTemplate readJdbc;
     private final RestTemplate healthCheckRestTemplate;
     private final KafkaAdmin kafkaAdmin;
     private final String scraperHealthUrl;
@@ -33,13 +34,13 @@ public class PipelineHealthService {
     private record CachedHealth(Map<String, Object> payload, long expiresAtMs) {}
 
     public PipelineHealthService(
-            JdbcTemplate jdbc,
+            @Qualifier("readJdbcTemplate") JdbcTemplate readJdbc,
             @Qualifier("healthCheckRestTemplate") RestTemplate healthCheckRestTemplate,
             @Autowired(required = false) KafkaAdmin kafkaAdmin,
             @Value("${pipeline.scraper-health-url:}") String scraperHealthUrl,
             @Value("${pipeline.scraper-ready-url:}") String scraperReadyUrl,
             @Value("${cdc.enabled:false}") boolean cdcEnabled) {
-        this.jdbc = jdbc;
+        this.readJdbc = readJdbc;
         this.healthCheckRestTemplate = healthCheckRestTemplate;
         this.kafkaAdmin = kafkaAdmin;
         this.scraperHealthUrl = scraperHealthUrl == null ? "" : scraperHealthUrl.trim();
@@ -93,7 +94,7 @@ public class PipelineHealthService {
     private Map<String, Object> checkDatabase() {
         Map<String, Object> component = baseComponent("database");
         try {
-            Integer result = jdbc.queryForObject("SELECT 1", Integer.class);
+            Integer result = readJdbc.queryForObject("SELECT 1", Integer.class);
             if (result != null && result == 1) {
                 component.put("status", "operational");
                 component.put("detail", "PostgreSQL reachable");

@@ -7,6 +7,7 @@ import com.mangacdc.repository.ChapterRepository;
 import com.mangacdc.repository.SeriesRepository;
 import com.mangacdc.validation.SeriesValidator;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,17 +22,17 @@ public class MangaApiController {
 
     private final SeriesRepository seriesRepository;
     private final ChapterRepository chapterRepository;
-    private final JdbcTemplate jdbc;
+    private final JdbcTemplate readJdbc;
     private final MutationGuard mutationGuard;
 
     public MangaApiController(
             SeriesRepository seriesRepository,
             ChapterRepository chapterRepository,
-            JdbcTemplate jdbc,
+            @Qualifier("readJdbcTemplate") JdbcTemplate readJdbc,
             MutationGuard mutationGuard) {
         this.seriesRepository = seriesRepository;
         this.chapterRepository = chapterRepository;
-        this.jdbc = jdbc;
+        this.readJdbc = readJdbc;
         this.mutationGuard = mutationGuard;
     }
 
@@ -63,13 +64,13 @@ public class MangaApiController {
 
     @GetMapping("/stats")
     public Map<String, Object> getStats() {
-        Map<String, Object> seriesStats = jdbc.queryForMap(
+        Map<String, Object> seriesStats = readJdbc.queryForMap(
                 "SELECT COUNT(*) as total_series, COUNT(CASE WHEN is_active THEN 1 END) as active_series FROM manga_series"
         );
-        Map<String, Object> chapterStats = jdbc.queryForMap(
+        Map<String, Object> chapterStats = readJdbc.queryForMap(
                 "SELECT COUNT(*) as total_chapters FROM chapters"
         );
-        Map<String, Object> logStats = jdbc.queryForMap(
+        Map<String, Object> logStats = readJdbc.queryForMap(
                 "SELECT COUNT(*) as total_logs, COUNT(CASE WHEN status = 'SENT' THEN 1 END) as successful_deliveries, COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failed_deliveries FROM notification_logs"
         );
 

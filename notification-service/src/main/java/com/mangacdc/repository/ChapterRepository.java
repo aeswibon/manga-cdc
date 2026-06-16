@@ -1,7 +1,9 @@
 package com.mangacdc.repository;
 
 import com.mangacdc.model.Chapter;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.DataClassRowMapper;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -10,21 +12,35 @@ import java.util.List;
 @Repository
 public class ChapterRepository {
 
-    private final JdbcTemplate jdbc;
+    private static final RowMapper<Chapter> CHAPTER_ROW_MAPPER = (rs, rowNum) -> {
+        java.sql.Timestamp releaseDate = rs.getTimestamp("release_date");
+        return new Chapter(
+                rs.getString("id"),
+                rs.getString("series_id"),
+                rs.getDouble("chapter_num"),
+                rs.getString("title"),
+                rs.getString("url"),
+                releaseDate != null ? releaseDate.toInstant() : null,
+                rs.getBoolean("is_new"));
+    };
 
-    public ChapterRepository(JdbcTemplate jdbc) {
+    private final JdbcTemplate jdbc;
+    private final JdbcTemplate readJdbc;
+
+    public ChapterRepository(JdbcTemplate jdbc, @Qualifier("readJdbcTemplate") JdbcTemplate readJdbc) {
         this.jdbc = jdbc;
+        this.readJdbc = readJdbc;
     }
 
     public List<Chapter> findNewChapters() {
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT id, series_id, chapter_num, title, url, release_date, is_new " +
             "FROM chapters WHERE is_new = true ORDER BY release_date DESC LIMIT 50",
-            DataClassRowMapper.newInstance(Chapter.class));
+            CHAPTER_ROW_MAPPER);
     }
 
     public List<Chapter> findRecentChapters(int limit) {
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT c.id, c.series_id, c.chapter_num, c.title, c.url, c.release_date, c.is_new, s.title as series_title " +
             "FROM chapters c JOIN manga_series s ON c.series_id = s.id " +
             "ORDER BY c.release_date DESC LIMIT ?",
@@ -42,10 +58,10 @@ public class ChapterRepository {
 
     public List<Chapter> findBySeriesId(String seriesId, int limit) {
         int capped = Math.min(Math.max(limit, 1), 100);
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT id, series_id, chapter_num, title, url, release_date, is_new " +
             "FROM chapters WHERE series_id = ?::uuid ORDER BY chapter_num DESC LIMIT ?",
-            DataClassRowMapper.newInstance(Chapter.class),
+            CHAPTER_ROW_MAPPER,
             seriesId,
             capped);
     }
@@ -55,7 +71,7 @@ public class ChapterRepository {
     }
 
     public boolean existsNewChapter(String chapterId) {
-        Integer count = jdbc.queryForObject(
+        Integer count = readJdbc.queryForObject(
                 "SELECT COUNT(*) FROM chapters WHERE id = ?::uuid AND is_new = true",
                 Integer.class,
                 chapterId);
@@ -63,21 +79,21 @@ public class ChapterRepository {
     }
 
     public String findChapterUrl(String chapterId) {
-        return jdbc.query(
+        return readJdbc.query(
                 "SELECT url FROM chapters WHERE id = ?::uuid",
                 rs -> rs.next() ? rs.getString("url") : null,
                 chapterId);
     }
 
     public String findScanGroup(String chapterId) {
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT scan_group FROM chapters WHERE id = ?::uuid",
             rs -> rs.next() ? rs.getString("scan_group") : null,
             chapterId);
     }
 
     public java.time.Instant findReleaseDate(String chapterId) {
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT release_date FROM chapters WHERE id = ?::uuid",
             rs -> {
                 if (!rs.next()) {
@@ -96,7 +112,7 @@ public class ChapterRepository {
     }
 
     public int countNewChaptersForSeries(String seriesId) {
-        Integer count = jdbc.queryForObject(
+        Integer count = readJdbc.queryForObject(
             "SELECT COUNT(*) FROM chapters WHERE series_id = ?::uuid AND is_new = true",
             Integer.class,
             seriesId);
@@ -104,15 +120,15 @@ public class ChapterRepository {
     }
 
     public List<Chapter> findNewChaptersForSeries(String seriesId) {
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT id, series_id, chapter_num, title, url, release_date, is_new " +
             "FROM chapters WHERE series_id = ?::uuid AND is_new = true ORDER BY chapter_num ASC",
-            DataClassRowMapper.newInstance(Chapter.class),
+            CHAPTER_ROW_MAPPER,
             seriesId);
     }
 
     public String findSeriesTitle(String seriesId) {
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT title FROM manga_series WHERE id = ?::uuid",
             rs -> rs.next() ? rs.getString("title") : null,
             seriesId);

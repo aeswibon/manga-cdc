@@ -44,6 +44,9 @@ class MangaApiControllerMutationsEnabledTest {
     @MockBean
     private JdbcTemplate jdbcTemplate;
 
+    @MockBean(name = "readJdbcTemplate")
+    private JdbcTemplate readJdbcTemplate;
+
     @Test
     void addSeries_rejectsInvalidPayload() throws Exception {
         mockMvc.perform(post("/api/series")

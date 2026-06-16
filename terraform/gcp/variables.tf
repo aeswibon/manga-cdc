@@ -102,6 +102,13 @@ variable "database_url" {
   sensitive   = true
 }
 
+variable "database_read_url" {
+  description = "Optional PostgreSQL read replica URL (Neon read pooler)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "kafka_brokers" {
   description = "Kafka bootstrap brokers comma-separated list"
   type        = string

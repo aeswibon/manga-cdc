@@ -58,19 +58,8 @@ jobs:
             gh release edit "$VERSION" --draft=false --latest
           fi
 
-      - name: Export outputs for pipeline-compose
-        if: success()
-        run: |
-          mkdir -p pipeline-compose
-          jq -n \
-            --arg version "${{ steps.notes.outputs.version }}" \
-            --arg semver "${{ steps.notes.outputs.semver }}" \
-            '{version: $version, semver: $semver}' \
-            > pipeline-compose/outputs.json
-
-      - uses: actions/upload-artifact@v6
+      - uses: aeswibon/pipeline-compose-export@v1.3.0
         if: success()
         with:
-          name: pipeline-compose-github-release
-          path: pipeline-compose/outputs.json
-          retention-days: 1
+          stage_id: github-release
+          outputs: '{"version":"${{ steps.notes.outputs.version }}","semver":"${{ steps.notes.outputs.semver }}"}'

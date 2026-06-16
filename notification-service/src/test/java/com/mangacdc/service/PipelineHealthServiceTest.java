@@ -20,7 +20,7 @@ import static org.mockito.Mockito.when;
 class PipelineHealthServiceTest {
 
     @Mock
-    private JdbcTemplate jdbc;
+    private JdbcTemplate readJdbc;
 
     @Mock
     private RestTemplate healthCheckRestTemplate;
@@ -29,12 +29,12 @@ class PipelineHealthServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PipelineHealthService(jdbc, healthCheckRestTemplate, null, "", "", false);
+        service = new PipelineHealthService(readJdbc, healthCheckRestTemplate, null, "", "", false);
     }
 
     @Test
     void buildHealth_reportsOperationalWhenDatabaseIsHealthy() {
-        when(jdbc.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+        when(readJdbc.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
 
         Map<String, Object> health = service.buildHealth();
 
@@ -47,7 +47,7 @@ class PipelineHealthServiceTest {
 
     @Test
     void buildHealth_reportsDownWhenDatabaseFails() {
-        when(jdbc.queryForObject(anyString(), eq(Integer.class))).thenThrow(new RuntimeException("connection refused"));
+        when(readJdbc.queryForObject(anyString(), eq(Integer.class))).thenThrow(new RuntimeException("connection refused"));
 
         Map<String, Object> health = service.buildHealth();
 
@@ -56,11 +56,11 @@ class PipelineHealthServiceTest {
 
     @Test
     void buildHealth_reusesCachedResultWithinTtl() {
-        when(jdbc.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+        when(readJdbc.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
 
         service.buildHealth();
         service.buildHealth();
 
-        org.mockito.Mockito.verify(jdbc, org.mockito.Mockito.times(1)).queryForObject(anyString(), eq(Integer.class));
+        org.mockito.Mockito.verify(readJdbc, org.mockito.Mockito.times(1)).queryForObject(anyString(), eq(Integer.class));
     }
 }

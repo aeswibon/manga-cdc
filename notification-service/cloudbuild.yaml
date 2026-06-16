@@ -1,0 +1,16 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.jvm
+      - --build-arg
+      - APP_VERSION=$_TAG
+      - -t
+      - $_IMAGE:$_TAG
+      - .
+images:
+  - $_IMAGE:$_TAG
+substitutions:
+  _IMAGE: docker.io/aeswibon/notification-service
+  _TAG: 0.5.3-neon-fix

@@ -3,6 +3,7 @@ package com.mangacdc.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mangacdc.model.SeriesNotificationPrefs;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 

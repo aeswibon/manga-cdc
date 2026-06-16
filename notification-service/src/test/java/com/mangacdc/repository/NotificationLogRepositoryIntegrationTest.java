@@ -50,7 +50,7 @@ class NotificationLogRepositoryIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        repository = new NotificationLogRepository(jdbc);
+        repository = new NotificationLogRepository(jdbc, jdbc);
         jdbc.execute("TRUNCATE notification_logs, chapters, manga_series CASCADE");
     }
 

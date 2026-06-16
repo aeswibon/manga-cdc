@@ -1,14 +1,17 @@
-name: deploy-manual-gcp
-version: 1
-stages:
-  - id: deploy-gcp
-    workflow: .github/workflows/stage-deploy-gcp.yml
-    inputs:
-      image_tag: ${IMAGE_TAG}
-      deployment_target: ${DEPLOYMENT_TARGET}
-      deploy_method: ${DEPLOY_METHOD}
+version: 2
+companion_workflows:
+  - .github/workflows/deploy-manual.yml
+pipelines:
+  deploy-manual-gcp:
+    stages:
+      - id: deploy-gcp
+        workflow: .github/workflows/stage-deploy-gcp.yml
+        inputs:
+          image_tag: ${IMAGE_TAG}
+          deployment_target: ${DEPLOYMENT_TARGET}
+          deploy_method: ${DEPLOY_METHOD}
 
-  - id: deploy-vercel
-    workflow: .github/workflows/stage-deploy-vercel.yml
-    needs:
-      - deploy-gcp
+      - id: deploy-vercel
+        workflow: .github/workflows/stage-deploy-vercel.yml
+        needs:
+          - deploy-gcp

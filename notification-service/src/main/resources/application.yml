@@ -3,6 +3,10 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mangacdc}
     username: ${SPRING_DATASOURCE_USERNAME:mangacdc}
     password: ${SPRING_DATASOURCE_PASSWORD:mangacdc}
+    read:
+      url: ${SPRING_DATASOURCE_READ_URL:}
+      username: ${SPRING_DATASOURCE_READ_USERNAME:}
+      password: ${SPRING_DATASOURCE_READ_PASSWORD:}
     hikari:
       maximum-pool-size: ${DB_MAX_POOL_SIZE:5}
       minimum-idle: ${DB_MIN_IDLE:1}

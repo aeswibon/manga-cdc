@@ -39,6 +39,12 @@ locals {
   db_query          = local.db_parts.query != null ? "?${local.db_parts.query}" : ""
   db_path_and_query = "${local.db_path}${local.db_query}"
 
+  db_read_parts = var.database_read_url != "" ? regex("^postgres://(?:(?P<user>[^:@]+)(?::(?P<pass>[^@]+))?@)?(?P<host>[^/]+)(?P<path>/[^?]+)?(?:\\?(?P<query>.+))?$", var.database_read_url) : null
+  db_read_host  = local.db_read_parts != null ? local.db_read_parts.host : ""
+  db_read_path  = local.db_read_parts != null && local.db_read_parts.path != null ? local.db_read_parts.path : "/postgres"
+  db_read_query = local.db_read_parts != null && local.db_read_parts.query != null ? "?${local.db_read_parts.query}" : ""
+  db_read_jdbc  = local.db_read_parts != null ? "jdbc:postgresql://${local.db_read_host}${local.db_read_path}${local.db_read_query}" : ""
+
   # Render application .env content for VM
   env_file_content = <<EOT
 SCRAPER_IMAGE=${var.scraper_image}
@@ -47,6 +53,7 @@ DATABASE_URL=${var.database_url}
 SPRING_DATASOURCE_URL=jdbc:postgresql://${local.db_host}${local.db_path_and_query}
 SPRING_DATASOURCE_USERNAME=${local.db_user}
 SPRING_DATASOURCE_PASSWORD=${local.db_pass}
+SPRING_DATASOURCE_READ_URL=${local.db_read_jdbc}
 KAFKA_BROKERS=${var.kafka_brokers}
 KAFKA_TOPIC=mangacdc.public.chapters
 KAFKA_USERNAME=${var.kafka_username}
@@ -382,6 +389,7 @@ locals {
       SPRING_DATASOURCE_URL         = "jdbc:postgresql://${local.db_host}${local.db_path_and_query}"
       SPRING_DATASOURCE_USERNAME    = local.db_user
       SPRING_DATASOURCE_PASSWORD    = local.db_pass
+      SPRING_DATASOURCE_READ_URL    = local.db_read_jdbc
       CDC_ENABLED                   = var.cdc_enabled ? "true" : "false"
       DB_MAX_POOL_SIZE              = "3"
       DB_MIN_IDLE                   = "0"

@@ -75,6 +75,7 @@ terraform apply -auto-approve \
   -var="scraper_image=${SCRAPER_IMAGE}:${IMAGE_TAG}" \
   -var="notification_image=${NOTIFICATION_IMAGE}:${IMAGE_TAG}" \
   -var="database_url=${DATABASE_URL}" \
+  -var="database_read_url=${DATABASE_READ_URL:-}" \
   -var="kafka_brokers=${KAFKA_BROKERS:-}" \
   -var="kafka_username=${KAFKA_USERNAME:-}" \
   -var="kafka_password=${KAFKA_PASSWORD:-}" \

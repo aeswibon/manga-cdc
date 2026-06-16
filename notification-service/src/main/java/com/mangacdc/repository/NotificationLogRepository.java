@@ -1,6 +1,7 @@
 package com.mangacdc.repository;
 
 import com.mangacdc.model.NotificationLogEntry;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.DataClassRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -11,14 +12,16 @@ import java.util.List;
 public class NotificationLogRepository {
 
     private final JdbcTemplate jdbc;
+    private final JdbcTemplate readJdbc;
 
-    public NotificationLogRepository(JdbcTemplate jdbc) {
+    public NotificationLogRepository(JdbcTemplate jdbc, @Qualifier("readJdbcTemplate") JdbcTemplate readJdbc) {
         this.jdbc = jdbc;
+        this.readJdbc = readJdbc;
     }
 
     public List<NotificationLogEntry> findRecent(int limit) {
         int capped = Math.min(Math.max(limit, 1), 200);
-        return jdbc.query(
+        return readJdbc.query(
                 """
                 SELECT nl.id,
                        nl.chapter_id,
@@ -42,7 +45,7 @@ public class NotificationLogRepository {
     }
 
     public NotificationLogEntry findById(java.util.UUID id) {
-        return jdbc.queryForObject(
+        return readJdbc.queryForObject(
                 """
                 SELECT nl.id,
                        nl.chapter_id,
@@ -75,7 +78,7 @@ public class NotificationLogRepository {
     }
 
     public NotificationLogEntry findRecentForChapterAndChannel(java.util.UUID chapterId, String channel) {
-        return jdbc.queryForObject(
+        return readJdbc.queryForObject(
                 """
                 SELECT nl.id,
                        nl.chapter_id,

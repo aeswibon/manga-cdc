@@ -1,8 +1,8 @@
 package com.mangacdc.repository;
 
 import com.mangacdc.model.MangaSeries;
-import org.springframework.jdbc.core.DataClassRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -10,33 +10,54 @@ import java.util.List;
 @Repository
 public class SeriesRepository {
 
-    private final JdbcTemplate jdbc;
+    private static final RowMapper<MangaSeries> ROW_MAPPER = (rs, rowNum) -> {
+        java.sql.Timestamp lastChecked = rs.getTimestamp("last_checked");
+        return new MangaSeries(
+                rs.getString("id"),
+                rs.getString("source_id"),
+                rs.getString("title"),
+                rs.getString("author"),
+                rs.getString("artist"),
+                rs.getString("description"),
+                rs.getString("cover_url"),
+                rs.getString("status"),
+                rs.getString("source_url"),
+                rs.getObject("latest_chapter") != null ? rs.getDouble("latest_chapter") : null,
+                lastChecked != null ? lastChecked.toInstant() : null,
+                rs.getBoolean("is_active"));
+    };
 
-    public SeriesRepository(JdbcTemplate jdbc) {
+    private final JdbcTemplate jdbc;
+    private final JdbcTemplate readJdbc;
+
+    public SeriesRepository(
+            JdbcTemplate jdbc,
+            @org.springframework.beans.factory.annotation.Qualifier("readJdbcTemplate") JdbcTemplate readJdbc) {
         this.jdbc = jdbc;
+        this.readJdbc = readJdbc;
     }
 
     public List<MangaSeries> findAll() {
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT id, source_id, title, author, artist, description, cover_url, status, source_url, latest_chapter, last_checked, is_active " +
             "FROM manga_series ORDER BY title ASC",
-            DataClassRowMapper.newInstance(MangaSeries.class));
+            ROW_MAPPER);
     }
 
     public List<MangaSeries> findAllActive() {
-        return jdbc.query(
+        return readJdbc.query(
             "SELECT id, source_id, title, author, artist, description, cover_url, status, source_url, latest_chapter, last_checked, is_active " +
             "FROM manga_series WHERE is_active = true ORDER BY title ASC",
-            DataClassRowMapper.newInstance(MangaSeries.class));
+            ROW_MAPPER);
     }
 
     public int countAll() {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM manga_series", Integer.class);
+        Integer count = readJdbc.queryForObject("SELECT COUNT(*) FROM manga_series", Integer.class);
         return count != null ? count : 0;
     }
 
     public int countActive() {
-        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM manga_series WHERE is_active = true", Integer.class);
+        Integer count = readJdbc.queryForObject("SELECT COUNT(*) FROM manga_series WHERE is_active = true", Integer.class);
         return count != null ? count : 0;
     }
 

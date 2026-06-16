@@ -67,7 +67,7 @@ jobs:
           echo "Rendered pipeline:"
           cat /tmp/deploy-pipeline.yml
 
-      - uses: aeswibon/pipeline-compose-run@v1.1.0
+      - uses: aeswibon/pipeline-compose-run@v1.3.0
         with:
           pipeline_file: /tmp/deploy-pipeline.yml
           github_token: ${{ github.token }}
