@@ -1,8 +1,7 @@
 package com.mangacdc.config;
 
 import com.zaxxer.hikari.HikariDataSource;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -12,33 +11,31 @@ import org.springframework.util.StringUtils;
 import javax.sql.DataSource;
 
 @Configuration
+@EnableConfigurationProperties(ReadDataSourceProperties.class)
 public class DatabaseConfig {
 
     @Bean
-    @ConfigurationProperties("spring.datasource.read")
-    public DataSourceProperties readDataSourceProperties() {
-        return new DataSourceProperties();
-    }
-
-    @Bean
     public JdbcTemplate readJdbcTemplate(
-            DataSourceProperties readDataSourceProperties,
+            ReadDataSourceProperties readProperties,
             @Lazy DataSource dataSource) {
-        if (!StringUtils.hasText(readDataSourceProperties.getUrl())) {
+        if (!StringUtils.hasText(readProperties.getUrl())) {
             return new JdbcTemplate(dataSource);
         }
 
-        HikariDataSource readPool = readDataSourceProperties.initializeDataSourceBuilder()
-                .type(HikariDataSource.class)
-                .build();
-        if (!StringUtils.hasText(readDataSourceProperties.getUsername())
-                && dataSource instanceof HikariDataSource primary) {
-            readPool.setUsername(primary.getUsername());
+        HikariDataSource readPool = new HikariDataSource();
+        readPool.setJdbcUrl(readProperties.getUrl());
+        String username = readProperties.getUsername();
+        String password = readProperties.getPassword();
+        if (!StringUtils.hasText(username) && dataSource instanceof HikariDataSource primary) {
+            username = primary.getUsername();
         }
-        if (!StringUtils.hasText(readDataSourceProperties.getPassword())
-                && dataSource instanceof HikariDataSource primary) {
-            readPool.setPassword(primary.getPassword());
+        if (!StringUtils.hasText(password) && dataSource instanceof HikariDataSource primary) {
+            password = primary.getPassword();
         }
+        readPool.setUsername(username);
+        readPool.setPassword(password);
+        readPool.setMaximumPoolSize(3);
+        readPool.setMinimumIdle(0);
         return new JdbcTemplate(readPool);
     }
 }

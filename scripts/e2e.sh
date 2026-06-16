@@ -39,18 +39,18 @@ docker compose up -d --remove-orphans postgres redpanda 2>&1 | tee -a "$LOG"
 
 echo "Waiting for services to be healthy..." | tee -a "$LOG"
 postgres_ready=false
-for _ in $(seq 1 30); do
-  if docker compose exec postgres pg_isready -U mangacdc >/dev/null 2>&1; then
+for _ in $(seq 1 60); do
+  if docker compose exec -T postgres psql -U mangacdc -d mangacdc -c 'SELECT 1' >/dev/null 2>&1; then
     echo "PostgreSQL ready" | tee -a "$LOG"
     postgres_ready=true
     break
   fi
   sleep 2
 done
-if [ "$postgres_ready" != "true" ]; then
+[ "$postgres_ready" = "true" ] || {
   echo "FAIL: PostgreSQL not ready within timeout" | tee -a "$LOG"
   exit 1
-fi
+}
 
 redpanda_ready=false
 for _ in $(seq 1 60); do
@@ -61,8 +61,22 @@ for _ in $(seq 1 60); do
   fi
   sleep 2
 done
-if [ "$redpanda_ready" != "true" ]; then
+[ "$redpanda_ready" = "true" ] || {
   echo "FAIL: Redpanda not ready within timeout" | tee -a "$LOG"
+  exit 1
+}
+
+echo "Running database migrations..." | tee -a "$LOG"
+compose_network=$(docker inspect "$(docker compose ps -q postgres)" -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+if ! docker run --rm \
+  --network "${compose_network}" \
+  -v "${ROOT}:/src" \
+  -w /src/scraper \
+  -e DATABASE_URL="postgres://mangacdc:mangacdc@postgres:5432/mangacdc?sslmode=disable" \
+  -e MIGRATIONS_DIR="/src/db/migrations" \
+  golang:1.26-bookworm \
+  go run ./cmd/migrate; then
+  echo "FAIL: database migrations" | tee -a "$LOG"
   exit 1
 fi
 
@@ -90,17 +104,17 @@ for _ in $(seq 1 15); do
   fi
   sleep 2
 done
-if [ "$seeded" != "true" ]; then
+[ "$seeded" = "true" ] || {
   echo "FAIL: could not seed Postgres test data" | tee -a "$LOG"
   exit 1
-fi
+}
 
 chapter_count=$(docker compose exec -T postgres psql -U mangacdc -d mangacdc -tAc \
   "SELECT COUNT(*) FROM chapters WHERE id = '${CHAPTER_ID}'" 2>/dev/null | tr -d '[:space:]')
-if [ "${chapter_count:-0}" != "1" ]; then
+[ "${chapter_count:-0}" = "1" ] || {
   echo "FAIL: expected seeded chapter ${CHAPTER_ID}, found count=${chapter_count:-0}" | tee -a "$LOG"
   exit 1
-fi
+}
 
 echo "Starting notification service..." | tee -a "$LOG"
 if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
@@ -129,11 +143,11 @@ for _ in $(seq 1 30); do
   fi
   sleep 2
 done
-if [ "$consumer_ready" != "true" ]; then
+[ "$consumer_ready" = "true" ] || {
   echo "FAIL: Notification service not ready within timeout" | tee -a "$LOG"
   docker compose logs --tail=100 notification-service 2>&1 | tee -a "$LOG" || true
   exit 1
-fi
+}
 
 echo "Publishing chapter event to Kafka (scraper format)..." | tee -a "$LOG"
 EVENT=$(cat <<EOF
