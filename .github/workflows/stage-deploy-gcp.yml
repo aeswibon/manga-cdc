@@ -161,6 +161,7 @@ jobs:
           DEPLOYMENT_TARGET: ${{ env.DEPLOYMENT_TARGET }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_READ_URL: ${{ secrets.DATABASE_READ_URL }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCP_REGION: ${{ env.GCP_REGION }}
