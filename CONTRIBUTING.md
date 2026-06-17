@@ -94,14 +94,16 @@ Fallbacks are tried in list order when the primary chapter fetch fails. Use veri
 
 ## Validation rules
 
-The CI script (`scripts/validate-watchlist.py`) checks that:
+The CI linter (`scripts/validate-watchlist.py`) checks that:
 
 - The file parses as YAML and contains a non-empty list of entries
 - Every entry has all required fields with non-empty string values
 - `source` is one of the valid adapter names above
-- `source_url` is a valid HTTP or HTTPS URL
+- `source_url` is a valid HTTP or HTTPS URL on the expected host for that source
+- `source_id` matches the URL where the adapter requires it (MangaDex UUID, MangaPlus title id)
+- Optional `status` is one of `ONGOING`, `COMPLETED`, `HIATUS`, `CANCELLED`
 - No duplicate `source` + `source_id` pairs exist
-- `fallback_sources` entries (when present) use valid sources and non-empty `source_id` values
+- `fallback_sources` entries (when present) use valid sources, non-empty `source_id` values, a different adapter than the primary, and no duplicate fallback pairs
 - No duplicate `title` values exist (same title must use one canonical `source_id`)
 
 ## Removing a series

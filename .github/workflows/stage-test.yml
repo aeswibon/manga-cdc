@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   watchlist-validate:
-    name: Validate watchlist
+    name: Lint watchlist
     if: inputs.phase == 'unit'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -45,6 +45,7 @@ jobs:
           python-version: "3.12"
       - run: pip install pyyaml
       - run: python scripts/validate-watchlist.py
+      - run: python -m unittest scripts/test_validate_watchlist.py
 
   dashboard-test:
     name: Dashboard tests

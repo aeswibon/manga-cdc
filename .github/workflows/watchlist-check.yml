@@ -5,17 +5,19 @@ on:
     paths:
       - "data/watchlist.yaml"
       - "scripts/validate-watchlist.py"
+      - "scripts/test_validate_watchlist.py"
       - ".github/workflows/watchlist-check.yml"
   push:
     branches: [master]
     paths:
       - "data/watchlist.yaml"
       - "scripts/validate-watchlist.py"
+      - "scripts/test_validate_watchlist.py"
       - ".github/workflows/watchlist-check.yml"
 
 jobs:
   validate-watchlist:
-    name: Validate watchlist.yaml
+    name: Lint watchlist.yaml
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -28,5 +30,8 @@ jobs:
       - name: Install PyYAML
         run: pip install pyyaml
 
-      - name: Validate data/watchlist.yaml
+      - name: Lint data/watchlist.yaml
         run: python scripts/validate-watchlist.py
+
+      - name: Watchlist linter unit tests
+        run: python -m unittest scripts/test_validate_watchlist.py
