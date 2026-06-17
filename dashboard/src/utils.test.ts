@@ -12,6 +12,8 @@ import {
   parsePipelineHealth,
   parseStatusPagePayload,
   pipelineHealthFromStatusPage,
+  buildOpsMatrixRows,
+  componentDisplayName,
   healthLabel,
   healthShortLabel,
   healthVariant,
@@ -275,5 +277,22 @@ describe("pipeline health helpers", () => {
     const mapped = pipelineHealthFromStatusPage(payload!);
     expect(mapped.updatedAt).toBe("2026-06-13T08:00:00.000Z");
     expect(healthVariant(mapped.status)).toBe("down");
+  });
+
+  test("buildOpsMatrixRows orders pipeline components and adds dashboard rows", () => {
+    expect(componentDisplayName("kafka")).toBe("Kafka / CDC");
+    const rows = buildOpsMatrixRows(sampleHealth, {
+      apiStatus: "online",
+      successRate: 95,
+      totalLogs: 12,
+    });
+    expect(rows.map((row) => row.key)).toEqual([
+      "notifier",
+      "database",
+      "dashboard-api",
+      "deliveries",
+    ]);
+    expect(rows[0].label).toBe("Notifier");
+    expect(rows.find((row) => row.key === "deliveries")?.detail).toContain("95%");
   });
 });

@@ -20,23 +20,39 @@ type Engine struct {
 	log         *slog.Logger
 	seriesDelay time.Duration
 	resolver    *metadata.Resolver
+	fetchFastRetries    int
+	fetchFastRetryDelay time.Duration
 }
 
 func New(database *db.DB, log *slog.Logger, resolver *metadata.Resolver) *Engine {
-	return &Engine{
-		db:          database,
-		log:         log,
-		seriesDelay: 500 * time.Millisecond,
-		resolver:    resolver,
-	}
+	return NewWithDelay(database, log, resolver, 500*time.Millisecond)
 }
 
 func NewWithDelay(database *db.DB, log *slog.Logger, resolver *metadata.Resolver, delay time.Duration) *Engine {
+	return NewWithDelayAndRetry(database, log, resolver, delay, 2, 400*time.Millisecond)
+}
+
+func NewWithDelayAndRetry(
+	database *db.DB,
+	log *slog.Logger,
+	resolver *metadata.Resolver,
+	delay time.Duration,
+	fetchFastRetries int,
+	fetchFastRetryDelay time.Duration,
+) *Engine {
+	if fetchFastRetries < 0 {
+		fetchFastRetries = 0
+	}
+	if fetchFastRetryDelay <= 0 {
+		fetchFastRetryDelay = 400 * time.Millisecond
+	}
 	return &Engine{
-		db:          database,
-		log:         log,
-		seriesDelay: delay,
-		resolver:    resolver,
+		db:                  database,
+		log:                 log,
+		seriesDelay:         delay,
+		resolver:            resolver,
+		fetchFastRetries:    fetchFastRetries,
+		fetchFastRetryDelay: fetchFastRetryDelay,
 	}
 }
 
@@ -292,10 +308,31 @@ func (e *Engine) fetchChaptersWithFallback(
 		return chapters, false, nil
 	}
 
+	primaryErr := err
+	if isRetryableFetchError(primaryErr) && e.fetchFastRetries > 0 {
+		for attempt := 1; attempt <= e.fetchFastRetries; attempt++ {
+			if sleepErr := sleepContext(ctx, e.fetchFastRetryDelay); sleepErr != nil {
+				break
+			}
+			chapters, retryErr := primary.FetchChapters(ctx, rawID)
+			if retryErr == nil {
+				e.log.Info("primary chapter fetch recovered after fast retry",
+					"source", primary.Name(),
+					"series", series.Title,
+					"attempt", attempt)
+				return chapters, false, nil
+			}
+			primaryErr = retryErr
+			if !isRetryableFetchError(primaryErr) {
+				break
+			}
+		}
+	}
+
 	e.log.Warn("primary chapter fetch failed, trying fallbacks",
 		"source", primary.Name(),
 		"series", series.Title,
-		"error", err)
+		"error", primaryErr)
 
 	fallbacks, err := parseFallbackSources(series.FallbackSources)
 	if err != nil {
@@ -326,7 +363,7 @@ func (e *Engine) fetchChaptersWithFallback(
 	if lastErr != nil {
 		return nil, false, lastErr
 	}
-	return nil, false, err
+	return nil, false, primaryErr
 }
 
 func parseFallbackSources(raw json.RawMessage) ([]watchlist.FallbackSource, error) {

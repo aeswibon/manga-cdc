@@ -96,7 +96,14 @@ func main() {
 	defer database.Close()
 
 	resolver := metadata.NewResolver()
-	engine := diff.NewWithDelay(database, log, resolver, cfg.ScrapeDelay)
+	engine := diff.NewWithDelayAndRetry(
+		database,
+		log,
+		resolver,
+		cfg.ScrapeDelay,
+		cfg.FetchFastRetries,
+		cfg.FetchFastRetryDelay,
+	)
 
 	var qstashPublisher *qstash.Publisher
 	if cfg.QStashToken != "" && cfg.QStashDestination != "" {

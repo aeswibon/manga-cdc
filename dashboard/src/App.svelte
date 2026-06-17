@@ -18,6 +18,7 @@
     seriesStatusVariant,
     parseStatusPagePayload,
     pipelineHealthFromStatusPage,
+    buildOpsMatrixRows,
     healthLabel,
     healthShortLabel,
     healthVariant,
@@ -149,6 +150,11 @@
 
   let filteredLogs = $derived(filterLogs(logList, logSearchQuery, logChannelFilter, logStatusFilter));
   let successRate = $derived(calculateSuccessRate(stats.successful_deliveries, stats.total_logs));
+  let opsMatrixRows = $derived(buildOpsMatrixRows(pipelineHealth, {
+    apiStatus,
+    successRate,
+    totalLogs: stats.total_logs,
+  }));
 
   $effect(() => {
     // Reset to page 1 on search or filter change
@@ -579,6 +585,60 @@
           <div class="stat-card">
             <span class="stat-card__label">Delivery Success</span>
             <span class="stat-card__value stat-card__value--success">{successRate}%</span>
+          </div>
+        </div>
+
+        <div class="dash-panel">
+          <div class="dash-panel__header">
+            <h3 class="dash-panel__title">Pipeline Ops Matrix</h3>
+            <a
+              href={STATUS_PAGE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="dash-panel__link"
+            >
+              Status page
+            </a>
+          </div>
+          {#if pipelineHealth}
+            <p class="ops-matrix__meta">
+              Overall {pipelineOverallLabel}
+              {#if pipelineHealth.updatedAt}
+                · snapshot {formatRelativeTime(pipelineHealth.updatedAt)}
+              {/if}
+              {#if pipelineHealthPolledAt}
+                · checked {formatRelativeTime(pipelineHealthPolledAt)}
+              {/if}
+            </p>
+          {:else if pipelineHealthState === 'loading'}
+            <p class="ops-matrix__meta">Loading pipeline health…</p>
+          {:else}
+            <p class="ops-matrix__meta">Pipeline health unavailable — API and delivery rows still reflect dashboard state.</p>
+          {/if}
+          <div class="ops-matrix__table-wrap">
+            <table class="ops-matrix">
+              <thead>
+                <tr>
+                  <th scope="col">Component</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each opsMatrixRows as row (row.key)}
+                  {@const variant = healthVariant(row.status)}
+                  <tr>
+                    <td class="ops-matrix__label">{row.label}</td>
+                    <td>
+                      <span class="ops-matrix__badge ops-matrix__badge--{variant}">
+                        {healthShortLabel(row.status)}
+                      </span>
+                    </td>
+                    <td class="ops-matrix__detail">{row.detail || '—'}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
         </div>
 

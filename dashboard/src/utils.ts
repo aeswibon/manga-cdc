@@ -83,6 +83,87 @@ export interface PipelineHealth {
   components: PipelineComponent[];
 }
 
+export interface OpsMatrixRow {
+  key: string;
+  label: string;
+  status: string;
+  detail: string;
+}
+
+const OPS_COMPONENT_ORDER = ['notifier', 'database', 'kafka', 'scraper'] as const;
+
+export function componentDisplayName(name: string): string {
+  switch (name.trim().toLowerCase()) {
+    case 'notifier': return 'Notifier';
+    case 'database': return 'Database';
+    case 'kafka': return 'Kafka / CDC';
+    case 'scraper': return 'Scraper';
+    default: return name;
+  }
+}
+
+export function buildOpsMatrixRows(
+  pipelineHealth: PipelineHealth | null,
+  options: { apiStatus: string; successRate: number; totalLogs: number },
+): OpsMatrixRow[] {
+  const rows: OpsMatrixRow[] = [];
+  const byName = new Map(
+    (pipelineHealth?.components ?? []).map((component) => [component.name.toLowerCase(), component]),
+  );
+
+  for (const name of OPS_COMPONENT_ORDER) {
+    const component = byName.get(name);
+    if (!component) continue;
+    rows.push({
+      key: name,
+      label: componentDisplayName(name),
+      status: component.status,
+      detail: component.detail ?? '',
+    });
+  }
+
+  for (const component of pipelineHealth?.components ?? []) {
+    const key = component.name.toLowerCase();
+    if (OPS_COMPONENT_ORDER.includes(key as typeof OPS_COMPONENT_ORDER[number])) continue;
+    rows.push({
+      key,
+      label: componentDisplayName(component.name),
+      status: component.status,
+      detail: component.detail ?? '',
+    });
+  }
+
+  rows.push({
+    key: 'dashboard-api',
+    label: 'Dashboard API',
+    status: options.apiStatus === 'online'
+      ? 'operational'
+      : options.apiStatus === 'connecting'
+        ? 'degraded'
+        : 'down',
+    detail: options.apiStatus === 'online'
+      ? 'Notifier proxy reachable'
+      : options.apiStatus === 'connecting'
+        ? 'Connecting to notifier'
+        : 'Notifier unreachable',
+  });
+
+  if (options.totalLogs > 0) {
+    rows.push({
+      key: 'deliveries',
+      label: 'Notifications',
+      status: options.successRate >= 90
+        ? 'operational'
+        : options.successRate >= 70
+          ? 'degraded'
+          : 'down',
+      detail: `${options.successRate}% delivery success (${options.totalLogs} events)`,
+    });
+  }
+
+  return rows;
+}
+
 export type HealthVariant = 'operational' | 'degraded' | 'down' | 'maintenance' | 'unknown';
 
 export function healthVariant(status: string): HealthVariant {

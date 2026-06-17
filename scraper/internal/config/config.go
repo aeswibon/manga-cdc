@@ -14,6 +14,8 @@ type Config struct {
 	DBMaxConns               int
 	ScrapeInterval           time.Duration
 	ScrapeDelay              time.Duration
+	FetchFastRetries         int
+	FetchFastRetryDelay      time.Duration
 	WatchlistURL             string
 	WatchlistPath            string
 	WatchlistSyncInterval    time.Duration
@@ -108,6 +110,28 @@ func Load() (*Config, error) {
 		}
 	}
 
+	fetchFastRetries := 2
+	if v := os.Getenv("FETCH_FAST_RETRIES"); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid FETCH_FAST_RETRIES: %w", err)
+		}
+		if parsed >= 0 {
+			fetchFastRetries = parsed
+		}
+	}
+
+	fetchFastRetryDelay := 400 * time.Millisecond
+	if v := os.Getenv("FETCH_FAST_RETRY_MS"); v != "" {
+		ms, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid FETCH_FAST_RETRY_MS: %w", err)
+		}
+		if ms >= 0 {
+			fetchFastRetryDelay = time.Duration(ms) * time.Millisecond
+		}
+	}
+
 	runOnce := false
 	if v := os.Getenv("RUN_ONCE"); v != "" {
 		parsed, err := strconv.ParseBool(v)
@@ -140,6 +164,8 @@ func Load() (*Config, error) {
 		DBMaxConns:               dbMaxConns,
 		ScrapeInterval:           interval,
 		ScrapeDelay:              scrapeDelay,
+		FetchFastRetries:         fetchFastRetries,
+		FetchFastRetryDelay:      fetchFastRetryDelay,
 		WatchlistURL:             os.Getenv("WATCHLIST_URL"),
 		WatchlistPath:            watchlistPath,
 		WatchlistSyncInterval:    watchlistSyncInterval,
