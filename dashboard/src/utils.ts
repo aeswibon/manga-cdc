@@ -13,6 +13,11 @@ export interface Series {
   isActive: boolean;
 }
 
+export interface SeriesDetail extends Series {
+  scheduleHint: string | null;
+  lastChapterAt: string | null;
+}
+
 export interface Chapter {
   id: string;
   seriesId: string;

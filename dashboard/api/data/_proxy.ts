@@ -70,6 +70,9 @@ export function isAllowedGetPath(path: string): boolean {
   if (/^\/api\/series\/[^/]+\/chapters$/.test(path)) {
     return true;
   }
+  if (/^\/api\/series\/[^/]+$/.test(path)) {
+    return true;
+  }
   return false;
 }
 

@@ -58,6 +58,29 @@ Per-series notification behavior can be tuned with an optional `notifications` b
 | `notify_every` | Binge mode — notify every N chapters (0 = every chapter) |
 | `block_early_week` | Suppress early-week leak uploads (heuristic) |
 
+### Optional fallback sources (v0.6+)
+
+If the primary source is down or blocked, the scraper can try alternate adapters for the same series. Add an optional `fallback_sources` list (synced to the database on watchlist sync):
+
+```yaml
+- source: mangadex
+  source_id: a1c3b275-c93f-4279-a17d-2b4742e47444
+  title: One Piece
+  source_url: https://mangadex.org/title/a1c3b275-c93f-4279-a17d-2b4742e47444/one-piece
+  fallback_sources:
+    - source: mangafire
+      source_id: one-piece
+      source_url: https://mangafire.to/manga/one-piece
+```
+
+| Field | Description |
+|-------|-------------|
+| `source` | Fallback adapter name (same valid sources as primary) |
+| `source_id` | ID on that fallback site |
+| `source_url` | Optional URL for operator reference (not required for scraping) |
+
+Fallbacks are tried in list order when the primary chapter fetch fails. Use verified IDs from the fallback site.
+
 ## Valid sources
 
 | `source` value | Site |
@@ -78,6 +101,7 @@ The CI script (`scripts/validate-watchlist.py`) checks that:
 - `source` is one of the valid adapter names above
 - `source_url` is a valid HTTP or HTTPS URL
 - No duplicate `source` + `source_id` pairs exist
+- `fallback_sources` entries (when present) use valid sources and non-empty `source_id` values
 - No duplicate `title` values exist (same title must use one canonical `source_id`)
 
 ## Removing a series

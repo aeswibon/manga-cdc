@@ -58,6 +58,9 @@ describe("notifierApiUrl", () => {
     expect(notifierApiUrl("/api/series/abc/chapters", "/api/data")).toBe(
       "/api/data/series/abc/chapters",
     );
+    expect(notifierApiUrl("/api/series/abc", "/api/data")).toBe(
+      "/api/data/series/abc",
+    );
     expect(notifierApiUrl("/api/stats", "/api/notifier")).toBe("/api/notifier/stats");
   });
 

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import {
     type Series,
+    type SeriesDetail,
     type LogEntry,
     type Chapter,
     filterSeries, 
@@ -84,6 +85,7 @@
 
   let expandedSeriesId = $state<string | null>(null);
   let chaptersBySeries = $state<Record<string, Chapter[]>>({});
+  let seriesDetailById = $state<Record<string, SeriesDetail>>({});
   let chaptersLoadingId = $state<string | null>(null);
 
   let pipelineHealth = $state<PipelineHealth | null>(null);
@@ -191,14 +193,22 @@
       return;
     }
     expandedSeriesId = series.id;
-    if (chaptersBySeries[series.id]) return;
+    if (chaptersBySeries[series.id] && seriesDetailById[series.id]) return;
 
     chaptersLoadingId = series.id;
     try {
-      const res = await fetchWithRetry(notifierApiUrl(`/api/series/${series.id}/chapters?limit=15`, API_BASE));
-      if (!res.ok) throw new Error(`chapters fetch failed: ${res.status}`);
-      const chapters = await res.json() as Chapter[];
+      const [chaptersRes, detailRes] = await Promise.all([
+        fetchWithRetry(notifierApiUrl(`/api/series/${series.id}/chapters?limit=15`, API_BASE)),
+        fetchWithRetry(notifierApiUrl(`/api/series/${series.id}`, API_BASE)),
+      ]);
+      if (!chaptersRes.ok) throw new Error(`chapters fetch failed: ${chaptersRes.status}`);
+      const chapters = await chaptersRes.json() as Chapter[];
       chaptersBySeries = { ...chaptersBySeries, [series.id]: chapters };
+
+      if (detailRes.ok) {
+        const detail = await detailRes.json() as SeriesDetail;
+        seriesDetailById = { ...seriesDetailById, [series.id]: detail };
+      }
     } catch (err) {
       console.warn('Failed to load chapter history', err);
       chaptersBySeries = { ...chaptersBySeries, [series.id]: [] };
@@ -745,6 +755,12 @@
                 <div class="flex flex-col gap-0.5">
                   <span class="text-xs font-semibold text-gray-200">Latest: Ch. {series.latestChapter}</span>
                   <span class="text-[10px] text-gray-500">Polled {formatRelativeTime(series.lastChecked)}</span>
+                  {#if seriesDetailById[series.id]?.scheduleHint}
+                    <span class="text-[10px] text-accent/90">{seriesDetailById[series.id].scheduleHint}</span>
+                  {/if}
+                  {#if seriesDetailById[series.id]?.lastChapterAt}
+                    <span class="text-[10px] text-gray-500">Last chapter {formatRelativeTime(seriesDetailById[series.id].lastChapterAt!)}</span>
+                  {/if}
                 </div>
                 <span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase
                   {series.isActive ? 'bg-success/10 text-success' : 'bg-gray-500/10 text-gray-400'}"
