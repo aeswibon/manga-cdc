@@ -53,8 +53,8 @@ func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 	var id string
 	err := d.pool.QueryRow(ctx, `
 		INSERT INTO manga_series (source_id, title, alt_titles, anilist_id, mal_id, canonical_title, author, artist, description,
-			cover_url, status, source_url, latest_chapter, last_checked, is_active, notification_prefs)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, COALESCE($16, '{}'::jsonb))
+			cover_url, status, source_url, latest_chapter, last_checked, is_active, notification_prefs, fallback_sources)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, COALESCE($16, '{}'::jsonb), COALESCE($17, '[]'::jsonb))
 		ON CONFLICT (source_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			alt_titles = EXCLUDED.alt_titles,
@@ -72,7 +72,7 @@ func (d *DB) UpsertSeries(ctx context.Context, s model.Series) (string, error) {
 			updated_at = NOW()
 		RETURNING id
 	`, s.SourceID, s.Title, s.AltTitles, s.AniListID, s.MalID, s.CanonicalTitle, s.Author, s.Artist, s.Description,
-		s.CoverURL, s.Status, s.SourceURL, s.LatestChapter, time.Now(), s.IsActive, prefsOrEmpty(s.NotificationPrefs)).Scan(&id)
+		s.CoverURL, s.Status, s.SourceURL, s.LatestChapter, time.Now(), s.IsActive, prefsOrEmpty(s.NotificationPrefs), fallbacksOrEmpty(s.FallbackSources)).Scan(&id)
 
 	if err != nil {
 		return "", fmt.Errorf("upsert series: %w", err)
@@ -85,6 +85,27 @@ func prefsOrEmpty(prefs json.RawMessage) json.RawMessage {
 		return json.RawMessage("{}")
 	}
 	return prefs
+}
+
+func fallbacksOrEmpty(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return json.RawMessage("[]")
+	}
+	return raw
+}
+
+func (d *DB) UpdateSeriesWatchlistMeta(ctx context.Context, sourceID string, prefs json.RawMessage, fallbacks json.RawMessage) error {
+	_, err := d.pool.Exec(ctx, `
+		UPDATE manga_series SET
+			notification_prefs = COALESCE($2, '{}'::jsonb),
+			fallback_sources = COALESCE($3, '[]'::jsonb),
+			updated_at = NOW()
+		WHERE source_id = $1
+	`, sourceID, prefsOrEmpty(prefs), fallbacksOrEmpty(fallbacks))
+	if err != nil {
+		return fmt.Errorf("update series watchlist meta: %w", err)
+	}
+	return nil
 }
 
 func (d *DB) UpdateSeriesNotificationPrefs(ctx context.Context, sourceID string, prefs json.RawMessage) error {
@@ -132,11 +153,12 @@ func (d *DB) GetSeriesBySourceID(ctx context.Context, sourceID string) (*model.S
 	var s model.Series
 	err := d.pool.QueryRow(ctx, `
 		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), anilist_id, mal_id, canonical_title, author, artist,
-			description, cover_url, status, source_url, latest_chapter, is_active
+			description, cover_url, status, source_url, latest_chapter, is_active,
+			COALESCE(fallback_sources, '[]'::jsonb)
 		FROM manga_series WHERE source_id = $1
 	`, sourceID).Scan(
 		&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.AniListID, &s.MalID, &s.CanonicalTitle, &s.Author, &s.Artist,
-		&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive)
+		&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive, &s.FallbackSources)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -241,7 +263,8 @@ func (d *DB) DeleteChaptersForSeries(ctx context.Context, seriesID string) error
 func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {
 	rows, err := d.pool.Query(ctx, `
 		SELECT id, source_id, title, COALESCE(alt_titles, '[]'::jsonb), anilist_id, mal_id, canonical_title, author, artist,
-			description, cover_url, status, source_url, latest_chapter, is_active
+			description, cover_url, status, source_url, latest_chapter, is_active,
+			COALESCE(fallback_sources, '[]'::jsonb)
 		FROM manga_series WHERE is_active = true
 	`)
 	if err != nil {
@@ -254,7 +277,7 @@ func (d *DB) GetActiveSeries(ctx context.Context) ([]model.Series, error) {
 		var s model.Series
 		err := rows.Scan(
 			&s.ID, &s.SourceID, &s.Title, &s.AltTitles, &s.AniListID, &s.MalID, &s.CanonicalTitle, &s.Author, &s.Artist,
-			&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive)
+			&s.Description, &s.CoverURL, &s.Status, &s.SourceURL, &s.LatestChapter, &s.IsActive, &s.FallbackSources)
 		if err != nil {
 			return nil, fmt.Errorf("scan series: %w", err)
 		}

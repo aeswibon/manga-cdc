@@ -133,4 +133,29 @@ public class ChapterRepository {
             rs -> rs.next() ? rs.getString("title") : null,
             seriesId);
     }
+
+    public List<java.time.Instant> findReleaseDatesForSeries(String seriesId, int limit) {
+        return readJdbc.query(
+            "SELECT release_date FROM chapters WHERE series_id = ?::uuid AND release_date IS NOT NULL " +
+            "ORDER BY release_date DESC LIMIT ?",
+            (rs, rowNum) -> {
+                java.sql.Timestamp ts = rs.getTimestamp("release_date");
+                return ts != null ? ts.toInstant() : null;
+            },
+            seriesId,
+            limit).stream().filter(java.util.Objects::nonNull).toList();
+    }
+
+    public java.time.Instant findLatestReleaseDate(String seriesId) {
+        return readJdbc.query(
+            "SELECT MAX(release_date) FROM chapters WHERE series_id = ?::uuid",
+            rs -> {
+                if (!rs.next()) {
+                    return null;
+                }
+                java.sql.Timestamp ts = rs.getTimestamp(1);
+                return ts != null ? ts.toInstant() : null;
+            },
+            seriesId);
+    }
 }

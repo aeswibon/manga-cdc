@@ -29,13 +29,21 @@ type File struct {
 }
 
 type Entry struct {
-	Source        string             `yaml:"source"`
-	SourceID      string             `yaml:"source_id"`
-	Title         string             `yaml:"title"`
-	SourceURL     string             `yaml:"source_url"`
-	CoverURL      string             `yaml:"cover_url,omitempty"`
-	Status        string             `yaml:"status,omitempty"`
-	Notifications *NotificationPrefs `yaml:"notifications,omitempty"`
+	Source          string             `yaml:"source"`
+	SourceID        string             `yaml:"source_id"`
+	Title           string             `yaml:"title"`
+	SourceURL       string             `yaml:"source_url"`
+	CoverURL        string             `yaml:"cover_url,omitempty"`
+	Status          string             `yaml:"status,omitempty"`
+	Notifications   *NotificationPrefs `yaml:"notifications,omitempty"`
+	FallbackSources []FallbackSource     `yaml:"fallback_sources,omitempty"`
+}
+
+// FallbackSource is an alternate adapter to poll when the primary source fails (v0.6+).
+type FallbackSource struct {
+	Source    string `yaml:"source" json:"source"`
+	SourceID  string `yaml:"source_id" json:"source_id"`
+	SourceURL string `yaml:"source_url,omitempty" json:"source_url,omitempty"`
 }
 
 // NotificationPrefs controls per-series notification behavior (v0.5+).
@@ -54,6 +62,18 @@ func (e Entry) NotificationPrefsJSON() json.RawMessage {
 	b, err := json.Marshal(e.Notifications)
 	if err != nil {
 		return json.RawMessage("{}")
+	}
+	return b
+}
+
+// FallbackSourcesJSON returns JSON for DB storage (empty array when unset).
+func (e Entry) FallbackSourcesJSON() json.RawMessage {
+	if len(e.FallbackSources) == 0 {
+		return json.RawMessage("[]")
+	}
+	b, err := json.Marshal(e.FallbackSources)
+	if err != nil {
+		return json.RawMessage("[]")
 	}
 	return b
 }
@@ -161,6 +181,21 @@ func validateEntry(entry Entry) error {
 		if err := validateNotificationPrefs(entry.Notifications); err != nil {
 			return err
 		}
+	}
+	for i, fb := range entry.FallbackSources {
+		if err := validateFallbackSource(fb, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateFallbackSource(fb FallbackSource, index int) error {
+	if err := ValidateSource(fb.Source); err != nil {
+		return fmt.Errorf("fallback_sources[%d]: %w", index, err)
+	}
+	if strings.TrimSpace(fb.SourceID) == "" {
+		return fmt.Errorf("fallback_sources[%d]: source_id is required", index)
 	}
 	return nil
 }

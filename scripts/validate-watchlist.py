@@ -66,6 +66,39 @@ def validate_entry(entry: object, index: int) -> list[str]:
     if notifications is not None:
         errors.extend(validate_notifications(notifications, prefix))
 
+    fallback_sources = entry.get("fallback_sources")
+    if fallback_sources is not None:
+        errors.extend(validate_fallback_sources(fallback_sources, prefix))
+
+    return errors
+
+
+def validate_fallback_sources(fallback_sources: object, prefix: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(fallback_sources, list):
+        return [f"{prefix}: 'fallback_sources' must be a list"]
+
+    for index, item in enumerate(fallback_sources):
+        item_prefix = f"{prefix}: fallback_sources[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{item_prefix}: must be a mapping")
+            continue
+        source = item.get("source")
+        source_id = item.get("source_id")
+        if not isinstance(source, str) or not source.strip():
+            errors.append(f"{item_prefix}: 'source' must be a non-empty string")
+        elif source.strip() not in VALID_SOURCES:
+            errors.append(
+                f"{item_prefix}: invalid source '{source}' "
+                f"(allowed: {', '.join(sorted(VALID_SOURCES))})"
+            )
+        if not isinstance(source_id, str) or not source_id.strip():
+            errors.append(f"{item_prefix}: 'source_id' must be a non-empty string")
+        source_url = item.get("source_url")
+        if source_url is not None and isinstance(source_url, str) and source_url.strip():
+            if not is_http_url(source_url.strip()):
+                errors.append(f"{item_prefix}: 'source_url' must be an HTTP or HTTPS URL")
+
     return errors
 
 

@@ -140,6 +140,26 @@ func TestValidateEntry_notificationPrefs(t *testing.T) {
 	}
 }
 
+func TestValidateEntry_fallbackSources(t *testing.T) {
+	entry := Entry{
+		Source:    "mangadex",
+		SourceID:  "abc",
+		Title:     "Test",
+		SourceURL: "https://mangadex.org/title/abc",
+		FallbackSources: []FallbackSource{{
+			Source: "mangafire", SourceID: "one-piece",
+		}},
+	}
+	if err := validateEntry(entry); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entry.FallbackSources[0].SourceID = ""
+	if err := validateEntry(entry); err == nil {
+		t.Fatal("expected error for empty fallback source_id")
+	}
+}
+
 func TestNotificationPrefsJSON(t *testing.T) {
 	entry := Entry{
 		Notifications: &NotificationPrefs{NotifyEvery: 10},

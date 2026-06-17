@@ -6,6 +6,7 @@ import com.mangacdc.support.WebMvcSecurityTestSupport;
 import com.mangacdc.model.MangaSeries;
 import com.mangacdc.repository.ChapterRepository;
 import com.mangacdc.repository.SeriesRepository;
+import com.mangacdc.service.ScheduleHintService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -44,6 +45,9 @@ class MangaApiControllerTest {
 
     @MockBean(name = "readJdbcTemplate")
     private JdbcTemplate readJdbcTemplate;
+
+    @MockBean
+    private ScheduleHintService scheduleHintService;
 
     @Test
     void addSeries_rejectsInvalidPayloadWhenMutationsDisabled() throws Exception {

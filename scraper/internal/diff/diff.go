@@ -47,12 +47,22 @@ type Result struct {
 	Chapters    []model.Chapter
 }
 
+type SeriesAlert struct {
+	SeriesID  string
+	Title     string
+	Status    string
+	SourceURL string
+	AlertType string
+}
+
 type SourceRun struct {
 	Results          []Result
+	SeriesAlerts     []SeriesAlert
 	SeriesFetched    int
 	SeriesAccepted   int
 	SeriesRejected   int
 	ChaptersRejected int
+	FallbackUsed     int
 }
 
 func (e *Engine) SyncWatchlist(ctx context.Context, entries []watchlist.Entry) (added int, rejected int, removed int, err error) {
@@ -68,8 +78,8 @@ func (e *Engine) SyncWatchlist(ctx context.Context, entries []watchlist.Entry) (
 		}
 		prefsJSON := entry.NotificationPrefsJSON()
 		if existing != nil {
-			if err := e.db.UpdateSeriesNotificationPrefs(ctx, namespacedID, prefsJSON); err != nil {
-				return added, rejected, removed, fmt.Errorf("sync notification prefs %s: %w", namespacedID, err)
+			if err := e.db.UpdateSeriesWatchlistMeta(ctx, namespacedID, prefsJSON, entry.FallbackSourcesJSON()); err != nil {
+				return added, rejected, removed, fmt.Errorf("sync watchlist meta %s: %w", namespacedID, err)
 			}
 			continue
 		}
@@ -82,6 +92,7 @@ func (e *Engine) SyncWatchlist(ctx context.Context, entries []watchlist.Entry) (
 			Status:            entry.Status,
 			IsActive:          true,
 			NotificationPrefs: prefsJSON,
+			FallbackSources:   entry.FallbackSourcesJSON(),
 		})
 
 		seriesResult := validate.Series(series, validate.Insert)
@@ -116,8 +127,9 @@ func (e *Engine) SyncWatchlist(ctx context.Context, entries []watchlist.Entry) (
 	return added, rejected, removed, nil
 }
 
-func (e *Engine) ProcessActiveSeries(ctx context.Context, source adapter.SourceAdapter, seriesList []model.Series) (SourceRun, error) {
+func (e *Engine) ProcessActiveSeries(ctx context.Context, registry map[string]adapter.SourceAdapter, primary adapter.SourceAdapter, seriesList []model.Series) (SourceRun, error) {
 	var results []Result
+	var alerts []SeriesAlert
 	run := SourceRun{SeriesFetched: len(seriesList)}
 
 	for i, series := range seriesList {
@@ -136,11 +148,13 @@ func (e *Engine) ProcessActiveSeries(ctx context.Context, source adapter.SourceA
 			continue
 		}
 
-		if fetcher, ok := source.(adapter.SeriesMetadataFetcher); ok {
+		previousStatus := series.Status
+
+		if fetcher, ok := primary.(adapter.SeriesMetadataFetcher); ok {
 			meta, metaErr := fetcher.FetchSeries(ctx, rawID)
 			if metaErr != nil {
 				e.log.Warn("failed to fetch series metadata",
-					"source", source.Name(),
+					"source", primary.Name(),
 					"series", series.Title,
 					"error", metaErr)
 			} else {
@@ -163,50 +177,57 @@ func (e *Engine) ProcessActiveSeries(ctx context.Context, source adapter.SourceA
 		seriesResult := validate.Series(series, validate.Update)
 		if !seriesResult.OK {
 			run.SeriesRejected++
-			validate.RecordReject(source.Name(), "series", seriesResult.Issues)
-			e.quarantineReject(ctx, source.Name(), "series", series, seriesResult.Issues)
+			validate.RecordReject(primary.Name(), "series", seriesResult.Issues)
+			e.quarantineReject(ctx, primary.Name(), "series", series, seriesResult.Issues)
 			e.log.Warn("rejected series metadata",
-				"source", source.Name(),
+				"source", primary.Name(),
 				"series", series.Title,
 				"issues", seriesResult.Issues)
 			continue
 		}
-		validate.RecordAccept(source.Name(), "series")
+		validate.RecordAccept(primary.Name(), "series")
 		run.SeriesAccepted++
+
+		if statusAlert := maybeStatusAlert(series, previousStatus); statusAlert != nil {
+			alerts = append(alerts, *statusAlert)
+		}
 
 		if err := e.db.UpdateSeries(ctx, series); err != nil {
 			e.log.Error("failed to persist series metadata",
-				"source", source.Name(),
+				"source", primary.Name(),
 				"series", series.Title,
 				"error", err)
 			continue
 		}
 
-		chapters, err := source.FetchChapters(ctx, rawID)
+		chapters, usedFallback, err := e.fetchChaptersWithFallback(ctx, registry, primary, rawID, series)
 		if err != nil {
-			e.log.Error("failed to fetch chapters", "source", source.Name(), "series", series.Title, "error", err)
+			e.log.Error("failed to fetch chapters", "source", primary.Name(), "series", series.Title, "error", err)
 			continue
+		}
+		if usedFallback {
+			run.FallbackUsed++
 		}
 
 		chapterOpts := validate.ChapterOptions{LatestChapter: series.LatestChapter}
 		goodChapters, rejectedChapters := validate.FilterChapters(chapters, chapterOpts)
 		for _, rejected := range rejectedChapters {
 			run.ChaptersRejected++
-			validate.RecordReject(source.Name(), "chapter", rejected.Issues)
-			e.quarantineReject(ctx, source.Name(), "chapter", rejected.Chapter, rejected.Issues)
+			validate.RecordReject(primary.Name(), "chapter", rejected.Issues)
+			e.quarantineReject(ctx, primary.Name(), "chapter", rejected.Chapter, rejected.Issues)
 			e.log.Warn("rejected chapter",
-				"source", source.Name(),
+				"source", primary.Name(),
 				"series", series.Title,
 				"chapter_num", rejected.Chapter.Number,
 				"issues", rejected.Issues)
 		}
 		for range goodChapters {
-			validate.RecordAccept(source.Name(), "chapter")
+			validate.RecordAccept(primary.Name(), "chapter")
 		}
 
 		newChapters, err := e.db.BulkInsertChapters(ctx, series.ID, goodChapters)
 		if err != nil {
-			e.log.Error("failed to bulk insert chapters", "source", source.Name(), "series", series.Title, "error", err)
+			e.log.Error("failed to bulk insert chapters", "source", primary.Name(), "series", series.Title, "error", err)
 			continue
 		}
 
@@ -217,7 +238,7 @@ func (e *Engine) ProcessActiveSeries(ctx context.Context, source adapter.SourceA
 		}
 
 		if err := e.db.UpdateSeries(ctx, series); err != nil {
-			e.log.Error("failed to update series last_checked", "source", source.Name(), "series", series.Title, "error", err)
+			e.log.Error("failed to update series last_checked", "source", primary.Name(), "series", series.Title, "error", err)
 		}
 
 		for i := range newChapters {
@@ -232,14 +253,91 @@ func (e *Engine) ProcessActiveSeries(ctx context.Context, source adapter.SourceA
 				Chapters:    newChapters,
 			})
 			e.log.Info("new chapters detected",
-				"source", source.Name(),
+				"source", primary.Name(),
 				"series", series.Title,
 				"count", len(newChapters))
 		}
 	}
 
 	run.Results = results
+	run.SeriesAlerts = alerts
 	return run, nil
+}
+
+func maybeStatusAlert(series model.Series, previousStatus string) *SeriesAlert {
+	if series.Status == "" || series.Status == previousStatus {
+		return nil
+	}
+	if series.Status != "HIATUS" && series.Status != "COMPLETED" {
+		return nil
+	}
+	return &SeriesAlert{
+		SeriesID:  series.ID,
+		Title:     series.Title,
+		Status:    series.Status,
+		SourceURL: series.SourceURL,
+		AlertType: "status_change",
+	}
+}
+
+func (e *Engine) fetchChaptersWithFallback(
+	ctx context.Context,
+	registry map[string]adapter.SourceAdapter,
+	primary adapter.SourceAdapter,
+	rawID string,
+	series model.Series,
+) ([]model.Chapter, bool, error) {
+	chapters, err := primary.FetchChapters(ctx, rawID)
+	if err == nil {
+		return chapters, false, nil
+	}
+
+	e.log.Warn("primary chapter fetch failed, trying fallbacks",
+		"source", primary.Name(),
+		"series", series.Title,
+		"error", err)
+
+	fallbacks, err := parseFallbackSources(series.FallbackSources)
+	if err != nil {
+		return nil, false, fmt.Errorf("parse fallback_sources: %w", err)
+	}
+
+	var lastErr error
+	for _, fb := range fallbacks {
+		adapterInstance, ok := registry[fb.Source]
+		if !ok {
+			continue
+		}
+		chapters, fbErr := adapterInstance.FetchChapters(ctx, fb.SourceID)
+		if fbErr == nil {
+			e.log.Info("used fallback source for chapters",
+				"primary", primary.Name(),
+				"fallback", fb.Source,
+				"series", series.Title)
+			return chapters, true, nil
+		}
+		lastErr = fbErr
+		e.log.Warn("fallback chapter fetch failed",
+			"fallback", fb.Source,
+			"series", series.Title,
+			"error", fbErr)
+	}
+
+	if lastErr != nil {
+		return nil, false, lastErr
+	}
+	return nil, false, err
+}
+
+func parseFallbackSources(raw json.RawMessage) ([]watchlist.FallbackSource, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var fallbacks []watchlist.FallbackSource
+	if err := json.Unmarshal(raw, &fallbacks); err != nil {
+		return nil, err
+	}
+	return fallbacks, nil
 }
 
 func (e *Engine) quarantineReject(ctx context.Context, source, entityType string, payload any, issues []validate.Issue) {

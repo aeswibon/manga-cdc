@@ -26,7 +26,9 @@ class ChapterEventServiceTest {
     private com.mangacdc.repository.NotificationLogRepository notificationLogRepo;
     private SseEmitterService sseEmitterService;
     private SeriesNotificationPrefsService prefsService;
- 
+    private SeriesEventService seriesEventService;
+    private ScheduleHintService scheduleHintService;
+
     @BeforeEach
     void setUp() {
         mapper = new ObjectMapper();
@@ -34,12 +36,15 @@ class ChapterEventServiceTest {
         notificationLogRepo = mock(com.mangacdc.repository.NotificationLogRepository.class);
         sseEmitterService = mock(SseEmitterService.class);
         prefsService = mock(SeriesNotificationPrefsService.class);
+        seriesEventService = mock(SeriesEventService.class);
+        scheduleHintService = mock(ScheduleHintService.class);
         when(prefsService.getPrefs(anyString())).thenReturn(SeriesNotificationPrefs.empty());
+        when(scheduleHintService.hintForSeries(anyString())).thenReturn(java.util.Optional.empty());
     }
- 
+
     private ChapterEventService newService(NotifierRegistry registry, ChapterRepository repo) {
         ChapterNotificationBatcher batcher = new ChapterNotificationBatcher(new NotificationProperties(0));
-        return new ChapterEventService(registry, repo, notificationLogRepo, sseEmitterService, meterRegistry, batcher, prefsService);
+        return new ChapterEventService(registry, repo, notificationLogRepo, sseEmitterService, meterRegistry, batcher, prefsService, seriesEventService, scheduleHintService);
     }
 
     private String cdcEvent(String op, String id, String seriesId, String seriesTitle, String chapterNum, String title, String url, boolean isNew) {
@@ -109,13 +114,13 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/ch/1100");
-        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString(), nullable(String.class)))
             .thenReturn(Map.of("discord", true));
 
         ChapterEventService service = newService(registry, repo);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1100", "The Final Chapter", "https://ex.com/ch/1100", true));
 
-        verify(registry).sendAll("One Piece", "1100", "The Final Chapter", "https://ex.com/ch/1100");
+        verify(registry).sendAll("One Piece", "1100", "The Final Chapter", "https://ex.com/ch/1100", null);
         verify(repo).logNotification("ch1", "SENT", "discord", null);
         verify(repo).markNotified("ch1");
     }
@@ -126,13 +131,13 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
-        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString(), nullable(String.class)))
             .thenReturn(Map.of("discord", true));
 
         ChapterEventService service = newService(registry, repo);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "1", "", "https://ex.com", true));
 
-        verify(registry).sendAll("Unknown", "1", "", "https://ex.com");
+        verify(registry).sendAll("Unknown", "1", "", "https://ex.com", null);
         verify(repo).logNotification("ch1", "SENT", "discord", null);
     }
 
@@ -142,7 +147,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
-        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString(), nullable(String.class)))
             .thenReturn(Map.of("discord", false));
 
         ChapterEventService service = newService(registry, repo);
@@ -158,7 +163,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
-        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString(), nullable(String.class)))
             .thenReturn(Map.of("discord", true, "slack", false, "telegram", true));
 
         ChapterEventService service = newService(registry, repo);
@@ -176,7 +181,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
-        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString(), nullable(String.class)))
             .thenReturn(Map.of("discord", false, "slack", false));
 
         ChapterEventService service = newService(registry, repo);
@@ -191,7 +196,7 @@ class ChapterEventServiceTest {
         ChapterRepository repo = mock(ChapterRepository.class);
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com");
-        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString(), nullable(String.class)))
             .thenReturn(Map.of("discord", true, "slack", false, "telegram", true));
 
         ChapterEventService service = newService(registry, repo);
@@ -320,13 +325,13 @@ class ChapterEventServiceTest {
         when(repo.existsNewChapter("ch1")).thenReturn(true);
         when(repo.findChapterUrl("ch1")).thenReturn("https://ex.com/1");
         when(prefsService.getPrefs("s1")).thenReturn(new SeriesNotificationPrefs(List.of("Official TL"), List.of(), 0, false));
-        when(registry.sendAll(anyString(), anyString(), anyString(), anyString()))
+        when(registry.sendAll(anyString(), anyString(), anyString(), anyString(), nullable(String.class)))
             .thenReturn(Map.of("discord", true));
 
         ChapterEventService service = newService(registry, repo);
         service.processChapterEvent(cdcEvent("c", "ch1", "s1", "One Piece", "1", "Title", "https://ex.com/1", true, "Official TL"));
 
-        verify(registry).sendAll("One Piece", "1", "Title", "https://ex.com/1");
+        verify(registry).sendAll("One Piece", "1", "Title", "https://ex.com/1", null);
         verify(repo).markNotified("ch1");
     }
 

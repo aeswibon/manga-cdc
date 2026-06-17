@@ -33,15 +33,19 @@ public class ChapterEventService {
     private final MeterRegistry meterRegistry;
     private final ChapterNotificationBatcher batcher;
     private final SeriesNotificationPrefsService prefsService;
+    private final SeriesEventService seriesEventService;
+    private final ScheduleHintService scheduleHintService;
     private final ObjectMapper mapper;
- 
+
     public ChapterEventService(NotifierRegistry notifierRegistry,
                                 ChapterRepository chapterRepo,
                                 NotificationLogRepository notificationLogRepo,
                                 SseEmitterService sseEmitterService,
                                 MeterRegistry meterRegistry,
                                 ChapterNotificationBatcher batcher,
-                                SeriesNotificationPrefsService prefsService) {
+                                SeriesNotificationPrefsService prefsService,
+                                SeriesEventService seriesEventService,
+                                ScheduleHintService scheduleHintService) {
         this.notifierRegistry = notifierRegistry;
         this.chapterRepo = chapterRepo;
         this.notificationLogRepo = notificationLogRepo;
@@ -49,6 +53,8 @@ public class ChapterEventService {
         this.meterRegistry = meterRegistry;
         this.batcher = batcher;
         this.prefsService = prefsService;
+        this.seriesEventService = seriesEventService;
+        this.scheduleHintService = scheduleHintService;
         this.mapper = new ObjectMapper();
     }
 
@@ -57,6 +63,10 @@ public class ChapterEventService {
             JsonNode root = mapper.readTree(message);
 
             String op = root.path("op").asText();
+            if ("s".equals(op)) {
+                seriesEventService.processSeriesEvent(root);
+                return;
+            }
             if (!"c".equals(op)) {
                 return;
             }
@@ -182,8 +192,9 @@ public class ChapterEventService {
     }
 
     private void deliverSingle(ChapterNotificationBatcher.PendingChapter chapter) {
+        String footerHint = scheduleHintService.hintForSeries(chapter.seriesId()).orElse(null);
         Map<String, Boolean> results = notifierRegistry.sendAll(
-            chapter.seriesTitle(), chapter.chapterNum(), chapter.title(), chapter.url()
+            chapter.seriesTitle(), chapter.chapterNum(), chapter.title(), chapter.url(), footerHint
         );
         recordResults(chapter.chapterId(), chapter.seriesTitle(), chapter.chapterNum(), results);
     }

@@ -3,8 +3,10 @@ package com.mangacdc.controller;
 import com.mangacdc.config.MutationGuard;
 import com.mangacdc.model.Chapter;
 import com.mangacdc.model.MangaSeries;
+import com.mangacdc.model.SeriesDetail;
 import com.mangacdc.repository.ChapterRepository;
 import com.mangacdc.repository.SeriesRepository;
+import com.mangacdc.service.ScheduleHintService;
 import com.mangacdc.validation.SeriesValidator;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -24,21 +26,49 @@ public class MangaApiController {
     private final ChapterRepository chapterRepository;
     private final JdbcTemplate readJdbc;
     private final MutationGuard mutationGuard;
+    private final ScheduleHintService scheduleHintService;
 
     public MangaApiController(
             SeriesRepository seriesRepository,
             ChapterRepository chapterRepository,
             @Qualifier("readJdbcTemplate") JdbcTemplate readJdbc,
-            MutationGuard mutationGuard) {
+            MutationGuard mutationGuard,
+            ScheduleHintService scheduleHintService) {
         this.seriesRepository = seriesRepository;
         this.chapterRepository = chapterRepository;
         this.readJdbc = readJdbc;
         this.mutationGuard = mutationGuard;
+        this.scheduleHintService = scheduleHintService;
     }
 
     @GetMapping("/series")
     public List<MangaSeries> listSeries() {
         return seriesRepository.findAll();
+    }
+
+    @GetMapping("/series/{id}")
+    public SeriesDetail getSeries(@PathVariable String id) {
+        MangaSeries series = seriesRepository.findById(id);
+        if (series == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Series not found");
+        }
+        String scheduleHint = scheduleHintService.hintForSeries(id).orElse(null);
+        java.time.Instant lastChapterAt = chapterRepository.findLatestReleaseDate(id);
+        return new SeriesDetail(
+            series.id(),
+            series.sourceId(),
+            series.title(),
+            series.author(),
+            series.artist(),
+            series.description(),
+            series.coverUrl(),
+            series.status(),
+            series.sourceUrl(),
+            series.latestChapter(),
+            series.lastChecked(),
+            series.isActive(),
+            scheduleHint,
+            lastChapterAt);
     }
 
     @GetMapping("/series/{id}/chapters")

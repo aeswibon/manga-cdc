@@ -44,6 +44,45 @@ func NewPublisher(token, destination string) *Publisher {
 	}
 }
 
+func (p *Publisher) PublishSeriesAlert(ctx context.Context, seriesID, title, status, sourceURL, alertType string) error {
+	event := map[string]any{
+		"op": "s",
+		"after": map[string]any{
+			"series_id":  seriesID,
+			"title":      title,
+			"status":     status,
+			"source_url": sourceURL,
+			"alert_type": alertType,
+		},
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshal series alert: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiURL, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+p.token)
+	req.Header.Set("Upstash-Destination", p.destination)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("publish series alert: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("qstash returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 func (p *Publisher) PublishChapterEvent(ctx context.Context, chapter model.Chapter) error {
 	event := chapterEvent{
 		Op: "c",

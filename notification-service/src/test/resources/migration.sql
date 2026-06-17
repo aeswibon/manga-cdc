@@ -14,6 +14,10 @@ CREATE TABLE manga_series (
     latest_chapter NUMERIC(10,2),
     last_checked TIMESTAMPTZ,
     is_active BOOLEAN DEFAULT true,
+    notification_prefs JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fallback_sources JSONB NOT NULL DEFAULT '[]'::jsonb,
+    last_stale_alert_at TIMESTAMPTZ,
+    last_status_alert_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

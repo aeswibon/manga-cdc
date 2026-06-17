@@ -128,6 +128,10 @@ func detectBaselineVersion(ctx context.Context, pool *pgxpool.Pool) (int64, erro
 		version int64
 		query   string
 	}{
+		{9, `SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'manga_series' AND column_name = 'fallback_sources'
+		)`},
 		{8, `SELECT EXISTS (
 			SELECT 1 FROM information_schema.columns
 			WHERE table_schema = 'public' AND table_name = 'chapters' AND column_name = 'scan_group'

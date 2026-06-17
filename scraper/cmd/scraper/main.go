@@ -44,6 +44,11 @@ var (
 		Help: "Total new chapters detected",
 	})
 
+	scraperFallbackUsed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "scraper_fallback_used_total",
+		Help: "Total chapter fetches served by a fallback source",
+	})
+
 	chaptersPublished = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "scraper_chapters_published_total",
 		Help: "Total chapters published to message broker",
@@ -215,7 +220,7 @@ func scrapeActiveSeries(
 
 	for name, source := range sourceRegistry {
 		seriesForSource := bySource[name]
-		scrapeSource(ctx, log, engine, zeroMonitor, source, seriesForSource, qstashPublisher, archiver)
+		scrapeSource(ctx, log, engine, zeroMonitor, sourceRegistry, source, seriesForSource, qstashPublisher, archiver)
 	}
 }
 
@@ -236,13 +241,14 @@ func scrapeSource(
 	log *slog.Logger,
 	engine *diff.Engine,
 	zeroMonitor *alert.Monitor,
+	sourceRegistry map[string]adapter.SourceAdapter,
 	source adapter.SourceAdapter,
 	activeSeries []model.Series,
 	qstashPublisher *qstash.Publisher,
 	archiver *archive.Archiver,
 ) {
 	start := time.Now()
-	run, err := engine.ProcessActiveSeries(ctx, source, activeSeries)
+	run, err := engine.ProcessActiveSeries(ctx, sourceRegistry, source, activeSeries)
 	duration := time.Since(start).Seconds()
 
 	if err != nil {
@@ -254,6 +260,20 @@ func scrapeSource(
 	scrapeDuration.WithLabelValues(source.Name()).Observe(duration)
 	zeroMonitor.RecordScrape(ctx, source.Name(), run.SeriesFetched)
 	zeroMonitor.RecordValidation(ctx, source.Name(), run.SeriesFetched, run.SeriesRejected)
+	if run.FallbackUsed > 0 {
+		scraperFallbackUsed.Add(float64(run.FallbackUsed))
+	}
+
+	for _, alert := range run.SeriesAlerts {
+		if qstashPublisher != nil {
+			if err := qstashPublisher.PublishSeriesAlert(ctx, alert.SeriesID, alert.Title, alert.Status, alert.SourceURL, alert.AlertType); err != nil {
+				log.Error("failed to publish series alert",
+					"series", alert.Title,
+					"status", alert.Status,
+					"error", err)
+			}
+		}
+	}
 
 	for _, r := range run.Results {
 		chaptersDetected.Add(float64(r.NewChapters))
