@@ -149,6 +149,10 @@ jobs:
           echo "SCRAPER_IMAGE=docker.io/${{ secrets.DOCKER_USERNAME }}/scraper" >> "$GITHUB_ENV"
           echo "NOTIFICATION_IMAGE=docker.io/${{ secrets.DOCKER_USERNAME }}/notification-service" >> "$GITHUB_ENV"
 
+      - name: Wait for Docker Hub release images
+        if: env.DEPLOY_METHOD == 'terraform'
+        run: bash scripts/ci/wait-dockerhub-release-images.sh "${IMAGE_TAG}"
+
       - name: Setup Terraform
         if: env.DEPLOY_METHOD == 'terraform'
         uses: hashicorp/setup-terraform@v4
